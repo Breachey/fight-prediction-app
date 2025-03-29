@@ -1,0 +1,7 @@
+POST http://localhost:3001/predict
+Content-Type: application/json
+
+{
+  "fightId": 1,
+  "selectedFighter": "John Doe"
+}
