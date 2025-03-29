@@ -65,17 +65,21 @@ app.get('/fights', async (req, res) => {
   */
 
   app.post('/predict', async (req, res) => {
-    const { fightId, selectedFighter } = req.body;
+    const { fightId, selectedFighter, username } = req.body;
   
-    if (!fightId || !selectedFighter) {
+    if (!fightId || !selectedFighter || !username) {
       return res.status(400).json({ message: "Missing data" });
     }
   
-    // Insert the prediction into the predictions table
+    // Insert the prediction into the predictions table along with username
     const { data, error } = await supabase
       .from('predictions')
       .insert([
-        { fight_id: fightId, selected_fighter: selectedFighter }
+        { 
+          fight_id: fightId, 
+          selected_fighter: selectedFighter,
+          username: username 
+        }
       ]);
   
     if (error) {
@@ -85,7 +89,7 @@ app.get('/fights', async (req, res) => {
   
     res.status(200).json({ message: "Prediction received!", data });
   });
-
+  
 app.get('/', (req, res) => {
   res.send('API is running');
 });

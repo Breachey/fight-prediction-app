@@ -1,7 +1,8 @@
-POST http://localhost:3001/predict
+POST https://fight-prediction-app-b0vt.onrender.com/predict
 Content-Type: application/json
 
 {
   "fightId": 1,
-  "selectedFighter": "John Doe"
+  "selectedFighter": "John Doe",
+  "username": "YourUsername"
 }
