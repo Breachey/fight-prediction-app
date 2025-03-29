@@ -3,6 +3,6 @@ Content-Type: application/json
 
 {
   "fightId": 1,
-  "selectedFighter": "John Doe",
+  "selectedFighter": "Scrappy Doo 2",
   "username": "YourUsername"
 }

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 function Fights() {
   const [fights, setFights] = useState([]);
   const [selectedFighter, setSelectedFighter] = useState(null);
+  const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
 
   // Fetch fight data when component mounts
@@ -19,20 +20,20 @@ function Fights() {
     setSelectedFighter(fighterName);
   };
 
-  // Submit the user's prediction
+  // Submit the user's prediction along with username
   const handleSubmit = () => {
-    if (fights.length === 0 || !selectedFighter) {
-      setMessage('Please select a fighter');
+    if (fights.length === 0 || !selectedFighter || !username) {
+      setMessage('Please select a fighter and enter your username');
       return;
     }
 
-    // Here we assume one fight (fight[0]) for demonstration.
+    // Assuming one fight (fight[0]) for demonstration.
     const fightId = fights[0].id;
 
     fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fightId, selectedFighter })
+      body: JSON.stringify({ fightId, selectedFighter, username })
     })
       .then(response => response.json())
       .then(data => setMessage(data.message))
@@ -84,6 +85,21 @@ function Fights() {
       ) : (
         <p>Loading fights...</p>
       )}
+
+      {/* Username Input Field */}
+      <div style={{ margin: '20px 0' }}>
+        <label>
+          Username: 
+          <input 
+            type="text" 
+            value={username} 
+            onChange={(e) => setUsername(e.target.value)} 
+            placeholder="Enter your username" 
+            style={{ marginLeft: '5px' }}
+          />
+        </label>
+      </div>
+
       <button onClick={handleSubmit} style={{ marginTop: '20px' }}>Submit Prediction</button>
       {message && <p>{message}</p>}
     </div>
