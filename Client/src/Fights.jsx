@@ -8,7 +8,7 @@ function Fights() {
 
   // Fetch fight data when component mounts
   useEffect(() => {
-    fetch('http://localhost:3001/fights')
+    fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
       .then(response => response.json())
       .then(data => setFights(data))
       .catch(error => console.error('Error fetching fights:', error));
@@ -29,7 +29,7 @@ function Fights() {
     // Here we assume one fight (fight[0]) for demonstration.
     const fightId = fights[0].id;
 
-    fetch('http://localhost:3001/predict', {
+    fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fightId, selectedFighter })
