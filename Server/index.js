@@ -160,15 +160,30 @@ app.post('/fights/:id/result', async (req, res) => {
 
 app.get('/leaderboard', async (req, res) => {
   try {
-    const leaderboard = await supabase
+    const { data, error } = await supabase
       .from('fight_results')
-      .select('user_id, COUNT(*) as total_predictions, COUNT(*) FILTER (WHERE predicted_correctly = TRUE) as correct_predictions, ROUND(COUNT(*) FILTER (WHERE predicted_correctly = TRUE)::numeric / COUNT(*)::numeric * 100, 2) as accuracy')
+      .select(`
+        user_id,
+        total_predictions:count(*),
+        correct_predictions:count(case when predicted_correctly = true then 1 end)
+      `)
       .groupBy('user_id')
-      .orderBy('correct_predictions', { ascending: false })
-      .orderBy('accuracy', { ascending: false })
-      .limit(10);
-    
-    res.json(leaderboard.data);
+      .order('correct_predictions', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching leaderboard:', error);
+      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+
+    // Calculate accuracy for each user
+    const leaderboardWithAccuracy = data.map(entry => ({
+      ...entry,
+      accuracy: ((entry.correct_predictions / entry.total_predictions) * 100).toFixed(2)
+    }))
+    .sort((a, b) => b.correct_predictions - a.correct_predictions || b.accuracy - a.accuracy)
+    .slice(0, 10);
+
+    res.json(leaderboardWithAccuracy);
   } catch (error) {
     console.error('Error fetching leaderboard:', error);
     res.status(500).json({ error: 'Failed to fetch leaderboard' });

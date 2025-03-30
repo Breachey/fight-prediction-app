@@ -12,12 +12,17 @@ function Leaderboard() {
   const fetchLeaderboard = async () => {
     try {
       const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/leaderboard');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load leaderboard');
+      }
       const data = await response.json();
-      setLeaderboard(data);
+      console.log('Leaderboard data:', data); // Debug log
+      setLeaderboard(data || []);
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
-      setError('Failed to load leaderboard');
+      setError(error.message);
       setIsLoading(false);
     }
   };
@@ -40,7 +45,8 @@ function Leaderboard() {
     width: '100%',
     backgroundColor: '#1a1a1a',
     borderRadius: '16px',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    borderCollapse: 'collapse'
   };
 
   const headerStyle = {
@@ -71,9 +77,17 @@ function Leaderboard() {
     padding: '20px',
     textAlign: 'center',
     color: '#ef4444',
-    backgroundColor: '#fee2e2',
+    backgroundColor: '#1a1a1a',
     borderRadius: '8px',
     marginBottom: '20px'
+  };
+
+  const emptyStyle = {
+    padding: '30px',
+    textAlign: 'center',
+    color: '#9ca3af',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '8px'
   };
 
   if (isLoading) {
@@ -92,6 +106,17 @@ function Leaderboard() {
       <div style={containerStyle}>
         <h1 style={titleStyle}>Leaderboard</h1>
         <div style={errorStyle}>{error}</div>
+      </div>
+    );
+  }
+
+  if (!leaderboard.length) {
+    return (
+      <div style={containerStyle}>
+        <h1 style={titleStyle}>Leaderboard</h1>
+        <div style={emptyStyle}>
+          No predictions have been made yet. Make some predictions to appear on the leaderboard!
+        </div>
       </div>
     );
   }
