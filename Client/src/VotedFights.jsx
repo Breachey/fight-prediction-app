@@ -39,13 +39,25 @@ function VotedFights({ currentUsername }) {
     ])
       .then(([fightsData, predictionsData]) => {
         setFights(fightsData);
-        // Safely filter predictions
+        // Safely filter predictions and get unique fights
         const filtered = predictionsData.filter(
           (pred) => pred.username && 
           currentUsername && 
           pred.username.toLowerCase() === currentUsername.toLowerCase()
         );
-        setUserPredictions(filtered);
+        
+        // Group predictions by fight_id and take the latest prediction for each fight
+        const uniquePredictions = Object.values(
+          filtered.reduce((acc, pred) => {
+            // Only keep the latest prediction for each fight
+            if (!acc[pred.fight_id] || new Date(pred.created_at) > new Date(acc[pred.fight_id].created_at)) {
+              acc[pred.fight_id] = pred;
+            }
+            return acc;
+          }, {})
+        ).sort((a, b) => a.fight_id - b.fight_id); // Sort by fight_id
+
+        setUserPredictions(uniquePredictions);
         setIsLoading(false);
       })
       .catch((err) => {
