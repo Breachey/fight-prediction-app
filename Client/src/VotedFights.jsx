@@ -7,9 +7,25 @@ function VotedFights() {
   const [fights, setFights] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const currentUsername = localStorage.getItem('currentUsername');
+  const [username, setUsername] = useState(localStorage.getItem('currentUsername') || '');
+
+  // Update username when localStorage changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const newUsername = localStorage.getItem('currentUsername');
+      setUsername(newUsername || '');
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   useEffect(() => {
+    if (!username) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     Promise.all([
       fetch('https://fight-prediction-app-b0vt.onrender.com/fights').then(response => response.json()),
@@ -19,7 +35,7 @@ function VotedFights() {
         setFights(fightsData);
         
         // Filter predictions for current user
-        const userPredictions = predictionsData.filter(pred => pred.username === currentUsername);
+        const userPredictions = predictionsData.filter(pred => pred.username === username);
         
         // Create a map to store the latest prediction for each fight
         const fightPredictionMap = new Map();
@@ -45,7 +61,7 @@ function VotedFights() {
         setError('Error fetching predictions');
         setIsLoading(false);
       });
-  }, [currentUsername]);
+  }, [username]);
 
   const containerStyle = {
     maxWidth: '1200px',
@@ -70,7 +86,7 @@ function VotedFights() {
     marginBottom: '20px'
   };
 
-  if (!currentUsername) {
+  if (!username) {
     return (
       <div style={containerStyle}>
         <div style={errorStyle}>
