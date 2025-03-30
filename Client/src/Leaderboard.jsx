@@ -30,7 +30,10 @@ function Leaderboard() {
   const containerStyle = {
     padding: '20px',
     maxWidth: '800px',
-    margin: '0 auto'
+    margin: '0 auto',
+    boxSizing: 'border-box',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch'
   };
 
   const titleStyle = {
@@ -41,19 +44,28 @@ function Leaderboard() {
     color: '#ffffff'
   };
 
+  const tableContainerStyle = {
+    overflowX: 'auto',
+    borderRadius: '16px',
+    backgroundColor: '#1a1a1a',
+    WebkitOverflowScrolling: 'touch',
+    minWidth: '100%'
+  };
+
   const tableStyle = {
     width: '100%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '16px',
-    overflow: 'hidden',
-    borderCollapse: 'collapse'
+    borderCollapse: 'collapse',
+    minWidth: '500px' // Ensure table doesn't get too squished
   };
 
   const headerStyle = {
     backgroundColor: '#2d3748',
     color: '#ffffff',
     padding: '15px',
-    textAlign: 'left'
+    textAlign: 'left',
+    whiteSpace: 'nowrap',
+    position: 'sticky',
+    top: 0
   };
 
   const rowStyle = (index) => ({
@@ -64,7 +76,8 @@ function Leaderboard() {
   const cellStyle = {
     padding: '15px',
     color: '#ffffff',
-    borderBottom: '1px solid #374151'
+    borderBottom: '1px solid #374151',
+    whiteSpace: 'nowrap'
   };
 
   const rankStyle = (index) => ({
@@ -125,28 +138,30 @@ function Leaderboard() {
     <div style={containerStyle}>
       <h1 style={titleStyle}>Leaderboard</h1>
       
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={headerStyle}>Rank</th>
-            <th style={headerStyle}>User</th>
-            <th style={headerStyle}>Correct</th>
-            <th style={headerStyle}>Total</th>
-            <th style={headerStyle}>Accuracy</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leaderboard.map((entry, index) => (
-            <tr key={entry.user_id} style={rowStyle(index)}>
-              <td style={rankStyle(index)}>{index + 1}</td>
-              <td style={cellStyle}>{entry.user_id}</td>
-              <td style={cellStyle}>{entry.correct_predictions}</td>
-              <td style={cellStyle}>{entry.total_predictions}</td>
-              <td style={cellStyle}>{entry.accuracy}%</td>
+      <div style={tableContainerStyle}>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={headerStyle}>Rank</th>
+              <th style={headerStyle}>User</th>
+              <th style={headerStyle}>Correct</th>
+              <th style={headerStyle}>Total</th>
+              <th style={headerStyle}>Accuracy</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {leaderboard.map((entry, index) => (
+              <tr key={entry.user_id} style={rowStyle(index)}>
+                <td style={rankStyle(index)}>{index + 1}</td>
+                <td style={cellStyle}>{entry.user_id}</td>
+                <td style={cellStyle}>{entry.correct_predictions}</td>
+                <td style={cellStyle}>{entry.total_predictions}</td>
+                <td style={cellStyle}>{entry.accuracy}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

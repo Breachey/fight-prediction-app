@@ -79,7 +79,8 @@ function VotedFights() {
     width: '100%',
     maxWidth: '800px',
     margin: '0 auto',
-    padding: '20px'
+    padding: '20px',
+    boxSizing: 'border-box'
   };
 
   const headerStyle = {
@@ -90,39 +91,40 @@ function VotedFights() {
     textAlign: 'center'
   };
 
-  const errorStyle = {
-    color: '#ef4444',
-    textAlign: 'center',
-    padding: '20px',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '8px',
-    marginBottom: '20px'
-  };
-
   const scrollContainerStyle = {
     display: 'flex',
     overflowX: 'auto',
-    scrollSnapType: 'x mandatory',
     gap: '20px',
     padding: '20px 0',
+    scrollSnapType: 'x mandatory',
     WebkitOverflowScrolling: 'touch',
     msOverflowStyle: 'none',
     scrollbarWidth: 'none',
+    margin: '0 -20px',
+    padding: '0 20px',
     '::-webkit-scrollbar': {
       display: 'none'
     }
   };
 
   const fightCardStyle = {
-    flex: '0 0 100%',
+    flex: '0 0 calc(100% - 40px)',
     scrollSnapAlign: 'start',
-    scrollSnapStop: 'always',
-    width: '100%',
-    maxWidth: '100%',
-    padding: '20px',
     backgroundColor: '#1a1a1a',
     borderRadius: '16px',
+    padding: '20px',
     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    minWidth: 'calc(100% - 40px)',
+    maxWidth: 'calc(100% - 40px)',
+    boxSizing: 'border-box'
+  };
+
+  const errorStyle = {
+    color: '#ef4444',
+    textAlign: 'center',
+    padding: '20px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '8px',
     marginBottom: '20px'
   };
 
@@ -145,7 +147,7 @@ function VotedFights() {
           Loading votes...
         </div>
       ) : predictions.length > 0 ? (
-        <div>
+        <div style={scrollContainerStyle}>
           {predictions.map((prediction) => (
             <div key={prediction.fight_id} style={fightCardStyle}>
               <FightVotes fight={prediction} />
