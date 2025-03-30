@@ -6,7 +6,6 @@ function Fights({ currentUsername, setCurrentUsername }) {
   const [currentFightIndex, setCurrentFightIndex] = useState(0);
   const [selectedFighter, setSelectedFighter] = useState(null);
   const [message, setMessage] = useState('');
-  const [predictions, setPredictions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch fight data when component mounts
@@ -15,18 +14,6 @@ function Fights({ currentUsername, setCurrentUsername }) {
       .then(response => response.json())
       .then(data => setFights(data))
       .catch(error => console.error('Error fetching fights:', error));
-  }, []);
-
-  // Fetch predictions when component mounts and after submission
-  const fetchPredictions = () => {
-    fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
-      .then(response => response.json())
-      .then(data => setPredictions(data))
-      .catch(error => console.error('Error fetching predictions:', error));
-  };
-
-  useEffect(() => {
-    fetchPredictions();
   }, []);
 
   // When user clicks a fighter, update the selection
@@ -77,8 +64,6 @@ function Fights({ currentUsername, setCurrentUsername }) {
         } else {
           setMessage('All fights completed!');
         }
-        // Optionally, re-fetch predictions
-        fetchPredictions();
       })
       .catch(error => {
         console.error('Error submitting prediction:', error);
@@ -144,7 +129,13 @@ function Fights({ currentUsername, setCurrentUsername }) {
     display: 'flex',
     justifyContent: 'space-between',
     padding: '8px 0',
-    borderBottom: '1px solid #2c2c2c'
+    borderBottom: '1px solid #2c2c2c',
+    flexWrap: 'wrap',
+    gap: '4px'
+  };
+
+  const statLabelStyle = {
+    minWidth: '60px'
   };
 
   const usernameContainerStyle = {
@@ -203,19 +194,19 @@ function Fights({ currentUsername, setCurrentUsername }) {
               <img src={currentFight.fighter1_image} alt={currentFight.fighter1_name} style={imageStyle} />
               <h2 style={fighterNameStyle}>{currentFight.fighter1_name}</h2>
               <div style={statStyle}>
-                <span>Rank</span>
+                <span style={statLabelStyle}>Rank</span>
                 <span>{currentFight.fighter1_rank || 'N/A'}</span>
               </div>
               <div style={statStyle}>
-                <span>Record</span>
+                <span style={statLabelStyle}>Record</span>
                 <span>{currentFight.fighter1_record}</span>
               </div>
               <div style={statStyle}>
-                <span>Odds</span>
+                <span style={statLabelStyle}>Odds</span>
                 <span>{currentFight.fighter1_odds}</span>
               </div>
               <div style={statStyle}>
-                <span>Style</span>
+                <span style={statLabelStyle}>Style</span>
                 <span>{currentFight.fighter1_style}</span>
               </div>
             </div>
@@ -228,19 +219,19 @@ function Fights({ currentUsername, setCurrentUsername }) {
               <img src={currentFight.fighter2_image} alt={currentFight.fighter2_name} style={imageStyle} />
               <h2 style={fighterNameStyle}>{currentFight.fighter2_name}</h2>
               <div style={statStyle}>
-                <span>Rank</span>
+                <span style={statLabelStyle}>Rank</span>
                 <span>{currentFight.fighter2_rank || 'N/A'}</span>
               </div>
               <div style={statStyle}>
-                <span>Record</span>
+                <span style={statLabelStyle}>Record</span>
                 <span>{currentFight.fighter2_record}</span>
               </div>
               <div style={statStyle}>
-                <span>Odds</span>
+                <span style={statLabelStyle}>Odds</span>
                 <span>{currentFight.fighter2_odds}</span>
               </div>
               <div style={statStyle}>
-                <span>Style</span>
+                <span style={statLabelStyle}>Style</span>
                 <span>{currentFight.fighter2_style}</span>
               </div>
             </div>
@@ -278,22 +269,6 @@ function Fights({ currentUsername, setCurrentUsername }) {
           Loading fights or no more fights available...
         </div>
       )}
-
-      {/* Display Predictions */}
-      <div style={{ marginTop: '40px' }}>
-        <h2>Past Predictions</h2>
-        {predictions.length > 0 ? (
-          <ul>
-            {predictions.map((prediction) => (
-              <li key={prediction.id}>
-                {prediction.username} predicted {prediction.selected_fighter} for fight {prediction.fight_id} on {new Date(prediction.created_at).toLocaleString()}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No predictions yet.</p>
-        )}
-      </div>
     </div>
   );
 }
