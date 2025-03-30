@@ -4,15 +4,21 @@ import Fights from './Fights';
 import VotedFights from './VotedFights';
 import FightAdmin from './FightAdmin';
 import Leaderboard from './Leaderboard';
+import AdminPin from './AdminPin';
 
 function App() {
   const [currentUsername, setCurrentUsername] = useState(localStorage.getItem('currentUsername') || '');
   const [currentView, setCurrentView] = useState('fights'); // fights, admin, leaderboard
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   // Save username to localStorage when it changes
   const handleUsernameChange = (newUsername) => {
     setCurrentUsername(newUsername);
     localStorage.setItem('currentUsername', newUsername);
+  };
+
+  const handleAdminSuccess = () => {
+    setIsAdminAuthenticated(true);
   };
 
   const containerStyle = {
@@ -53,7 +59,12 @@ function App() {
         </button>
         <button
           style={navButtonStyle(currentView === 'admin')}
-          onClick={() => setCurrentView('admin')}
+          onClick={() => {
+            setCurrentView('admin');
+            if (!isAdminAuthenticated) {
+              setIsAdminAuthenticated(false);
+            }
+          }}
         >
           Admin
         </button>
@@ -75,7 +86,14 @@ function App() {
         </>
       )}
 
-      {currentView === 'admin' && <FightAdmin />}
+      {currentView === 'admin' && (
+        isAdminAuthenticated ? (
+          <FightAdmin />
+        ) : (
+          <AdminPin onSuccess={handleAdminSuccess} />
+        )
+      )}
+      
       {currentView === 'leaderboard' && <Leaderboard />}
     </div>
   );

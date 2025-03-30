@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function FightAdmin() {
   const [fights, setFights] = useState([]);
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [editingFight, setEditingFight] = useState(null);
 
   useEffect(() => {
     fetchFights();
@@ -15,42 +16,43 @@ function FightAdmin() {
       const data = await response.json();
       setFights(data);
       setIsLoading(false);
-    } catch (error) {
-      console.error('Error fetching fights:', error);
-      setMessage('Error fetching fights');
+    } catch (err) {
+      console.error('Error fetching fights:', err);
+      setError('Failed to load fights');
       setIsLoading(false);
     }
   };
 
-  const handleSetWinner = async (fightId, winner) => {
+  const handleResultUpdate = async (fightId, result) => {
     try {
-      setIsLoading(true);
       const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/fights/${fightId}/result`, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ winner }),
+        body: JSON.stringify({ result }),
       });
 
       if (!response.ok) {
         throw new Error('Failed to update fight result');
       }
 
-      setMessage('Fight result updated successfully');
-      fetchFights(); // Refresh the fights list
-    } catch (error) {
-      console.error('Error updating fight result:', error);
-      setMessage('Error updating fight result');
-    } finally {
-      setIsLoading(false);
+      // Update local state
+      setFights(fights.map(fight => 
+        fight.id === fightId ? { ...fight, result } : fight
+      ));
+      setEditingFight(null);
+    } catch (err) {
+      console.error('Error updating fight result:', err);
+      setError('Failed to update fight result');
     }
   };
 
   const containerStyle = {
     padding: '20px',
     maxWidth: '800px',
-    margin: '0 auto'
+    margin: '0 auto',
+    boxSizing: 'border-box'
   };
 
   const titleStyle = {
@@ -69,117 +71,105 @@ function FightAdmin() {
     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
   };
 
-  const fighterContainerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '20px',
-    marginBottom: '20px'
-  };
-
-  const fighterStyle = {
-    flex: 1,
-    textAlign: 'center'
-  };
-
   const buttonContainerStyle = {
     display: 'flex',
     gap: '10px',
-    justifyContent: 'center'
+    marginTop: '15px'
   };
 
-  const buttonStyle = (isWinner) => ({
-    padding: '10px 20px',
+  const buttonStyle = (isSelected) => ({
+    flex: 1,
+    padding: '10px',
     borderRadius: '8px',
-    border: 'none',
-    backgroundColor: isWinner ? '#10b981' : '#3b82f6',
+    backgroundColor: isSelected ? '#3b82f6' : '#2d3748',
     color: '#ffffff',
+    border: 'none',
     cursor: 'pointer',
-    opacity: isLoading ? 0.7 : 1,
     transition: 'all 0.3s ease'
   });
 
-  const completedStyle = {
-    backgroundColor: '#374151',
-    color: '#9ca3af',
-    padding: '10px',
+  const editButtonStyle = {
+    padding: '8px 16px',
     borderRadius: '8px',
-    textAlign: 'center',
-    marginTop: '10px'
+    backgroundColor: '#4b5563',
+    color: '#ffffff',
+    border: 'none',
+    cursor: 'pointer',
+    marginLeft: '10px',
+    transition: 'all 0.3s ease'
   };
 
-  const messageStyle = {
-    padding: '12px',
+  const errorStyle = {
+    color: '#ef4444',
+    textAlign: 'center',
+    padding: '20px',
+    backgroundColor: '#1a1a1a',
     borderRadius: '8px',
-    backgroundColor: message.includes('Error') ? '#fee2e2' : '#dcfce7',
-    color: message.includes('Error') ? '#ef4444' : '#10b981',
-    marginBottom: '20px',
-    textAlign: 'center'
+    marginBottom: '20px'
   };
+
+  if (isLoading) {
+    return (
+      <div style={containerStyle}>
+        <h1 style={titleStyle}>Fight Admin</h1>
+        <div style={{ textAlign: 'center', color: '#9ca3af' }}>Loading fights...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <h1 style={titleStyle}>Fight Admin</h1>
+        <div style={errorStyle}>{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div style={containerStyle}>
-      <h1 style={titleStyle}>Fight Results Admin</h1>
-
-      {message && (
-        <div style={messageStyle}>
-          {message}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-          Loading fights...
-        </div>
-      ) : (
-        fights.map((fight) => (
-          <div key={fight.id} style={fightCardStyle}>
-            <div style={fighterContainerStyle}>
-              <div style={fighterStyle}>
-                <img 
-                  src={fight.fighter1_image} 
-                  alt={fight.fighter1_name} 
-                  style={{ width: '100px', height: '100px', borderRadius: '50%', marginBottom: '10px' }} 
-                />
-                <h3 style={{ color: '#ffffff', marginBottom: '5px' }}>{fight.fighter1_name}</h3>
-              </div>
-              <div style={{ alignSelf: 'center', color: '#9ca3af', fontSize: '1.5rem' }}>
-                VS
-              </div>
-              <div style={fighterStyle}>
-                <img 
-                  src={fight.fighter2_image} 
-                  alt={fight.fighter2_name} 
-                  style={{ width: '100px', height: '100px', borderRadius: '50%', marginBottom: '10px' }} 
-                />
-                <h3 style={{ color: '#ffffff', marginBottom: '5px' }}>{fight.fighter2_name}</h3>
-              </div>
-            </div>
-
-            {fight.is_completed ? (
-              <div style={completedStyle}>
-                Winner: {fight.winner}
-              </div>
-            ) : (
-              <div style={buttonContainerStyle}>
-                <button
-                  onClick={() => handleSetWinner(fight.id, fight.fighter1_name)}
-                  style={buttonStyle(fight.winner === fight.fighter1_name)}
-                  disabled={isLoading}
-                >
-                  {fight.fighter1_name} Won
-                </button>
-                <button
-                  onClick={() => handleSetWinner(fight.id, fight.fighter2_name)}
-                  style={buttonStyle(fight.winner === fight.fighter2_name)}
-                  disabled={isLoading}
-                >
-                  {fight.fighter2_name} Won
-                </button>
-              </div>
+      <h1 style={titleStyle}>Fight Admin</h1>
+      
+      {fights.map((fight) => (
+        <div key={fight.id} style={fightCardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: '0 0 10px 0', color: '#ffffff' }}>
+              {fight.fighter1} vs {fight.fighter2}
+            </h3>
+            {fight.result && editingFight !== fight.id && (
+              <button 
+                style={editButtonStyle}
+                onClick={() => setEditingFight(fight.id)}
+              >
+                Edit Result
+              </button>
             )}
           </div>
-        ))
-      )}
+          
+          {(editingFight === fight.id || !fight.result) && (
+            <div style={buttonContainerStyle}>
+              <button
+                style={buttonStyle(fight.result === fight.fighter1)}
+                onClick={() => handleResultUpdate(fight.id, fight.fighter1)}
+              >
+                {fight.fighter1} Won
+              </button>
+              <button
+                style={buttonStyle(fight.result === fight.fighter2)}
+                onClick={() => handleResultUpdate(fight.id, fight.fighter2)}
+              >
+                {fight.fighter2} Won
+              </button>
+            </div>
+          )}
+          
+          {fight.result && editingFight !== fight.id && (
+            <div style={{ marginTop: '10px', color: '#9ca3af' }}>
+              Winner: {fight.result}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
