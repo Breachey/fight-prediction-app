@@ -38,15 +38,15 @@ function Fights({ eventId }) {
     }
 
     try {
-      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predictions', {
+      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           username,
-          fight_id: fightId,
-          predicted_winner: selectedFighter,
+          fightId: fightId,
+          selectedFighter,
         }),
       });
 
