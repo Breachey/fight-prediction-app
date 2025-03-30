@@ -4,30 +4,36 @@ function FightVotes({ fight, fights }) {
   const [fighter1Votes, setFighter1Votes] = useState([]);
   const [fighter2Votes, setFighter2Votes] = useState([]);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Get the fight details from the fights array
     const fightDetails = fights.find(f => f.id === fight.fight_id);
-    if (!fightDetails) return;
+    if (!fightDetails) {
+      setIsLoading(false);
+      return;
+    }
 
-    // Fetch votes for fighter 1
-    fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
-      .then(response => response.json())
-      .then(data => setFighter1Votes(data))
+    setIsLoading(true);
+    Promise.all([
+      // Fetch votes for fighter 1
+      fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
+        .then(response => response.json()),
+      // Fetch votes for fighter 2
+      fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
+        .then(response => response.json())
+    ])
+      .then(([fighter1Data, fighter2Data]) => {
+        setFighter1Votes(fighter1Data);
+        setFighter2Votes(fighter2Data);
+        setIsLoading(false);
+      })
       .catch(err => {
-        console.error('Error fetching fighter 1 votes:', err);
+        console.error('Error fetching votes:', err);
         setError('Error fetching votes');
+        setIsLoading(false);
       });
-
-    // Fetch votes for fighter 2
-    fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
-      .then(response => response.json())
-      .then(data => setFighter2Votes(data))
-      .catch(err => {
-        console.error('Error fetching fighter 2 votes:', err);
-        setError('Error fetching votes');
-      });
-  }, [fight]);
+  }, [fight, fights]);
 
   if (!fights.find(f => f.id === fight.fight_id)) {
     return <p>Fight details not found</p>;
@@ -35,65 +41,139 @@ function FightVotes({ fight, fights }) {
 
   const fightDetails = fights.find(f => f.id === fight.fight_id);
 
-  return (
-    <div style={{ 
-      border: '1px solid #ccc',
-      borderRadius: '8px',
-      padding: '15px',
-      margin: '10px 0',
-      backgroundColor: '#f8f9fa'
-    }}>
-      <h3 style={{ marginBottom: '15px' }}>Fight #{fight.fight_id}: {fightDetails.fighter1_name} vs {fightDetails.fighter2_name}</h3>
-      
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px' }}>
-        <div style={{ flex: 1 }}>
-          <h4>{fightDetails.fighter1_name}'s Votes ({fighter1Votes.length})</h4>
-          {fighter1Votes.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {fighter1Votes.map((vote, index) => (
-                <li key={index} style={{ 
-                  padding: '5px',
-                  backgroundColor: vote.username === fight.username ? '#e3f2fd' : 'transparent',
-                  borderRadius: '4px'
-                }}>
-                  {vote.username} {vote.username === fight.username && '(You)'}
-                  <br />
-                  <small style={{ color: '#666' }}>
-                    {new Date(vote.created_at).toLocaleString()}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No votes yet</p>
-          )}
-        </div>
+  const cardStyle = {
+    border: '1px solid #2c2c2c',
+    borderRadius: '12px',
+    padding: '20px',
+    margin: '15px 0',
+    backgroundColor: '#1a1a1a',
+    color: '#ffffff',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+  };
 
-        <div style={{ flex: 1 }}>
-          <h4>{fightDetails.fighter2_name}'s Votes ({fighter2Votes.length})</h4>
-          {fighter2Votes.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {fighter2Votes.map((vote, index) => (
-                <li key={index} style={{ 
-                  padding: '5px',
-                  backgroundColor: vote.username === fight.username ? '#e3f2fd' : 'transparent',
-                  borderRadius: '4px'
-                }}>
-                  {vote.username} {vote.username === fight.username && '(You)'}
-                  <br />
-                  <small style={{ color: '#666' }}>
-                    {new Date(vote.created_at).toLocaleString()}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No votes yet</p>
-          )}
+  const headerStyle = {
+    fontSize: '1.4rem',
+    fontWeight: '600',
+    marginBottom: '20px',
+    color: '#ffffff',
+    borderBottom: '1px solid #2c2c2c',
+    paddingBottom: '10px'
+  };
+
+  const fighterSectionStyle = {
+    backgroundColor: '#242424',
+    padding: '15px',
+    borderRadius: '8px',
+    flex: 1,
+    minWidth: '250px'
+  };
+
+  const fighterHeaderStyle = {
+    fontSize: '1.1rem',
+    fontWeight: '500',
+    marginBottom: '15px',
+    color: '#ffffff',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  };
+
+  const voteItemStyle = (isCurrentUser) => ({
+    padding: '12px',
+    backgroundColor: isCurrentUser ? '#1e3a8a' : '#2c2c2c',
+    borderRadius: '6px',
+    marginBottom: '8px',
+    transition: 'background-color 0.2s',
+    border: isCurrentUser ? '1px solid #3b82f6' : '1px solid transparent'
+  });
+
+  const timestampStyle = {
+    fontSize: '0.85rem',
+    color: '#9ca3af',
+    marginTop: '4px'
+  };
+
+  return (
+    <div style={cardStyle}>
+      <h3 style={headerStyle}>
+        Fight #{fight.fight_id}: {fightDetails.fighter1_name} vs {fightDetails.fighter2_name}
+      </h3>
+      
+      {error && (
+        <p style={{ color: '#ef4444', marginBottom: '15px', padding: '10px', backgroundColor: '#2c2c2c', borderRadius: '6px' }}>
+          {error}
+        </p>
+      )}
+
+      {isLoading ? (
+        <p style={{ textAlign: 'center', padding: '20px' }}>Loading votes...</p>
+      ) : (
+        <div style={{ 
+          display: 'flex', 
+          gap: '20px',
+          flexWrap: 'wrap'
+        }}>
+          <div style={fighterSectionStyle}>
+            <div style={fighterHeaderStyle}>
+              <span>{fightDetails.fighter1_name}</span>
+              <span style={{ 
+                backgroundColor: '#374151',
+                padding: '4px 8px',
+                borderRadius: '12px',
+                fontSize: '0.9rem'
+              }}>
+                {fighter1Votes.length} votes
+              </span>
+            </div>
+            {fighter1Votes.length > 0 ? (
+              <div>
+                {fighter1Votes.map((vote, index) => (
+                  <div key={index} style={voteItemStyle(vote.username === fight.username)}>
+                    <div style={{ fontWeight: '500' }}>
+                      {vote.username} {vote.username === fight.username && '(You)'}
+                    </div>
+                    <div style={timestampStyle}>
+                      {new Date(vote.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ textAlign: 'center', color: '#9ca3af' }}>No votes yet</p>
+            )}
+          </div>
+
+          <div style={fighterSectionStyle}>
+            <div style={fighterHeaderStyle}>
+              <span>{fightDetails.fighter2_name}</span>
+              <span style={{ 
+                backgroundColor: '#374151',
+                padding: '4px 8px',
+                borderRadius: '12px',
+                fontSize: '0.9rem'
+              }}>
+                {fighter2Votes.length} votes
+              </span>
+            </div>
+            {fighter2Votes.length > 0 ? (
+              <div>
+                {fighter2Votes.map((vote, index) => (
+                  <div key={index} style={voteItemStyle(vote.username === fight.username)}>
+                    <div style={{ fontWeight: '500' }}>
+                      {vote.username} {vote.username === fight.username && '(You)'}
+                    </div>
+                    <div style={timestampStyle}>
+                      {new Date(vote.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ textAlign: 'center', color: '#9ca3af' }}>No votes yet</p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

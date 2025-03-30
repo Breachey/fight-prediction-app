@@ -55,37 +55,63 @@ function VotedFights({ currentUsername }) {
       });
   }, [currentUsername]);
 
-  if (isLoading) {
+  const containerStyle = {
+    padding: '20px',
+    borderTop: '1px solid #2c2c2c',
+    marginTop: '40px',
+    backgroundColor: '#121212',
+    minHeight: '200px'
+  };
+
+  const headerStyle = {
+    fontSize: '2rem',
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: '20px'
+  };
+
+  const messageStyle = {
+    textAlign: 'center',
+    padding: '20px',
+    color: '#9ca3af',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '8px',
+    margin: '20px 0'
+  };
+
+  const errorStyle = {
+    color: '#ef4444',
+    backgroundColor: '#2c2c2c',
+    padding: '15px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    textAlign: 'center'
+  };
+
+  if (!currentUsername?.trim()) {
     return (
-      <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
-        <h2>Fight Predictions</h2>
-        <p>Loading predictions...</p>
+      <div style={containerStyle}>
+        <h2 style={headerStyle}>Fight Predictions</h2>
+        <p style={messageStyle}>Please enter a username to view predictions.</p>
       </div>
     );
   }
 
-  if (!currentUsername?.trim()) {
+  if (isLoading) {
     return (
-      <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
-        <h2>Fight Predictions</h2>
-        <p>Please enter a username to view predictions.</p>
+      <div style={containerStyle}>
+        <h2 style={headerStyle}>Fight Predictions</h2>
+        <p style={messageStyle}>Loading predictions...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
-      <h2>Fight Predictions</h2>
+    <div style={containerStyle}>
+      <h2 style={headerStyle}>Fight Predictions</h2>
+      
       {error && (
-        <p style={{ 
-          color: 'red', 
-          backgroundColor: '#ffebee', 
-          padding: '10px', 
-          borderRadius: '4px',
-          marginBottom: '15px'
-        }}>
-          {error}
-        </p>
+        <p style={errorStyle}>{error}</p>
       )}
       
       {!error && userPredictions.length > 0 ? (
@@ -99,7 +125,7 @@ function VotedFights({ currentUsername }) {
           ))}
         </div>
       ) : !error ? (
-        <p>You haven't voted on any fights yet.</p>
+        <p style={messageStyle}>You haven't voted on any fights yet.</p>
       ) : null}
     </div>
   );
