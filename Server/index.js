@@ -14,14 +14,37 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/fights', async (req, res) => {
-  const { data, error } = await supabase.from('fights').select('*');
+  try {
+    // Get the latest event
+    const { data: latestEvent, error: eventError } = await supabase
+      .from('events')
+      .select('id')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
 
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error fetching fights" });
+    if (eventError) {
+      console.error('Error fetching latest event:', eventError);
+      return res.status(500).json({ error: 'Failed to fetch latest event' });
+    }
+
+    // Get fights for the latest event
+    const { data: fights, error: fightsError } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('event_id', latestEvent.id)
+      .order('id');
+
+    if (fightsError) {
+      console.error('Error fetching fights:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    res.json(fights);
+  } catch (error) {
+    console.error('Error in GET /fights:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  res.json(data);
 });
 
 app.post('/predict', async (req, res) => {
@@ -255,6 +278,112 @@ app.put('/fights/:id/result', async (req, res) => {
   } catch (error) {
     console.error('Error in PUT /fights/:id/result:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all events
+app.get('/events', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching events:', error);
+      return res.status(500).json({ error: 'Failed to fetch events' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in GET /events:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get fights for a specific event
+app.get('/events/:id/fights', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('event_id', id)
+      .order('id');
+
+    if (error) {
+      console.error('Error fetching fights for event:', error);
+      return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in GET /events/:id/fights:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get event leaderboard
+app.get('/events/:id/leaderboard', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get all fights for this event
+    const { data: eventFights, error: fightsError } = await supabase
+      .from('fights')
+      .select('id')
+      .eq('event_id', id);
+
+    if (fightsError) {
+      console.error('Error fetching event fights:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch event fights' });
+    }
+
+    const fightIds = eventFights.map(fight => fight.id);
+
+    // Get all fight results for these fights
+    const { data: results, error: resultsError } = await supabase
+      .from('fight_results')
+      .select('*')
+      .in('fight_id', fightIds);
+
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
+      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+
+    // Process the results to create the leaderboard
+    const userStats = {};
+    results.forEach(result => {
+      if (!userStats[result.user_id]) {
+        userStats[result.user_id] = {
+          user_id: result.user_id,
+          total_predictions: 0,
+          correct_predictions: 0
+        };
+      }
+      userStats[result.user_id].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[result.user_id].correct_predictions++;
+      }
+    });
+
+    // Convert to array and calculate accuracy
+    const leaderboard = Object.values(userStats)
+      .map(user => ({
+        ...user,
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+      }))
+      .sort((a, b) => 
+        b.correct_predictions - a.correct_predictions || 
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+      )
+      .slice(0, 10);
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('Error processing event leaderboard:', error);
+    res.status(500).json({ error: 'Failed to process leaderboard' });
   }
 });
 

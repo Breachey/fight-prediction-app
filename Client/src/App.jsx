@@ -5,11 +5,13 @@ import VotedFights from './VotedFights';
 import FightAdmin from './FightAdmin';
 import Leaderboard from './Leaderboard';
 import AdminPin from './AdminPin';
+import EventSelector from './EventSelector';
 
 function App() {
   const [currentUsername, setCurrentUsername] = useState(localStorage.getItem('currentUsername') || '');
   const [currentView, setCurrentView] = useState('fights'); // fights, admin, leaderboard
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState(null);
 
   // Save username to localStorage when it changes
   const handleUsernameChange = (newUsername) => {
@@ -19,6 +21,10 @@ function App() {
 
   const handleAdminSuccess = () => {
     setIsAdminAuthenticated(true);
+  };
+
+  const handleEventSelect = (eventId) => {
+    setSelectedEventId(eventId);
   };
 
   const containerStyle = {
@@ -76,25 +82,36 @@ function App() {
         </button>
       </nav>
 
+      <EventSelector 
+        onEventSelect={handleEventSelect}
+        selectedEventId={selectedEventId}
+      />
+
       {currentView === 'fights' && (
         <>
           <Fights
             currentUsername={currentUsername}
             setCurrentUsername={handleUsernameChange}
+            eventId={selectedEventId}
           />
-          <VotedFights />
+          <VotedFights 
+            username={currentUsername}
+            eventId={selectedEventId}
+          />
         </>
       )}
 
       {currentView === 'admin' && (
         isAdminAuthenticated ? (
-          <FightAdmin />
+          <FightAdmin eventId={selectedEventId} />
         ) : (
           <AdminPin onSuccess={handleAdminSuccess} />
         )
       )}
       
-      {currentView === 'leaderboard' && <Leaderboard />}
+      {currentView === 'leaderboard' && (
+        <Leaderboard eventId={selectedEventId} />
+      )}
     </div>
   );
 }
