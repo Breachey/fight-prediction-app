@@ -76,9 +76,11 @@ function VotedFights() {
   }, [username]);
 
   const containerStyle = {
+    width: '100%',
     maxWidth: '100%',
     margin: '0 auto',
-    padding: '20px'
+    padding: '20px',
+    overflowX: 'hidden'
   };
 
   const headerStyle = {
@@ -104,6 +106,7 @@ function VotedFights() {
     scrollSnapType: 'x mandatory',
     gap: '20px',
     padding: '20px 0',
+    margin: '0 -20px',
     WebkitOverflowScrolling: 'touch', // For smooth scrolling on iOS
     msOverflowStyle: 'none', // Hide scrollbar on IE/Edge
     scrollbarWidth: 'none', // Hide scrollbar on Firefox
@@ -112,11 +115,21 @@ function VotedFights() {
     }
   };
 
+  const scrollWrapperStyle = {
+    width: '100%',
+    position: 'relative',
+    overflow: 'hidden'
+  };
+
   const fightCardStyle = {
     flex: '0 0 100%',
     scrollSnapAlign: 'start',
     scrollSnapStop: 'always',
-    maxWidth: '100%'
+    width: '100%',
+    maxWidth: '100%',
+    paddingLeft: '20px',
+    paddingRight: '20px',
+    boxSizing: 'border-box'
   };
 
   const navigationStyle = {
@@ -160,18 +173,20 @@ function VotedFights() {
         </div>
       ) : predictions.length > 0 ? (
         <>
-          <div style={scrollContainerStyle}>
-            {predictions.map((prediction) => (
-              <div key={prediction.fight_id} style={fightCardStyle}>
-                <FightVotes fight={prediction} />
-              </div>
-            ))}
+          <div style={scrollWrapperStyle}>
+            <div style={scrollContainerStyle}>
+              {predictions.map((prediction) => (
+                <div key={prediction.fight_id} style={fightCardStyle}>
+                  <FightVotes fight={prediction} />
+                </div>
+              ))}
+            </div>
           </div>
           <div style={navigationStyle}>
             {predictions.map((prediction, index) => (
               <div
                 key={prediction.fight_id}
-                style={dotStyle(index === 0)} // You can add state to track active fight
+                style={dotStyle(index === 0)}
               />
             ))}
           </div>

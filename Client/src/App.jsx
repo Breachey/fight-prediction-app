@@ -29,8 +29,15 @@ function App() {
     }
   };
 
+  const appStyle = {
+    width: '100%',
+    maxWidth: '100vw',
+    overflowX: 'hidden',
+    position: 'relative'
+  };
+
   return (
-    <div className="App">
+    <div className="App" style={appStyle}>
       <Fights currentUsername={currentUsername} setCurrentUsername={handleSetUsername} />
       <VotedFights />
     </div>
