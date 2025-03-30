@@ -1,5 +1,6 @@
 // client/src/Fights.js
 import React, { useEffect, useState } from 'react';
+import './Fights.css';
 
 function Fights({ eventId }) {
   const [fights, setFights] = useState([]);
@@ -65,229 +66,88 @@ function Fights({ eventId }) {
     }
   };
 
-  const containerStyle = {
-    maxWidth: '800px',
-    margin: '0 auto',
-    padding: '20px'
-  };
-
-  const headerStyle = {
-    marginBottom: '24px'
-  };
-
-  const titleStyle = {
-    fontSize: '1.8rem',
-    fontWeight: '600',
-    marginBottom: '16px',
-    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
-  };
-
-  const usernameContainerStyle = {
-    marginBottom: '24px',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-    padding: '20px',
-    borderRadius: '12px',
-    border: '1px solid #4c1d95'
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '12px 16px',
-    backgroundColor: '#0f0f0f',
-    color: '#ffffff',
-    border: '1px solid #6d28d9',
-    borderRadius: '8px',
-    fontSize: '1rem',
-    outline: 'none',
-    transition: 'all 0.3s ease',
-    ':focus': {
-      borderColor: '#8b5cf6',
-      boxShadow: '0 0 0 2px rgba(139, 92, 246, 0.2)'
-    }
-  };
-
-  const fightCardStyle = {
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-    borderRadius: '16px',
-    padding: '24px',
-    marginBottom: '20px',
-    border: '1px solid #4c1d95',
-    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
-    transition: 'transform 0.3s ease',
-    ':hover': {
-      transform: 'translateY(-2px)'
-    }
-  };
-
-  const fightersContainerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '20px',
-    marginBottom: '16px'
-  };
-
-  const fighterCardStyle = (isSelected) => ({
-    flex: 1,
-    padding: '20px',
-    borderRadius: '12px',
-    backgroundColor: isSelected ? '#4c1d95' : '#1a1a1a',
-    border: `1px solid ${isSelected ? '#8b5cf6' : '#4c1d95'}`,
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    color: isSelected ? '#ffffff' : '#e9d5ff',
-    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-    boxShadow: isSelected ? '0 8px 16px rgba(139, 92, 246, 0.2)' : 'none',
-    ':hover': {
-      backgroundColor: isSelected ? '#4c1d95' : '#2d1f47',
-      transform: 'scale(1.02)'
-    }
-  });
-
-  const imageStyle = {
-    width: '100%',
-    height: 'auto',
-    borderRadius: '8px',
-    marginBottom: '15px',
-    border: '1px solid #4c1d95'
-  };
-
-  const fighterNameStyle = {
-    fontSize: '1.5rem',
-    fontWeight: '600',
-    marginBottom: '16px',
-    textAlign: 'center',
-    background: isSelected => isSelected ? '#ffffff' : 'linear-gradient(to right, #e9d5ff, #ffffff)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
-  };
-
-  const statContainerStyle = {
-    background: 'rgba(76, 29, 149, 0.1)',
-    borderRadius: '8px',
-    padding: '12px',
-    marginTop: '16px'
-  };
-
-  const statStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '8px 0',
-    borderBottom: '1px solid #2d1f47'
-  };
-
-  const statLabelStyle = {
-    color: '#8b5cf6',
-    fontWeight: '500'
-  };
-
-  const vsStyle = {
-    alignSelf: 'center',
-    fontSize: '1.5rem',
-    fontWeight: '600',
-    color: '#8b5cf6',
-    padding: '0 10px'
-  };
-
-  const errorStyle = {
-    color: '#ef4444',
-    padding: '12px',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.2)',
-    textAlign: 'center'
-  };
-
-  const loadingStyle = {
-    textAlign: 'center',
-    color: '#9ca3af',
-    padding: '20px'
-  };
-
   if (loading) {
-    return <div style={loadingStyle}>Loading fights...</div>;
+    return <div className="loading-message">Loading fights...</div>;
   }
 
   if (error) {
-    return <div style={errorStyle}>{error}</div>;
+    return <div className="error-message">{error}</div>;
   }
 
   return (
-    <div style={containerStyle}>
-      <div style={headerStyle}>
-        <h2 style={titleStyle}>Upcoming Fights</h2>
+    <div className="fights-container">
+      <div className="fights-header">
+        <h2 className="fights-title">Upcoming Fights</h2>
       </div>
 
-      <div style={usernameContainerStyle}>
+      <div className="username-container">
         <input
           type="text"
           placeholder="Enter your username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          style={inputStyle}
+          className="username-input"
         />
       </div>
 
       {fights.map((fight) => (
-        <div key={fight.id} style={fightCardStyle}>
-          <div style={fightersContainerStyle}>
+        <div key={fight.id} className="fight-card">
+          <div className="fighters-container">
             {/* Fighter 1 Card */}
             <div
-              style={fighterCardStyle(selectedFights[fight.id] === fight.fighter1_name)}
+              className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}
               onClick={() => handleVote(fight.id, fight.fighter1_name)}
             >
-              <img src={fight.fighter1_image} alt={fight.fighter1_name} style={imageStyle} />
-              <h3 style={fighterNameStyle(selectedFights[fight.id] === fight.fighter1_name)}>
+              <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
+              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}>
                 {fight.fighter1_name}
               </h3>
-              <div style={statContainerStyle}>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Rank</span>
+              <div className="stat-container">
+                <div className="stat-row">
+                  <span className="stat-label">Rank</span>
                   <span>{fight.fighter1_rank || 'N/A'}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Record</span>
+                <div className="stat-row">
+                  <span className="stat-label">Record</span>
                   <span>{fight.fighter1_record}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Odds</span>
+                <div className="stat-row">
+                  <span className="stat-label">Odds</span>
                   <span>{fight.fighter1_odds}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Style</span>
+                <div className="stat-row">
+                  <span className="stat-label">Style</span>
                   <span>{fight.fighter1_style}</span>
                 </div>
               </div>
             </div>
 
-            <div style={vsStyle}>VS</div>
+            <div className="vs-text">VS</div>
 
             {/* Fighter 2 Card */}
             <div
-              style={fighterCardStyle(selectedFights[fight.id] === fight.fighter2_name)}
+              className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}
               onClick={() => handleVote(fight.id, fight.fighter2_name)}
             >
-              <img src={fight.fighter2_image} alt={fight.fighter2_name} style={imageStyle} />
-              <h3 style={fighterNameStyle(selectedFights[fight.id] === fight.fighter2_name)}>
+              <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
+              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}>
                 {fight.fighter2_name}
               </h3>
-              <div style={statContainerStyle}>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Rank</span>
+              <div className="stat-container">
+                <div className="stat-row">
+                  <span className="stat-label">Rank</span>
                   <span>{fight.fighter2_rank || 'N/A'}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Record</span>
+                <div className="stat-row">
+                  <span className="stat-label">Record</span>
                   <span>{fight.fighter2_record}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Odds</span>
+                <div className="stat-row">
+                  <span className="stat-label">Odds</span>
                   <span>{fight.fighter2_odds}</span>
                 </div>
-                <div style={statStyle}>
-                  <span style={statLabelStyle}>Style</span>
+                <div className="stat-row">
+                  <span className="stat-label">Style</span>
                   <span>{fight.fighter2_style}</span>
                 </div>
               </div>
@@ -295,29 +155,13 @@ function Fights({ eventId }) {
           </div>
 
           {selectedFights[fight.id] && (
-            <div style={{ 
-              textAlign: 'center', 
-              color: '#8b5cf6', 
-              marginTop: '16px',
-              padding: '12px',
-              background: 'rgba(139, 92, 246, 0.1)',
-              borderRadius: '8px',
-              fontWeight: '500'
-            }}>
+            <div className="selected-fighter-message">
               You picked: {selectedFights[fight.id]}
             </div>
           )}
 
           {fight.is_completed && (
-            <div style={{
-              textAlign: 'center',
-              color: '#9ca3af',
-              marginTop: '16px',
-              padding: '12px',
-              background: 'rgba(76, 29, 149, 0.1)',
-              borderRadius: '8px',
-              border: '1px solid #4c1d95'
-            }}>
+            <div className="completed-fight-message">
               This fight has been completed. Winner: {fight.winner}
             </div>
           )}
@@ -325,7 +169,7 @@ function Fights({ eventId }) {
       ))}
 
       {fights.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#9ca3af', padding: '20px' }}>
+        <div className="no-fights-message">
           No upcoming fights available
         </div>
       )}
