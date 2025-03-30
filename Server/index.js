@@ -1,110 +1,152 @@
-const { createClient } = require('@supabase/supabase-js');
+// client/src/Fights.js
+import React, { useEffect, useState } from 'react';
 
-const supabase = createClient(
-  'https://rnixnohdeayspegtrfds.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuaXhub2hkZWF5c3BlZ3RyZmRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyODE3NzksImV4cCI6MjA1ODg1Nzc3OX0.quxIKY4BIWXAxSXVUSP353-sR_NBTCcrVZ8Fuj6hmiE'
-);
+function Fights() {
+  const [fights, setFights] = useState([]);
+  const [currentFightIndex, setCurrentFightIndex] = useState(0);
+  const [selectedFighter, setSelectedFighter] = useState(null);
+  const [username, setUsername] = useState('');
+  const [message, setMessage] = useState('');
+  const [predictions, setPredictions] = useState([]);
 
+  // Fetch fight data when component mounts
+  useEffect(() => {
+    fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
+      .then(response => response.json())
+      .then(data => setFights(data))
+      .catch(error => console.error('Error fetching fights:', error));
+  }, []);
 
-const express = require('express');
-const cors = require('cors');
-const app = express();
-const PORT = process.env.PORT || 3001;
+  // Fetch predictions when component mounts and after submission
+  const fetchPredictions = () => {
+    fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
+      .then(response => response.json())
+      .then(data => setPredictions(data))
+      .catch(error => console.error('Error fetching predictions:', error));
+  };
 
-app.use(cors());
-app.use(express.json());
+  useEffect(() => {
+    fetchPredictions();
+  }, []);
 
-app.get('/fights', async (req, res) => {
-    const { data, error } = await supabase.from('fights').select('*');
-  
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Error fetching fights" });
+  // When user clicks a fighter, update the selection
+  const handleSelect = (fighterName) => {
+    setSelectedFighter(fighterName);
+  };
+
+  // Submit the user's prediction along with username, then advance to next fight
+  const handleSubmit = () => {
+    if (fights.length === 0 || !selectedFighter || !username) {
+      setMessage('Please select a fighter and enter your username');
+      return;
     }
-  
-    res.json(data);
-  });
 
-/* const fights = [
-    {
-      id: 1,
-      fighter1: {
-        name: "John Doe",
-        rank: 1,
-        record: "12-1",
-        odds: "+140",
-        style: "Striker",
-        image: "https://via.placeholder.com/100x100"
-      },
-      fighter2: {
-        name: "David Smith",
-        rank: 2,
-        record: "10-2",
-        odds: "-160",
-        style: "Grappler",
-        image: "https://via.placeholder.com/100x100"
-      }
-    }
-  ]; */
+    const fightId = fights[currentFightIndex].id;
 
-  app.get('/fights', (req, res) => {
-    res.json(fights);
-  });
-
- /* app.post('/predict', (req, res) => {
-    const { fightId, selectedFighter } = req.body;
-  
-    if (!fightId || !selectedFighter) {
-      return res.status(400).json({ message: "Missing data" });
-    }
-  
-    console.log(`User selected ${selectedFighter} for fight #${fightId}`);
-    
-    res.status(200).json({ message: "Prediction received!" });
-  });
-  */
-
-  app.post('/predict', async (req, res) => {
-    const { fightId, selectedFighter, username } = req.body;
-  
-    if (!fightId || !selectedFighter || !username) {
-      return res.status(400).json({ message: "Missing data" });
-    }
-  
-    // Insert the prediction into the predictions table along with username
-    const { data, error } = await supabase
-      .from('predictions')
-      .insert([
-        { 
-          fight_id: fightId, 
-          selected_fighter: selectedFighter,
-          username: username 
+    fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fightId, selectedFighter, username })
+    })
+      .then(response => response.json())
+      .then(data => {
+        setMessage(data.message);
+        // After successful submission, go to the next fight if available
+        if (currentFightIndex < fights.length - 1) {
+          setCurrentFightIndex(currentFightIndex + 1);
+          setSelectedFighter(null); // Clear selection for next fight
+        } else {
+          setMessage('All fights completed!');
         }
-      ]);
-  
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Error saving prediction" });
-    }
-  
-    res.status(200).json({ message: "Prediction received!", data });
-  });
+        // Optionally, re-fetch predictions
+        fetchPredictions();
+      })
+      .catch(error => {
+        console.error('Error submitting prediction:', error);
+        setMessage('Error submitting prediction');
+      });
+  };
 
-app.get('/', (req, res) => {
-  res.send('API is running');
-});
+  // Get the current fight data
+  const currentFight = fights[currentFightIndex];
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  return (
+    <div style={{ padding: '20px' }}>
+      <h1>Fight Prediction</h1>
+      {fights.length > 0 && currentFight ? (
+        <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+          {/* Fighter 1 Card */}
+          <div
+            onClick={() => handleSelect(currentFight.fighter1_name)}
+            style={{
+              border: selectedFighter === currentFight.fighter1_name ? '2px solid blue' : '1px solid gray',
+              padding: '10px',
+              cursor: 'pointer'
+            }}
+          >
+            <img src={currentFight.fighter1_image} alt={currentFight.fighter1_name} width="100" />
+            <h2>{currentFight.fighter1_name}</h2>
+            <p>Rank: {currentFight.fighter1_rank}</p>
+            <p>Record: {currentFight.fighter1_record}</p>
+            <p>Odds: {currentFight.fighter1_odds}</p>
+            <p>Style: {currentFight.fighter1_style}</p>
+          </div>
 
-  app.get('/predictions', async (req, res) => {
-    const { data, error } = await supabase
-      .from('predictions')
-      .select('*');
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: 'Error fetching predictions' });
-    }
-    res.json(data);
-  });
+          {/* Fighter 2 Card */}
+          <div
+            onClick={() => handleSelect(currentFight.fighter2_name)}
+            style={{
+              border: selectedFighter === currentFight.fighter2_name ? '2px solid blue' : '1px solid gray',
+              padding: '10px',
+              cursor: 'pointer'
+            }}
+          >
+            <img src={currentFight.fighter2_image} alt={currentFight.fighter2_name} width="100" />
+            <h2>{currentFight.fighter2_name}</h2>
+            <p>Rank: {currentFight.fighter2_rank}</p>
+            <p>Record: {currentFight.fighter2_record}</p>
+            <p>Odds: {currentFight.fighter2_odds}</p>
+            <p>Style: {currentFight.fighter2_style}</p>
+          </div>
+        </div>
+      ) : (
+        <p>Loading fights or no more fights available...</p>
+      )}
+
+      {/* Username Input Field */}
+      <div style={{ margin: '20px 0' }}>
+        <label>
+          Username:
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter your username"
+            style={{ marginLeft: '5px' }}
+          />
+        </label>
+      </div>
+
+      <button onClick={handleSubmit} style={{ marginTop: '20px' }}>Submit Prediction</button>
+      {message && <p>{message}</p>}
+
+      {/* Display Predictions */}
+      <div style={{ marginTop: '40px' }}>
+        <h2>Past Predictions</h2>
+        {predictions.length > 0 ? (
+          <ul>
+            {predictions.map((prediction) => (
+              <li key={prediction.id}>
+                {prediction.username} predicted {prediction.selected_fighter} for fight {prediction.fight_id} on {new Date(prediction.created_at).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No predictions yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default Fights;
