@@ -1,67 +1,53 @@
 // client/src/App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Fights from './Fights';
 import VotedFights from './VotedFights';
 import FightAdmin from './FightAdmin';
 import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
-import SplashScreen from './SplashScreen';
 import './App.css';
 
 function App() {
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [showApp, setShowApp] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowApp(true);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
-    <>
-      <div className={`splash-container ${showApp ? 'hidden' : 'visible'}`}>
-        <SplashScreen />
+    <div className="app">
+      <header className="header">
+        <h1 className="title">Fight Prediction App</h1>
+        <p className="subtitle">Predict fights, track your accuracy, compete with others</p>
+      </header>
+
+      <div className="section">
+        <EventSelector 
+          onEventSelect={setSelectedEventId} 
+          selectedEventId={selectedEventId}
+        />
       </div>
-      <div className={`app ${showApp ? 'visible' : 'hidden'}`}>
-        <header className="header">
-          <h1 className="title">Fight Prediction App</h1>
-          <p className="subtitle">Predict fights, track your accuracy, compete with others</p>
-        </header>
 
-        <div className="section">
-          <EventSelector 
-            onEventSelect={setSelectedEventId} 
-            selectedEventId={selectedEventId}
-          />
-        </div>
-
-        <div className="section">
-          <Fights eventId={selectedEventId} />
-        </div>
-
-        <div className="section">
-          <VotedFights eventId={selectedEventId} />
-        </div>
-
-        <div className="section">
-          <Leaderboard eventId={selectedEventId} />
-        </div>
-
-        {!isAdminAuthenticated ? (
-          <div className="admin-section">
-            <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
-          </div>
-        ) : (
-          <div className="admin-section">
-            <FightAdmin eventId={selectedEventId} />
-          </div>
-        )}
+      <div className="section">
+        <Fights eventId={selectedEventId} />
       </div>
-    </>
+
+      <div className="section">
+        <VotedFights eventId={selectedEventId} />
+      </div>
+
+      <div className="section">
+        <Leaderboard eventId={selectedEventId} />
+      </div>
+
+      {!isAdminAuthenticated ? (
+        <div className="admin-section">
+          <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
+        </div>
+      ) : (
+        <div className="admin-section">
+          <FightAdmin eventId={selectedEventId} />
+        </div>
+      )}
+    </div>
   );
 }
 
