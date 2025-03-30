@@ -1,8 +1,9 @@
-// client/src/Fights.jsx
+// client/src/Fights.js
 import React, { useEffect, useState } from 'react';
 
 function Fights() {
   const [fights, setFights] = useState([]);
+  const [currentFightIndex, setCurrentFightIndex] = useState(0);
   const [selectedFighter, setSelectedFighter] = useState(null);
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
@@ -16,7 +17,7 @@ function Fights() {
       .catch(error => console.error('Error fetching fights:', error));
   }, []);
 
-  // Fetch predictions when component mounts and after each submission
+  // Fetch predictions when component mounts and after submission
   const fetchPredictions = () => {
     fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
       .then(response => response.json())
@@ -33,15 +34,14 @@ function Fights() {
     setSelectedFighter(fighterName);
   };
 
-  // Submit the user's prediction along with username
+  // Submit the user's prediction along with username, then advance to next fight
   const handleSubmit = () => {
     if (fights.length === 0 || !selectedFighter || !username) {
       setMessage('Please select a fighter and enter your username');
       return;
     }
 
-    // Assuming one fight (fights[0]) for demonstration.
-    const fightId = fights[0].id;
+    const fightId = fights[currentFightIndex].id;
 
     fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
       method: 'POST',
@@ -51,7 +51,14 @@ function Fights() {
       .then(response => response.json())
       .then(data => {
         setMessage(data.message);
-        // Re-fetch predictions after successful submission
+        // After successful submission, go to the next fight if available
+        if (currentFightIndex < fights.length - 1) {
+          setCurrentFightIndex(currentFightIndex + 1);
+          setSelectedFighter(null); // Clear selection for next fight
+        } else {
+          setMessage('All fights completed!');
+        }
+        // Optionally, re-fetch predictions
         fetchPredictions();
       })
       .catch(error => {
@@ -60,58 +67,61 @@ function Fights() {
       });
   };
 
+  // Get the current fight data
+  const currentFight = fights[currentFightIndex];
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Fight Prediction</h1>
-      {fights.length > 0 ? (
+      {fights.length > 0 && currentFight ? (
         <div style={{ display: 'flex', justifyContent: 'space-around' }}>
           {/* Fighter 1 Card */}
           <div
-            onClick={() => handleSelect(fights[0].fighter1_name)}
+            onClick={() => handleSelect(currentFight.fighter1_name)}
             style={{
-              border: selectedFighter === fights[0].fighter1_name ? '2px solid blue' : '1px solid gray',
+              border: selectedFighter === currentFight.fighter1_name ? '2px solid blue' : '1px solid gray',
               padding: '10px',
               cursor: 'pointer'
             }}
           >
-            <img src={fights[0].fighter1_image} alt={fights[0].fighter1_name} width="100" />
-            <h2>{fights[0].fighter1_name}</h2>
-            <p>Rank: {fights[0].fighter1_rank}</p>
-            <p>Record: {fights[0].fighter1_record}</p>
-            <p>Odds: {fights[0].fighter1_odds}</p>
-            <p>Style: {fights[0].fighter1_style}</p>
+            <img src={currentFight.fighter1_image} alt={currentFight.fighter1_name} width="100" />
+            <h2>{currentFight.fighter1_name}</h2>
+            <p>Rank: {currentFight.fighter1_rank}</p>
+            <p>Record: {currentFight.fighter1_record}</p>
+            <p>Odds: {currentFight.fighter1_odds}</p>
+            <p>Style: {currentFight.fighter1_style}</p>
           </div>
 
           {/* Fighter 2 Card */}
           <div
-            onClick={() => handleSelect(fights[0].fighter2_name)}
+            onClick={() => handleSelect(currentFight.fighter2_name)}
             style={{
-              border: selectedFighter === fights[0].fighter2_name ? '2px solid blue' : '1px solid gray',
+              border: selectedFighter === currentFight.fighter2_name ? '2px solid blue' : '1px solid gray',
               padding: '10px',
               cursor: 'pointer'
             }}
           >
-            <img src={fights[0].fighter2_image} alt={fights[0].fighter2_name} width="100" />
-            <h2>{fights[0].fighter2_name}</h2>
-            <p>Rank: {fights[0].fighter2_rank}</p>
-            <p>Record: {fights[0].fighter2_record}</p>
-            <p>Odds: {fights[0].fighter2_odds}</p>
-            <p>Style: {fights[0].fighter2_style}</p>
+            <img src={currentFight.fighter2_image} alt={currentFight.fighter2_name} width="100" />
+            <h2>{currentFight.fighter2_name}</h2>
+            <p>Rank: {currentFight.fighter2_rank}</p>
+            <p>Record: {currentFight.fighter2_record}</p>
+            <p>Odds: {currentFight.fighter2_odds}</p>
+            <p>Style: {currentFight.fighter2_style}</p>
           </div>
         </div>
       ) : (
-        <p>Loading fights...</p>
+        <p>Loading fights or no more fights available...</p>
       )}
 
       {/* Username Input Field */}
       <div style={{ margin: '20px 0' }}>
         <label>
-          Username: 
-          <input 
-            type="text" 
-            value={username} 
-            onChange={(e) => setUsername(e.target.value)} 
-            placeholder="Enter your username" 
+          Username:
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter your username"
             style={{ marginLeft: '5px' }}
           />
         </label>
