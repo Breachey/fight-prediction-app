@@ -105,19 +105,19 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter1_rank || 'N/A'}</span>
+                  <span>{fight.fighter1_rank ? `Rank ${fight.fighter1_rank}` : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
-                  <span>{fight.fighter1_record}</span>
+                  <span>{fight.fighter1_record ? fight.fighter1_record.replace('-', ' - ') : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter1_odds}</span>
+                  <span>{fight.fighter1_odds ? (fight.fighter1_odds > 0 ? `+${fight.fighter1_odds}` : fight.fighter1_odds) : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
-                  <span>{fight.fighter1_style}</span>
+                  <span>{fight.fighter1_style ? fight.fighter1_style.replace(/([A-Z])/g, ' $1').trim() : 'N/A'}</span>
                 </div>
               </div>
             </div>
@@ -136,19 +136,19 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter2_rank || 'N/A'}</span>
+                  <span>{fight.fighter2_rank ? `Rank ${fight.fighter2_rank}` : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
-                  <span>{fight.fighter2_record}</span>
+                  <span>{fight.fighter2_record ? fight.fighter2_record.replace('-', ' - ') : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter2_odds}</span>
+                  <span>{fight.fighter2_odds ? (fight.fighter2_odds > 0 ? `+${fight.fighter2_odds}` : fight.fighter2_odds) : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
-                  <span>{fight.fighter2_style}</span>
+                  <span>{fight.fighter2_style ? fight.fighter2_style.replace(/([A-Z])/g, ' $1').trim() : 'N/A'}</span>
                 </div>
               </div>
             </div>
