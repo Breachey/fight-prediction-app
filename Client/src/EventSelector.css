@@ -1,0 +1,122 @@
+.event-selector-container {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto 20px auto;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.dropdown {
+  width: 100%;
+  padding: 16px;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border: 1px solid #4c1d95;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.3s ease;
+  background: linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%);
+}
+
+.dropdown.open {
+  box-shadow: 0 0 0 2px #6d28d9;
+}
+
+.options-container {
+  position: absolute;
+  top: calc(100% - 10px);
+  left: 20px;
+  right: 20px;
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  border: 1px solid #4c1d95;
+  overflow: hidden;
+  z-index: 10;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.1);
+}
+
+.options-container.hidden {
+  opacity: 0;
+  transform: translateY(-10px);
+  visibility: hidden;
+}
+
+.options-container.visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.option {
+  padding: 14px 16px;
+  cursor: pointer;
+  color: #ffffff;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #2d1f47;
+  background-color: transparent;
+}
+
+.option:hover {
+  background-color: #2d1f47;
+}
+
+.option.selected {
+  background-color: #4c1d95;
+}
+
+.chevron {
+  transition: transform 0.3s ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: #ffffff;
+  margin-left: 8px;
+}
+
+.status-badge.completed {
+  background-color: #4c1d95;
+}
+
+.status-badge.active {
+  background-color: #6d28d9;
+}
+
+.error-message {
+  color: #ef4444;
+  text-align: center;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.loading-message {
+  text-align: center;
+  color: #9ca3af;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+} 

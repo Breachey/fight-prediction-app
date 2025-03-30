@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './EventSelector.css';
 
 function EventSelector({ onEventSelect, selectedEventId }) {
   const [events, setEvents] = useState([]);
@@ -32,127 +33,48 @@ function EventSelector({ onEventSelect, selectedEventId }) {
     }
   };
 
-  const containerStyle = {
-    padding: '20px',
-    maxWidth: '800px',
-    margin: '0 auto 20px auto',
-    boxSizing: 'border-box',
-    position: 'relative'
-  };
-
-  const dropdownStyle = {
-    width: '100%',
-    padding: '16px',
-    backgroundColor: '#1a1a1a',
-    color: '#ffffff',
-    border: '1px solid #4c1d95',
-    borderRadius: '12px',
-    fontSize: '1.1rem',
-    cursor: 'pointer',
-    outline: 'none',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    transition: 'all 0.3s ease',
-    boxShadow: isOpen ? '0 0 0 2px #6d28d9' : 'none',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)'
-  };
-
-  const optionsContainerStyle = {
-    position: 'absolute',
-    top: 'calc(100% - 10px)',
-    left: '20px',
-    right: '20px',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '12px',
-    border: '1px solid #4c1d95',
-    overflow: 'hidden',
-    zIndex: 10,
-    opacity: isOpen ? 1 : 0,
-    transform: isOpen ? 'translateY(0)' : 'translateY(-10px)',
-    visibility: isOpen ? 'visible' : 'hidden',
-    transition: 'all 0.3s ease',
-    boxShadow: '0 4px 20px rgba(139, 92, 246, 0.1)'
-  };
-
-  const optionStyle = (isSelected, isHovered) => ({
-    padding: '14px 16px',
-    cursor: 'pointer',
-    backgroundColor: isSelected ? '#4c1d95' : isHovered ? '#2d1f47' : 'transparent',
-    color: '#ffffff',
-    transition: 'all 0.2s ease',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottom: '1px solid #2d1f47'
-  });
-
-  const chevronStyle = {
-    transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
-    transition: 'transform 0.3s ease'
-  };
-
-  const statusBadgeStyle = (isCompleted) => ({
-    padding: '4px 8px',
-    borderRadius: '12px',
-    fontSize: '0.8rem',
-    backgroundColor: isCompleted ? '#4c1d95' : '#6d28d9',
-    color: '#ffffff',
-    marginLeft: '8px'
-  });
-
-  const errorStyle = {
-    color: '#ef4444',
-    textAlign: 'center',
-    marginTop: '10px',
-    padding: '12px',
-    borderRadius: '8px',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.2)'
-  };
-
   const selectedEvent = events.find(event => event.id === selectedEventId);
 
   if (isLoading) {
     return (
-      <div style={containerStyle}>
-        <div style={{ textAlign: 'center', color: '#9ca3af' }}>Loading events...</div>
+      <div className="event-selector-container">
+        <div className="loading-message">Loading events...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={containerStyle}>
-        <div style={errorStyle}>{error}</div>
+      <div className="event-selector-container">
+        <div className="error-message">{error}</div>
       </div>
     );
   }
 
   return (
-    <div style={containerStyle}>
+    <div className="event-selector-container">
       <div 
-        style={dropdownStyle}
+        className={`dropdown ${isOpen ? 'open' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <span>
           {selectedEvent ? (
             <>
               {selectedEvent.name} - {new Date(selectedEvent.date).toLocaleDateString()}
-              <span style={statusBadgeStyle(selectedEvent.is_completed)}>
+              <span className={`status-badge ${selectedEvent.is_completed ? 'completed' : 'active'}`}>
                 {selectedEvent.is_completed ? 'Completed' : 'Active'}
               </span>
             </>
           ) : 'Select Event'}
         </span>
-        <span style={chevronStyle}>▼</span>
+        <span className={`chevron ${isOpen ? 'open' : ''}`}>▼</span>
       </div>
 
-      <div style={optionsContainerStyle}>
+      <div className={`options-container ${isOpen ? 'visible' : 'hidden'}`}>
         {events.map((event) => (
           <div
             key={event.id}
-            style={optionStyle(event.id === selectedEventId, hoveredId === event.id)}
+            className={`option ${event.id === selectedEventId ? 'selected' : ''}`}
             onClick={() => {
               onEventSelect(event.id);
               setIsOpen(false);
@@ -163,7 +85,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             <span>
               {event.name} - {new Date(event.date).toLocaleDateString()}
             </span>
-            <span style={statusBadgeStyle(event.is_completed)}>
+            <span className={`status-badge ${event.is_completed ? 'completed' : 'active'}`}>
               {event.is_completed ? 'Completed' : 'Active'}
             </span>
           </div>
@@ -172,14 +94,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
       {isOpen && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 5
-          }}
+          className="overlay"
           onClick={() => setIsOpen(false)}
         />
       )}
