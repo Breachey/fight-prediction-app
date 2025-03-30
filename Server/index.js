@@ -108,3 +108,20 @@ app.listen(PORT, () => {
     }
     res.json(data);
   });
+
+  app.get('/predictions/filter', async (req, res) => {
+    const { fight_id, selected_fighter } = req.query;
+    if (!fight_id || !selected_fighter) {
+      return res.status(400).json({ message: "Missing query parameters" });
+    }
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('username, created_at')
+      .eq('fight_id', fight_id)
+      .eq('selected_fighter', selected_fighter);
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Error fetching predictions" });
+    }
+    res.json(data);
+  });
