@@ -23,14 +23,14 @@ function FightAdmin() {
     }
   };
 
-  const handleResultUpdate = async (fightId, result) => {
+  const handleResultUpdate = async (fightId, winner) => {
     try {
       const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/fights/${fightId}/result`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ result }),
+        body: JSON.stringify({ result: winner }),
       });
 
       if (!response.ok) {
@@ -39,7 +39,7 @@ function FightAdmin() {
 
       // Update local state
       setFights(fights.map(fight => 
-        fight.id === fightId ? { ...fight, result } : fight
+        fight.id === fightId ? { ...fight, winner } : fight
       ));
       setEditingFight(null);
     } catch (err) {
@@ -108,6 +108,14 @@ function FightAdmin() {
     marginBottom: '20px'
   };
 
+  const fighterInfoStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    color: '#9ca3af',
+    fontSize: '0.9rem'
+  };
+
   if (isLoading) {
     return (
       <div style={containerStyle}>
@@ -133,10 +141,17 @@ function FightAdmin() {
       {fights.map((fight) => (
         <div key={fight.id} style={fightCardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: '0 0 10px 0', color: '#ffffff' }}>
-              {fight.fighter1} vs {fight.fighter2}
-            </h3>
-            {fight.result && editingFight !== fight.id && (
+            <div>
+              <h3 style={{ margin: '0 0 10px 0', color: '#ffffff' }}>
+                {fight.fighter1_name} vs {fight.fighter2_name}
+              </h3>
+              <div style={fighterInfoStyle}>
+                <span>Rank: #{fight.fighter1_rank || 'N/A'} vs #{fight.fighter2_rank || 'N/A'}</span>
+                <span>•</span>
+                <span>Record: {fight.fighter1_record} vs {fight.fighter2_record}</span>
+              </div>
+            </div>
+            {fight.winner && editingFight !== fight.id && (
               <button 
                 style={editButtonStyle}
                 onClick={() => setEditingFight(fight.id)}
@@ -146,26 +161,26 @@ function FightAdmin() {
             )}
           </div>
           
-          {(editingFight === fight.id || !fight.result) && (
+          {(editingFight === fight.id || !fight.winner) && (
             <div style={buttonContainerStyle}>
               <button
-                style={buttonStyle(fight.result === fight.fighter1)}
-                onClick={() => handleResultUpdate(fight.id, fight.fighter1)}
+                style={buttonStyle(fight.winner === fight.fighter1_name)}
+                onClick={() => handleResultUpdate(fight.id, fight.fighter1_name)}
               >
-                {fight.fighter1} Won
+                {fight.fighter1_name} Won
               </button>
               <button
-                style={buttonStyle(fight.result === fight.fighter2)}
-                onClick={() => handleResultUpdate(fight.id, fight.fighter2)}
+                style={buttonStyle(fight.winner === fight.fighter2_name)}
+                onClick={() => handleResultUpdate(fight.id, fight.fighter2_name)}
               >
-                {fight.fighter2} Won
+                {fight.fighter2_name} Won
               </button>
             </div>
           )}
           
-          {fight.result && editingFight !== fight.id && (
+          {fight.winner && editingFight !== fight.id && (
             <div style={{ marginTop: '10px', color: '#9ca3af' }}>
-              Winner: {fight.result}
+              Winner: {fight.winner}
             </div>
           )}
         </div>

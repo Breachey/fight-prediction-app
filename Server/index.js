@@ -214,7 +214,10 @@ app.put('/fights/:id/result', async (req, res) => {
     // Update the fight result
     const { data: updatedFight, error: updateError } = await supabase
       .from('fights')
-      .update({ result })
+      .update({ 
+        winner: result,
+        is_completed: true 
+      })
       .eq('id', id)
       .select()
       .single();
@@ -237,7 +240,7 @@ app.put('/fights/:id/result', async (req, res) => {
 
     // Update each prediction's accuracy
     for (const prediction of predictions) {
-      const isCorrect = prediction.prediction === result;
+      const isCorrect = prediction.selected_fighter === result;
       const { error: predictionUpdateError } = await supabase
         .from('predictions')
         .update({ is_correct: isCorrect })
