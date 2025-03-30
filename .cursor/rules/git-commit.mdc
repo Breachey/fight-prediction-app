@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+Always make sure to save, add, and commit changes to git. 
+
+- You can @ files here
+- You can use markdown but dont have to
