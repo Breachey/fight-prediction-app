@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 
 function SplashScreen({ onComplete }) {
-  const [isAnimating, setIsAnimating] = useState(true);
+  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsAnimating(false);
-      if (onComplete) {
-        onComplete();
-      }
+      setIsVisible(false);
+      // Wait for fade out animation before calling onComplete
+      setTimeout(() => {
+        if (onComplete) {
+          onComplete();
+        }
+      }, 500);
     }, 2000);
 
     return () => clearTimeout(timer);
@@ -25,7 +28,7 @@ function SplashScreen({ onComplete }) {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: isAnimating ? 1 : 0,
+    opacity: isVisible ? 1 : 0,
     transition: 'opacity 0.5s ease',
     zIndex: 1000
   };
