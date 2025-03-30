@@ -76,7 +76,7 @@ function VotedFights() {
   }, [username]);
 
   const containerStyle = {
-    maxWidth: '1200px',
+    maxWidth: '100%',
     margin: '0 auto',
     padding: '20px'
   };
@@ -97,6 +97,42 @@ function VotedFights() {
     borderRadius: '8px',
     marginBottom: '20px'
   };
+
+  const scrollContainerStyle = {
+    display: 'flex',
+    overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    gap: '20px',
+    padding: '20px 0',
+    WebkitOverflowScrolling: 'touch', // For smooth scrolling on iOS
+    msOverflowStyle: 'none', // Hide scrollbar on IE/Edge
+    scrollbarWidth: 'none', // Hide scrollbar on Firefox
+    '::-webkit-scrollbar': { // Hide scrollbar on Chrome/Safari
+      display: 'none'
+    }
+  };
+
+  const fightCardStyle = {
+    flex: '0 0 100%',
+    scrollSnapAlign: 'start',
+    scrollSnapStop: 'always',
+    maxWidth: '100%'
+  };
+
+  const navigationStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '10px',
+    marginTop: '20px'
+  };
+
+  const dotStyle = (isActive) => ({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: isActive ? '#3b82f6' : '#4b5563',
+    transition: 'background-color 0.3s ease'
+  });
 
   if (!username) {
     return (
@@ -123,14 +159,23 @@ function VotedFights() {
           Loading predictions...
         </div>
       ) : predictions.length > 0 ? (
-        <div>
-          {predictions.map((prediction) => (
-            <FightVotes
-              key={prediction.fight_id}
-              fight={prediction}
-            />
-          ))}
-        </div>
+        <>
+          <div style={scrollContainerStyle}>
+            {predictions.map((prediction) => (
+              <div key={prediction.fight_id} style={fightCardStyle}>
+                <FightVotes fight={prediction} />
+              </div>
+            ))}
+          </div>
+          <div style={navigationStyle}>
+            {predictions.map((prediction, index) => (
+              <div
+                key={prediction.fight_id}
+                style={dotStyle(index === 0)} // You can add state to track active fight
+              />
+            ))}
+          </div>
+        </>
       ) : (
         <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
           No fights found

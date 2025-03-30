@@ -55,10 +55,13 @@ function FightVotes({ fight }) {
     border: '1px solid #2c2c2c',
     borderRadius: '12px',
     padding: '20px',
-    margin: '15px 0',
+    margin: '0',
     backgroundColor: '#1a1a1a',
     color: '#ffffff',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column'
   };
 
   const headerStyle = {
@@ -67,7 +70,8 @@ function FightVotes({ fight }) {
     marginBottom: '20px',
     color: '#ffffff',
     borderBottom: '1px solid #2c2c2c',
-    paddingBottom: '10px'
+    paddingBottom: '10px',
+    textAlign: 'center'
   };
 
   const fighterSectionStyle = {
@@ -75,7 +79,8 @@ function FightVotes({ fight }) {
     padding: '15px',
     borderRadius: '8px',
     flex: 1,
-    minWidth: '250px'
+    minWidth: '200px',
+    marginBottom: '10px'
   };
 
   const fighterHeaderStyle = {
@@ -103,6 +108,13 @@ function FightVotes({ fight }) {
     marginTop: '4px'
   };
 
+  const votesContainerStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '15px',
+    flex: 1
+  };
+
   return (
     <div style={cardStyle}>
       <h3 style={headerStyle}>
@@ -118,11 +130,7 @@ function FightVotes({ fight }) {
       {isLoading ? (
         <p style={{ textAlign: 'center', padding: '20px' }}>Loading votes...</p>
       ) : (
-        <div style={{ 
-          display: 'flex', 
-          gap: '20px',
-          flexWrap: 'wrap'
-        }}>
+        <div style={votesContainerStyle}>
           <div style={fighterSectionStyle}>
             <div style={fighterHeaderStyle}>
               <span>{fightDetails.fighter1_name}</span>
