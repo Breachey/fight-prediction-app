@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 
-function FightVotes({ fight, fights }) {
+function FightVotes({ fight }) {
   const [fighter1Votes, setFighter1Votes] = useState([]);
   const [fighter2Votes, setFighter2Votes] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Get the fight details from the fights array
     const fightDetails = fight.fight_details;
     if (!fightDetails) {
       setIsLoading(false);
@@ -19,10 +18,20 @@ function FightVotes({ fight, fights }) {
     Promise.all([
       // Fetch votes for fighter 1
       fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
-        .then(response => response.json()),
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch votes');
+          }
+          return response.json();
+        }),
       // Fetch votes for fighter 2
       fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
-        .then(response => response.json())
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch votes');
+          }
+          return response.json();
+        })
     ])
       .then(([fighter1Data, fighter2Data]) => {
         setFighter1Votes(fighter1Data);

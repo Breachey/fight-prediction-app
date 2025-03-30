@@ -34,26 +34,38 @@ function VotedFights() {
       .then(([fightsData, predictionsData]) => {
         setFights(fightsData);
         
-        // Filter predictions for current user
-        const userPredictions = predictionsData.filter(pred => pred.username === username);
+        // Create a map of fights with their predictions
+        const fightMap = new Map();
         
-        // Create a map to store the latest prediction for each fight
-        const fightPredictionMap = new Map();
-        userPredictions.forEach(prediction => {
-          const existingPrediction = fightPredictionMap.get(prediction.fight_id);
-          if (!existingPrediction || new Date(prediction.created_at) > new Date(existingPrediction.created_at)) {
-            // Add fight details to the prediction
-            const fightDetails = fightsData.find(f => f.id === prediction.fight_id);
-            prediction.fight_details = fightDetails;
-            fightPredictionMap.set(prediction.fight_id, prediction);
+        // Initialize the map with all fights
+        fightsData.forEach(fight => {
+          fightMap.set(fight.id, {
+            fight_id: fight.id,
+            fight_details: fight,
+            username: username // Add current username to help highlight user's votes
+          });
+        });
+        
+        // Add predictions to the corresponding fights
+        predictionsData.forEach(prediction => {
+          const fightId = prediction.fight_id;
+          if (!fightMap.has(fightId)) {
+            const fightDetails = fightsData.find(f => f.id === fightId);
+            if (fightDetails) {
+              fightMap.set(fightId, {
+                fight_id: fightId,
+                fight_details: fightDetails,
+                username: username
+              });
+            }
           }
         });
         
         // Convert map values to array and sort by fight_id
-        const uniquePredictions = Array.from(fightPredictionMap.values())
+        const allFights = Array.from(fightMap.values())
           .sort((a, b) => a.fight_id - b.fight_id);
         
-        setPredictions(uniquePredictions);
+        setPredictions(allFights);
         setIsLoading(false);
       })
       .catch(err => {
@@ -121,7 +133,7 @@ function VotedFights() {
         </div>
       ) : (
         <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-          No predictions found
+          No fights found
         </div>
       )}
     </div>
