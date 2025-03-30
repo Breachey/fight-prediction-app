@@ -12,9 +12,14 @@ function App() {
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [isAppVisible, setIsAppVisible] = useState(false);
 
   const handleSplashComplete = () => {
     setShowSplash(false);
+    // Add a small delay before showing the app to ensure smooth transition
+    setTimeout(() => {
+      setIsAppVisible(true);
+    }, 500);
   };
 
   const appStyle = {
@@ -22,7 +27,9 @@ function App() {
     backgroundColor: '#0f0f0f',
     color: '#ffffff',
     padding: '20px',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    opacity: isAppVisible ? 1 : 0,
+    transition: 'opacity 0.5s ease'
   };
 
   const headerStyle = {
@@ -64,46 +71,45 @@ function App() {
     background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)'
   };
 
-  if (showSplash) {
-    return <SplashScreen onComplete={handleSplashComplete} />;
-  }
-
   return (
-    <div style={appStyle}>
-      <header style={headerStyle}>
-        <h1 style={titleStyle}>Fight Prediction App</h1>
-        <p style={subtitleStyle}>Predict fights, track your accuracy, compete with others</p>
-      </header>
+    <>
+      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+      <div style={appStyle}>
+        <header style={headerStyle}>
+          <h1 style={titleStyle}>Fight Prediction App</h1>
+          <p style={subtitleStyle}>Predict fights, track your accuracy, compete with others</p>
+        </header>
 
-      <div style={sectionStyle}>
-        <EventSelector 
-          onEventSelect={setSelectedEventId} 
-          selectedEventId={selectedEventId}
-        />
-      </div>
-
-      <div style={sectionStyle}>
-        <Fights eventId={selectedEventId} />
-      </div>
-
-      <div style={sectionStyle}>
-        <VotedFights eventId={selectedEventId} />
-      </div>
-
-      <div style={sectionStyle}>
-        <Leaderboard eventId={selectedEventId} />
-      </div>
-
-      {!isAdminAuthenticated ? (
-        <div style={adminSectionStyle}>
-          <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
+        <div style={sectionStyle}>
+          <EventSelector 
+            onEventSelect={setSelectedEventId} 
+            selectedEventId={selectedEventId}
+          />
         </div>
-      ) : (
-        <div style={adminSectionStyle}>
-          <FightAdmin eventId={selectedEventId} />
+
+        <div style={sectionStyle}>
+          <Fights eventId={selectedEventId} />
         </div>
-      )}
-    </div>
+
+        <div style={sectionStyle}>
+          <VotedFights eventId={selectedEventId} />
+        </div>
+
+        <div style={sectionStyle}>
+          <Leaderboard eventId={selectedEventId} />
+        </div>
+
+        {!isAdminAuthenticated ? (
+          <div style={adminSectionStyle}>
+            <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
+          </div>
+        ) : (
+          <div style={adminSectionStyle}>
+            <FightAdmin eventId={selectedEventId} />
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

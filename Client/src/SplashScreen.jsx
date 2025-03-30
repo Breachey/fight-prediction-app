@@ -6,7 +6,9 @@ function SplashScreen({ onComplete }) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsAnimating(false);
-      setTimeout(onComplete, 500); // Wait for fade out animation
+      if (onComplete) {
+        onComplete();
+      }
     }, 2000);
 
     return () => clearTimeout(timer);
