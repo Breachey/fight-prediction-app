@@ -39,25 +39,33 @@ function VotedFights({ currentUsername }) {
     ])
       .then(([fightsData, predictionsData]) => {
         setFights(fightsData);
-        // Safely filter predictions and get unique fights
-        const filtered = predictionsData.filter(
+        
+        // Filter predictions for the current user
+        const userPreds = predictionsData.filter(
           (pred) => pred.username && 
           currentUsername && 
           pred.username.toLowerCase() === currentUsername.toLowerCase()
         );
-        
-        // Group predictions by fight_id and take the latest prediction for each fight
-        const uniquePredictions = Object.values(
-          filtered.reduce((acc, pred) => {
-            // Only keep the latest prediction for each fight
-            if (!acc[pred.fight_id] || new Date(pred.created_at) > new Date(acc[pred.fight_id].created_at)) {
-              acc[pred.fight_id] = pred;
-            }
-            return acc;
-          }, {})
-        ).sort((a, b) => a.fight_id - b.fight_id); // Sort by fight_id
 
-        setUserPredictions(uniquePredictions);
+        // Create a map of fight_id to predictions
+        const fightPredictions = {};
+        userPreds.forEach(pred => {
+          if (!fightPredictions[pred.fight_id]) {
+            fightPredictions[pred.fight_id] = [];
+          }
+          fightPredictions[pred.fight_id].push(pred);
+        });
+
+        // For each fight, get the latest prediction
+        const latestPredictions = Object.values(fightPredictions).map(preds => {
+          // Sort by created_at in descending order and take the first one
+          return preds.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+        });
+
+        // Sort by fight_id
+        const sortedPredictions = latestPredictions.sort((a, b) => a.fight_id - b.fight_id);
+        
+        setUserPredictions(sortedPredictions);
         setIsLoading(false);
       })
       .catch((err) => {
