@@ -1,15 +1,28 @@
 // client/src/VotedFights.js
 import React, { useEffect, useState } from 'react';
+import FightVotes from './FightVotes';
 
 function VotedFights({ currentUsername }) {
   const [userPredictions, setUserPredictions] = useState([]);
-  const [voters, setVoters] = useState([]);
-  const [selectedPrediction, setSelectedPrediction] = useState(null);
+  const [fights, setFights] = useState([]);
   const [error, setError] = useState('');
 
   // Fetch all predictions and filter by current username
   useEffect(() => {
     if (!currentUsername) return;
+
+    // Fetch fights first
+    fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
+      .then(response => response.json())
+      .then(data => {
+        setFights(data);
+      })
+      .catch(err => {
+        console.error('Error fetching fights:', err);
+        setError('Error fetching fights');
+      });
+
+    // Then fetch predictions
     fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
       .then(response => response.json())
       .then(data => {
@@ -24,56 +37,23 @@ function VotedFights({ currentUsername }) {
       });
   }, [currentUsername]);
 
-  // When a prediction is clicked, fetch all voters for that fight and fighter
-  const handlePredictionClick = (prediction) => {
-    setSelectedPrediction(prediction);
-    fetch(
-      `https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${prediction.fight_id}&selected_fighter=${encodeURIComponent(
-        prediction.selected_fighter
-      )}`
-    )
-      .then((response) => response.json())
-      .then((data) => {
-        setVoters(data);
-      })
-      .catch((err) => {
-        console.error('Error fetching voters:', err);
-        setError('Error fetching voters');
-      });
-  };
-
   return (
     <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
-      <h2>Fights You Voted On</h2>
-      {error && <p>{error}</p>}
+      <h2>Fight Predictions</h2>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      
       {userPredictions.length > 0 ? (
-        <ul>
-          {userPredictions.map((pred) => (
-            <li key={pred.id} style={{ marginBottom: '10px' }}>
-              Fight ID: {pred.fight_id} – You voted for: {pred.selected_fighter}{' '}
-              <button onClick={() => handlePredictionClick(pred)}>
-                View All Voters
-              </button>
-            </li>
+        <div>
+          {userPredictions.map((prediction) => (
+            <FightVotes 
+              key={prediction.id} 
+              fight={prediction}
+              fights={fights}
+            />
           ))}
-        </ul>
+        </div>
       ) : (
         <p>You haven't voted on any fights yet.</p>
-      )}
-      {selectedPrediction && voters.length > 0 && (
-        <div style={{ marginTop: '20px' }}>
-          <h3>
-            Voters for {selectedPrediction.selected_fighter} in Fight{' '}
-            {selectedPrediction.fight_id}:
-          </h3>
-          <ul>
-            {voters.map((v, index) => (
-              <li key={index}>
-                {v.username} (voted at {new Date(v.created_at).toLocaleString()})
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
     </div>
   );
