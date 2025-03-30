@@ -1,116 +1,111 @@
 // client/src/App.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Fights from './Fights';
 import VotedFights from './VotedFights';
 import FightAdmin from './FightAdmin';
 import Leaderboard from './Leaderboard';
-import AdminPin from './AdminPin';
 import EventSelector from './EventSelector';
+import AdminPin from './AdminPin';
+import SplashScreen from './SplashScreen';
 
 function App() {
-  const [currentUsername, setCurrentUsername] = useState(localStorage.getItem('currentUsername') || '');
-  const [currentView, setCurrentView] = useState('fights'); // fights, admin, leaderboard
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
-  // Save username to localStorage when it changes
-  const handleUsernameChange = (newUsername) => {
-    setCurrentUsername(newUsername);
-    localStorage.setItem('currentUsername', newUsername);
-  };
+  useEffect(() => {
+    // Hide splash screen after 2 seconds
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
-  const handleAdminSuccess = () => {
-    setIsAdminAuthenticated(true);
-  };
-
-  const handleEventSelect = (eventId) => {
-    setSelectedEventId(eventId);
-  };
-
-  const containerStyle = {
+  const appStyle = {
     minHeight: '100vh',
-    backgroundColor: '#111827',
+    backgroundColor: '#0f0f0f',
     color: '#ffffff',
-    padding: '20px 0'
+    padding: '20px',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
   };
 
-  const navStyle = {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
+  const headerStyle = {
+    textAlign: 'center',
+    marginBottom: '40px',
+    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
+    padding: '30px',
+    borderRadius: '16px',
+    boxShadow: '0 4px 20px rgba(109, 40, 217, 0.2)'
+  };
+
+  const titleStyle = {
+    fontSize: '2.5rem',
+    fontWeight: '700',
+    marginBottom: '10px',
+    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent'
+  };
+
+  const subtitleStyle = {
+    fontSize: '1.1rem',
+    color: '#e9d5ff',
+    opacity: 0.9
+  };
+
+  const sectionStyle = {
+    background: '#1a1a1a',
+    borderRadius: '16px',
+    padding: '24px',
     marginBottom: '30px',
-    padding: '0 20px'
+    border: '1px solid #2d1f47',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)'
   };
 
-  const navButtonStyle = (isActive) => ({
-    padding: '10px 20px',
-    borderRadius: '8px',
-    border: 'none',
-    backgroundColor: isActive ? '#3b82f6' : '#1f2937',
-    color: '#ffffff',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    fontSize: '1rem',
-    fontWeight: isActive ? 'bold' : 'normal'
-  });
+  const adminSectionStyle = {
+    ...sectionStyle,
+    borderColor: '#4c1d95',
+    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)'
+  };
+
+  if (showSplash) {
+    return <SplashScreen />;
+  }
 
   return (
-    <div style={containerStyle}>
-      <nav style={navStyle}>
-        <button
-          style={navButtonStyle(currentView === 'fights')}
-          onClick={() => setCurrentView('fights')}
-        >
-          Fights
-        </button>
-        <button
-          style={navButtonStyle(currentView === 'admin')}
-          onClick={() => {
-            setCurrentView('admin');
-            if (!isAdminAuthenticated) {
-              setIsAdminAuthenticated(false);
-            }
-          }}
-        >
-          Admin
-        </button>
-        <button
-          style={navButtonStyle(currentView === 'leaderboard')}
-          onClick={() => setCurrentView('leaderboard')}
-        >
-          Leaderboard
-        </button>
-      </nav>
+    <div style={appStyle}>
+      <header style={headerStyle}>
+        <h1 style={titleStyle}>Fight Prediction App</h1>
+        <p style={subtitleStyle}>Predict fights, track your accuracy, compete with others</p>
+      </header>
 
-      <EventSelector 
-        onEventSelect={handleEventSelect}
-        selectedEventId={selectedEventId}
-      />
+      <div style={sectionStyle}>
+        <EventSelector 
+          onEventSelect={setSelectedEventId} 
+          selectedEventId={selectedEventId}
+        />
+      </div>
 
-      {currentView === 'fights' && (
-        <>
-          <Fights
-            currentUsername={currentUsername}
-            setCurrentUsername={handleUsernameChange}
-            eventId={selectedEventId}
-          />
-          <VotedFights 
-            username={currentUsername}
-            eventId={selectedEventId}
-          />
-        </>
-      )}
+      <div style={sectionStyle}>
+        <Fights eventId={selectedEventId} />
+      </div>
 
-      {currentView === 'admin' && (
-        isAdminAuthenticated ? (
-          <FightAdmin eventId={selectedEventId} />
-        ) : (
-          <AdminPin onSuccess={handleAdminSuccess} />
-        )
-      )}
-      
-      {currentView === 'leaderboard' && (
+      <div style={sectionStyle}>
+        <VotedFights eventId={selectedEventId} />
+      </div>
+
+      <div style={sectionStyle}>
         <Leaderboard eventId={selectedEventId} />
+      </div>
+
+      {!isAdminAuthenticated ? (
+        <div style={adminSectionStyle}>
+          <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
+        </div>
+      ) : (
+        <div style={adminSectionStyle}>
+          <FightAdmin eventId={selectedEventId} />
+        </div>
       )}
     </div>
   );
