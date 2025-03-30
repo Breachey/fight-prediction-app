@@ -13,13 +13,9 @@ function App() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
-  useEffect(() => {
-    // Hide splash screen after 2 seconds
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+  };
 
   const appStyle = {
     minHeight: '100vh',
@@ -69,7 +65,7 @@ function App() {
   };
 
   if (showSplash) {
-    return <SplashScreen />;
+    return <SplashScreen onComplete={handleSplashComplete} />;
   }
 
   return (
