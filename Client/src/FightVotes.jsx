@@ -8,9 +8,10 @@ function FightVotes({ fight, fights }) {
 
   useEffect(() => {
     // Get the fight details from the fights array
-    const fightDetails = fights.find(f => f.id === fight.fight_id);
+    const fightDetails = fight.fight_details;
     if (!fightDetails) {
       setIsLoading(false);
+      setError('Fight details not found');
       return;
     }
 
@@ -33,13 +34,13 @@ function FightVotes({ fight, fights }) {
         setError('Error fetching votes');
         setIsLoading(false);
       });
-  }, [fight, fights]);
+  }, [fight]);
 
-  if (!fights.find(f => f.id === fight.fight_id)) {
+  if (!fight.fight_details) {
     return <p>Fight details not found</p>;
   }
 
-  const fightDetails = fights.find(f => f.id === fight.fight_id);
+  const fightDetails = fight.fight_details;
 
   const cardStyle = {
     border: '1px solid #2c2c2c',

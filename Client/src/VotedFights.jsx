@@ -2,151 +2,112 @@
 import React, { useEffect, useState } from 'react';
 import FightVotes from './FightVotes';
 
-function VotedFights({ currentUsername }) {
-  const [userPredictions, setUserPredictions] = useState([]);
+function VotedFights() {
+  const [predictions, setPredictions] = useState([]);
   const [fights, setFights] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const currentUsername = localStorage.getItem('currentUsername');
 
-  // Fetch all predictions and filter by current username
   useEffect(() => {
-    // Check for null, undefined, or empty username
-    if (!currentUsername?.trim()) {
-      setIsLoading(false);
-      setError('No username provided');
-      return;
-    }
-
     setIsLoading(true);
-    setError('');
-
-    // Fetch fights first
     Promise.all([
-      fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Failed to fetch fights');
-          }
-          return response.json();
-        }),
-      fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Failed to fetch predictions');
-          }
-          return response.json();
-        })
+      fetch('https://fight-prediction-app-b0vt.onrender.com/fights').then(response => response.json()),
+      fetch('https://fight-prediction-app-b0vt.onrender.com/predictions').then(response => response.json())
     ])
       .then(([fightsData, predictionsData]) => {
         setFights(fightsData);
         
-        // Filter predictions for the current user
-        const userPreds = predictionsData.filter(
-          (pred) => pred.username && 
-          currentUsername && 
-          pred.username.toLowerCase() === currentUsername.toLowerCase()
-        );
-
-        // Create a map of fight_id to predictions
-        const fightPredictions = {};
-        userPreds.forEach(pred => {
-          if (!fightPredictions[pred.fight_id]) {
-            fightPredictions[pred.fight_id] = [];
-          }
-          fightPredictions[pred.fight_id].push(pred);
-        });
-
-        // For each fight, get the latest prediction
-        const latestPredictions = Object.values(fightPredictions).map(preds => {
-          // Sort by created_at in descending order and take the first one
-          return preds.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-        });
-
-        // Sort by fight_id
-        const sortedPredictions = latestPredictions.sort((a, b) => a.fight_id - b.fight_id);
+        // Filter predictions for current user
+        const userPredictions = predictionsData.filter(pred => pred.username === currentUsername);
         
-        setUserPredictions(sortedPredictions);
+        // Create a map to store the latest prediction for each fight
+        const fightPredictionMap = new Map();
+        userPredictions.forEach(prediction => {
+          const existingPrediction = fightPredictionMap.get(prediction.fight_id);
+          if (!existingPrediction || new Date(prediction.created_at) > new Date(existingPrediction.created_at)) {
+            // Add fight details to the prediction
+            const fightDetails = fightsData.find(f => f.id === prediction.fight_id);
+            prediction.fight_details = fightDetails;
+            fightPredictionMap.set(prediction.fight_id, prediction);
+          }
+        });
+        
+        // Convert map values to array and sort by fight_id
+        const uniquePredictions = Array.from(fightPredictionMap.values())
+          .sort((a, b) => a.fight_id - b.fight_id);
+        
+        setPredictions(uniquePredictions);
         setIsLoading(false);
       })
-      .catch((err) => {
+      .catch(err => {
         console.error('Error fetching data:', err);
-        setError(err.message || 'Error fetching data');
+        setError('Error fetching predictions');
         setIsLoading(false);
       });
   }, [currentUsername]);
 
   const containerStyle = {
-    padding: '20px',
-    borderTop: '1px solid #2c2c2c',
-    marginTop: '40px',
-    backgroundColor: '#121212',
-    minHeight: '200px'
+    maxWidth: '1200px',
+    margin: '0 auto',
+    padding: '20px'
   };
 
   const headerStyle = {
     fontSize: '2rem',
-    fontWeight: '600',
+    fontWeight: 'bold',
+    marginBottom: '30px',
     color: '#ffffff',
-    marginBottom: '20px'
-  };
-
-  const messageStyle = {
-    textAlign: 'center',
-    padding: '20px',
-    color: '#9ca3af',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '8px',
-    margin: '20px 0'
+    textAlign: 'center'
   };
 
   const errorStyle = {
     color: '#ef4444',
-    backgroundColor: '#2c2c2c',
-    padding: '15px',
+    textAlign: 'center',
+    padding: '20px',
+    backgroundColor: '#1a1a1a',
     borderRadius: '8px',
-    marginBottom: '20px',
-    textAlign: 'center'
+    marginBottom: '20px'
   };
 
-  if (!currentUsername?.trim()) {
+  if (!currentUsername) {
     return (
       <div style={containerStyle}>
-        <h2 style={headerStyle}>Fight Predictions</h2>
-        <p style={messageStyle}>Please enter a username to view predictions.</p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div style={containerStyle}>
-        <h2 style={headerStyle}>Fight Predictions</h2>
-        <p style={messageStyle}>Loading predictions...</p>
+        <div style={errorStyle}>
+          Please set your username to view predictions
+        </div>
       </div>
     );
   }
 
   return (
     <div style={containerStyle}>
-      <h2 style={headerStyle}>Fight Predictions</h2>
+      <h2 style={headerStyle}>Past Predictions</h2>
       
       {error && (
-        <p style={errorStyle}>{error}</p>
+        <div style={errorStyle}>
+          {error}
+        </div>
       )}
-      
-      {!error && userPredictions.length > 0 ? (
+
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          Loading predictions...
+        </div>
+      ) : predictions.length > 0 ? (
         <div>
-          {userPredictions.map((prediction) => (
-            <FightVotes 
-              key={prediction.id} 
+          {predictions.map((prediction) => (
+            <FightVotes
+              key={prediction.fight_id}
               fight={prediction}
-              fights={fights}
             />
           ))}
         </div>
-      ) : !error ? (
-        <p style={messageStyle}>You haven't voted on any fights yet.</p>
-      ) : null}
+      ) : (
+        <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+          No predictions found
+        </div>
+      )}
     </div>
   );
 }
