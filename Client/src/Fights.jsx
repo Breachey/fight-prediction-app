@@ -42,7 +42,13 @@ function Fights({ currentUsername, setCurrentUsername }) {
     }
 
     setIsLoading(true);
-    const fightId = fights[currentFightIndex].id;
+    const fightId = parseInt(fights[currentFightIndex].id, 10);
+
+    if (isNaN(fightId)) {
+      setMessage('Invalid fight data');
+      setIsLoading(false);
+      return;
+    }
 
     fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
       method: 'POST',
@@ -55,7 +61,9 @@ function Fights({ currentUsername, setCurrentUsername }) {
     })
       .then(response => {
         if (!response.ok) {
-          throw new Error('Failed to save prediction');
+          return response.json().then(data => {
+            throw new Error(data.error || 'Failed to save prediction');
+          });
         }
         return response.json();
       })
@@ -74,7 +82,7 @@ function Fights({ currentUsername, setCurrentUsername }) {
       })
       .catch(error => {
         console.error('Error submitting prediction:', error);
-        setMessage('Error saving prediction');
+        setMessage(`Error saving prediction: ${error.message}`);
       })
       .finally(() => {
         setIsLoading(false);

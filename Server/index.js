@@ -31,23 +31,34 @@ app.post('/predict', async (req, res) => {
     return res.status(400).json({ message: "Missing data" });
   }
 
-  // Insert the prediction into the predictions table along with username
-  const { data, error } = await supabase
-    .from('predictions')
-    .insert([
-      { 
-        fight_id: fightId, 
-        selected_fighter: selectedFighter,
-        username: username 
-      }
-    ]);
+  try {
+    // Convert fightId to integer
+    const fight_id = parseInt(fightId, 10);
+    if (isNaN(fight_id)) {
+      return res.status(400).json({ message: "Invalid fight ID" });
+    }
 
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error saving prediction" });
+    // Insert the prediction into the predictions table along with username
+    const { data, error } = await supabase
+      .from('predictions')
+      .insert([
+        { 
+          fight_id, 
+          selected_fighter: selectedFighter,
+          username: username 
+        }
+      ]);
+
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.status(500).json({ message: "Error saving prediction", error: error.message });
+    }
+
+    res.status(200).json({ message: "Prediction received!", data });
+  } catch (err) {
+    console.error('Server error:', err);
+    res.status(500).json({ message: "Error saving prediction", error: err.message });
   }
-
-  res.status(200).json({ message: "Prediction received!", data });
 });
 
 app.get('/predictions', async (req, res) => {
