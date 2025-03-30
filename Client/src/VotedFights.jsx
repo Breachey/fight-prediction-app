@@ -6,43 +6,75 @@ function VotedFights({ currentUsername }) {
   const [userPredictions, setUserPredictions] = useState([]);
   const [fights, setFights] = useState([]);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Fetch all predictions and filter by current username
   useEffect(() => {
-    if (!currentUsername) return;
+    if (!currentUsername) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
 
     // Fetch fights first
-    fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
-      .then(response => response.json())
-      .then(data => {
-        setFights(data);
-      })
-      .catch(err => {
-        console.error('Error fetching fights:', err);
-        setError('Error fetching fights');
-      });
-
-    // Then fetch predictions
-    fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
-      .then(response => response.json())
-      .then(data => {
-        const filtered = data.filter(
+    Promise.all([
+      fetch('https://fight-prediction-app-b0vt.onrender.com/fights')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch fights');
+          }
+          return response.json();
+        }),
+      fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch predictions');
+          }
+          return response.json();
+        })
+    ])
+      .then(([fightsData, predictionsData]) => {
+        setFights(fightsData);
+        const filtered = predictionsData.filter(
           (pred) => pred.username.toLowerCase() === currentUsername.toLowerCase()
         );
         setUserPredictions(filtered);
+        setIsLoading(false);
       })
       .catch((err) => {
-        console.error('Error fetching predictions:', err);
-        setError('Error fetching predictions');
+        console.error('Error fetching data:', err);
+        setError(err.message || 'Error fetching data');
+        setIsLoading(false);
       });
   }, [currentUsername]);
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
+        <h2>Fight Predictions</h2>
+        <p>Loading predictions...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
       <h2>Fight Predictions</h2>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {error && (
+        <p style={{ 
+          color: 'red', 
+          backgroundColor: '#ffebee', 
+          padding: '10px', 
+          borderRadius: '4px',
+          marginBottom: '15px'
+        }}>
+          {error}
+        </p>
+      )}
       
-      {userPredictions.length > 0 ? (
+      {!error && userPredictions.length > 0 ? (
         <div>
           {userPredictions.map((prediction) => (
             <FightVotes 
@@ -52,9 +84,9 @@ function VotedFights({ currentUsername }) {
             />
           ))}
         </div>
-      ) : (
+      ) : !error ? (
         <p>You haven't voted on any fights yet.</p>
-      )}
+      ) : null}
     </div>
   );
 }
