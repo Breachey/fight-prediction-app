@@ -75,7 +75,10 @@ function Fights({ currentUsername, setCurrentUsername }) {
   };
 
   // Get the current fight data
-  const currentFight = fights[currentFightIndex];
+  const currentFight = fights.find(fight => !fight.is_completed) || fights[currentFightIndex];
+
+  // Filter for active fights
+  const activeFights = fights.filter(fight => !fight.is_completed);
 
   const containerStyle = {
     padding: '20px',
@@ -183,12 +186,12 @@ function Fights({ currentUsername, setCurrentUsername }) {
   return (
     <div style={containerStyle}>
       <h1 style={titleStyle}>Fight Prediction</h1>
-      {fights.length > 0 && currentFight ? (
+      {activeFights.length > 0 && currentFight ? (
         <>
           <div style={fightersContainerStyle}>
             {/* Fighter 1 Card */}
             <div
-              onClick={() => handleSelect(currentFight.fighter1_name)}
+              onClick={() => !currentFight.is_completed && handleSelect(currentFight.fighter1_name)}
               style={fighterCardStyle(selectedFighter === currentFight.fighter1_name)}
             >
               <img src={currentFight.fighter1_image} alt={currentFight.fighter1_name} style={imageStyle} />
@@ -213,7 +216,7 @@ function Fights({ currentUsername, setCurrentUsername }) {
 
             {/* Fighter 2 Card */}
             <div
-              onClick={() => handleSelect(currentFight.fighter2_name)}
+              onClick={() => !currentFight.is_completed && handleSelect(currentFight.fighter2_name)}
               style={fighterCardStyle(selectedFighter === currentFight.fighter2_name)}
             >
               <img src={currentFight.fighter2_image} alt={currentFight.fighter2_name} style={imageStyle} />
@@ -237,26 +240,41 @@ function Fights({ currentUsername, setCurrentUsername }) {
             </div>
           </div>
 
-          <div style={usernameContainerStyle}>
-            <label style={{ color: '#ffffff' }}>
-              Username
-              <input
-                type="text"
-                value={currentUsername}
-                onChange={(e) => setCurrentUsername(e.target.value)}
-                placeholder="Enter your username"
-                style={inputStyle}
-              />
-            </label>
-          </div>
+          {currentFight.is_completed ? (
+            <div style={{
+              backgroundColor: '#374151',
+              color: '#9ca3af',
+              padding: '15px',
+              borderRadius: '8px',
+              textAlign: 'center',
+              marginTop: '20px'
+            }}>
+              This fight has been completed. Winner: {currentFight.winner}
+            </div>
+          ) : (
+            <>
+              <div style={usernameContainerStyle}>
+                <label style={{ color: '#ffffff' }}>
+                  Username
+                  <input
+                    type="text"
+                    value={currentUsername}
+                    onChange={(e) => setCurrentUsername(e.target.value)}
+                    placeholder="Enter your username"
+                    style={inputStyle}
+                  />
+                </label>
+              </div>
 
-          <button 
-            onClick={handleSubmit} 
-            style={buttonStyle}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Submitting...' : 'Submit Prediction'}
-          </button>
+              <button 
+                onClick={handleSubmit} 
+                style={buttonStyle}
+                disabled={isLoading}
+              >
+                {isLoading ? 'Submitting...' : 'Submit Prediction'}
+              </button>
+            </>
+          )}
 
           {message && (
             <div style={messageStyle(message.includes('Error'))}>
@@ -266,7 +284,7 @@ function Fights({ currentUsername, setCurrentUsername }) {
         </>
       ) : (
         <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-          Loading fights or no more fights available...
+          {fights.length > 0 ? 'All fights have been completed!' : 'Loading fights...'}
         </div>
       )}
     </div>
