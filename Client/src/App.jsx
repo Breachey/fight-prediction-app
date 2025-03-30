@@ -6,6 +6,7 @@ import FightAdmin from './FightAdmin';
 import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
+import logo from './assets/logo.png';
 import './App.css';
 
 function App() {
@@ -15,8 +16,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1 className="title">Fight Prediction App</h1>
-        <p className="subtitle">Predict fights, track your accuracy, compete with others</p>
+        <img src={logo} alt="Fight Picks Logo" className="logo" />
       </header>
 
       <div className="section">
