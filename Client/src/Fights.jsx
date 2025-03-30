@@ -1,7 +1,7 @@
 // client/src/Fights.js
 import React, { useEffect, useState } from 'react';
 
-function Fights() {
+function Fights(props) {
   const [fights, setFights] = useState([]);
   const [currentFightIndex, setCurrentFightIndex] = useState(0);
   const [selectedFighter, setSelectedFighter] = useState(null);
@@ -51,6 +51,12 @@ function Fights() {
       .then(response => response.json())
       .then(data => {
         setMessage(data.message);
+
+        // Step D: Update parent's current username if provided via props
+        if (props.setCurrentUsername) {
+          props.setCurrentUsername(username);
+        }
+
         // After successful submission, go to the next fight if available
         if (currentFightIndex < fights.length - 1) {
           setCurrentFightIndex(currentFightIndex + 1);
