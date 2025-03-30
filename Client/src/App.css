@@ -83,7 +83,10 @@
 }
 
 .admin-section {
-  composes: section;
-  border-color: #4c1d95;
   background: linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 30px;
+  border: 1px solid #4c1d95;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
