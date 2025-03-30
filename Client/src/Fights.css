@@ -84,6 +84,31 @@
   box-sizing: border-box;
 }
 
+.fighter-card.completed {
+  cursor: not-allowed;
+  opacity: 0.7;
+  filter: grayscale(0.5);
+}
+
+.fighter-card.winner {
+  opacity: 1;
+  filter: none;
+  border: 2px solid transparent;
+  background: 
+    linear-gradient(#1a1a1a, #1a1a1a) padding-box,
+    linear-gradient(145deg, #ffd700, #ffa500) border-box;
+  animation: borderGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes borderGlow {
+  from {
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+  }
+  to {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+  }
+}
+
 .fighter-image {
   width: 100%;
   height: auto;

@@ -95,8 +95,10 @@ function Fights({ eventId }) {
           <div className="fighters-container">
             {/* Fighter 1 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}
-              onClick={() => handleVote(fight.id, fight.fighter1_name)}
+              className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''} ${
+                fight.is_completed ? 'completed' : ''
+              } ${fight.is_completed && fight.winner === fight.fighter1_name ? 'winner' : ''}`}
+              onClick={() => !fight.is_completed && handleVote(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
               <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}>
@@ -113,7 +115,7 @@ function Fights({ eventId }) {
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter1_odds ? (parseInt(fight.fighter1_odds) > 0 ? `+ ${fight.fighter1_odds}` : fight.fighter1_odds) : 'N/A'}</span>
+                  <span>{fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
@@ -126,8 +128,10 @@ function Fights({ eventId }) {
 
             {/* Fighter 2 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}
-              onClick={() => handleVote(fight.id, fight.fighter2_name)}
+              className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''} ${
+                fight.is_completed ? 'completed' : ''
+              } ${fight.is_completed && fight.winner === fight.fighter2_name ? 'winner' : ''}`}
+              onClick={() => !fight.is_completed && handleVote(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
               <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}>
@@ -144,7 +148,7 @@ function Fights({ eventId }) {
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter2_odds ? (parseInt(fight.fighter2_odds) > 0 ? `+ ${fight.fighter2_odds}` : fight.fighter2_odds) : 'N/A'}</span>
+                  <span>{fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
