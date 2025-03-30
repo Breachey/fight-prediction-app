@@ -1,13 +1,13 @@
 // client/src/Fights.js
 import React, { useEffect, useState } from 'react';
 
-function Fights(props) {
+function Fights({ currentUsername, setCurrentUsername }) {
   const [fights, setFights] = useState([]);
   const [currentFightIndex, setCurrentFightIndex] = useState(0);
   const [selectedFighter, setSelectedFighter] = useState(null);
-  const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [predictions, setPredictions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch fight data when component mounts
   useEffect(() => {
@@ -36,26 +36,31 @@ function Fights(props) {
 
   // Submit the user's prediction along with username, then advance to next fight
   const handleSubmit = () => {
-    if (fights.length === 0 || !selectedFighter || !username) {
+    if (fights.length === 0 || !selectedFighter || !currentUsername) {
       setMessage('Please select a fighter and enter your username');
       return;
     }
 
+    setIsLoading(true);
     const fightId = fights[currentFightIndex].id;
 
     fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fightId, selectedFighter, username })
+      body: JSON.stringify({ 
+        fightId, 
+        selectedFighter, 
+        username: currentUsername 
+      })
     })
-      .then(response => response.json())
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to save prediction');
+        }
+        return response.json();
+      })
       .then(data => {
         setMessage(data.message);
-
-        // Step D: Update parent's current username if provided via props
-        if (props.setCurrentUsername) {
-          props.setCurrentUsername(username);
-        }
 
         // After successful submission, go to the next fight if available
         if (currentFightIndex < fights.length - 1) {
@@ -69,7 +74,10 @@ function Fights(props) {
       })
       .catch(error => {
         console.error('Error submitting prediction:', error);
-        setMessage('Error submitting prediction');
+        setMessage('Error saving prediction');
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   };
 
@@ -125,16 +133,26 @@ function Fights(props) {
           Username:
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={currentUsername}
+            onChange={(e) => setCurrentUsername(e.target.value)}
             placeholder="Enter your username"
             style={{ marginLeft: '5px' }}
           />
         </label>
       </div>
 
-      <button onClick={handleSubmit} style={{ marginTop: '20px' }}>Submit Prediction</button>
-      {message && <p>{message}</p>}
+      <button 
+        onClick={handleSubmit} 
+        style={{ 
+          marginTop: '20px',
+          opacity: isLoading ? 0.7 : 1,
+          cursor: isLoading ? 'not-allowed' : 'pointer'
+        }}
+        disabled={isLoading}
+      >
+        {isLoading ? 'Submitting...' : 'Submit Prediction'}
+      </button>
+      {message && <p style={{ color: message.includes('Error') ? '#ef4444' : '#10b981' }}>{message}</p>}
 
       {/* Display Predictions */}
       <div style={{ marginTop: '40px' }}>

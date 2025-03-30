@@ -6,33 +6,33 @@ import VotedFights from './VotedFights';
 function App() {
   const [currentUsername, setCurrentUsername] = useState(() => {
     // Initialize from localStorage if available, ensure it's not empty
-    const storedUsername = localStorage.getItem('username');
+    const storedUsername = localStorage.getItem('currentUsername');
     return storedUsername && storedUsername.trim() ? storedUsername : '';
   });
 
   // Update localStorage when username changes
   useEffect(() => {
     if (currentUsername?.trim()) {
-      localStorage.setItem('username', currentUsername);
+      localStorage.setItem('currentUsername', currentUsername);
     } else {
-      localStorage.removeItem('username');
+      localStorage.removeItem('currentUsername');
     }
   }, [currentUsername]);
 
   const handleSetUsername = (username) => {
     if (username?.trim()) {
       setCurrentUsername(username);
-      localStorage.setItem('username', username);
+      localStorage.setItem('currentUsername', username);
     } else {
       setCurrentUsername('');
-      localStorage.removeItem('username');
+      localStorage.removeItem('currentUsername');
     }
   };
 
   return (
     <div className="App">
-      <Fights setCurrentUsername={handleSetUsername} />
-      {currentUsername?.trim() && <VotedFights currentUsername={currentUsername} />}
+      <Fights currentUsername={currentUsername} setCurrentUsername={handleSetUsername} />
+      <VotedFights />
     </div>
   );
 }
