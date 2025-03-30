@@ -99,6 +99,82 @@ app.get('/', (req, res) => {
   res.send('API is running');
 });
 
+app.post('/fights/:id/result', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { winner } = req.body;
+    
+    // Update fight with winner and mark as completed
+    const { error: updateError } = await supabase
+      .from('fights')
+      .update({
+        winner: winner,
+        is_completed: true
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Error updating fight:', updateError);
+      return res.status(500).json({ error: 'Failed to update fight' });
+    }
+
+    // Get all predictions for this fight
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('username, selected_fighter')
+      .eq('fight_id', id);
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+
+    // Update fight_results for each prediction
+    for (const prediction of predictions) {
+      const predicted_correctly = prediction.selected_fighter === winner;
+      
+      const { error: resultError } = await supabase
+        .from('fight_results')
+        .upsert([
+          {
+            user_id: prediction.username,
+            fight_id: id,
+            predicted_correctly: predicted_correctly
+          }
+        ], {
+          onConflict: ['user_id', 'fight_id']
+        });
+
+      if (resultError) {
+        console.error('Error updating fight result:', resultError);
+        return res.status(500).json({ error: 'Failed to update fight result' });
+      }
+    }
+
+    res.json({ message: 'Fight result updated successfully' });
+  } catch (error) {
+    console.error('Error updating fight result:', error);
+    res.status(500).json({ error: 'Failed to update fight result' });
+  }
+});
+
+app.get('/leaderboard', async (req, res) => {
+  try {
+    const leaderboard = await supabase
+      .from('fight_results')
+      .select('user_id, COUNT(*) as total_predictions, COUNT(*) FILTER (WHERE predicted_correctly = TRUE) as correct_predictions, ROUND(COUNT(*) FILTER (WHERE predicted_correctly = TRUE)::numeric / COUNT(*)::numeric * 100, 2) as accuracy')
+      .groupBy('user_id')
+      .orderBy('correct_predictions', { ascending: false })
+      .orderBy('accuracy', { ascending: false })
+      .limit(10);
+    
+    res.json(leaderboard.data);
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error);
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
