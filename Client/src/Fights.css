@@ -1,14 +1,16 @@
 .fights-container {
   max-width: 800px;
   margin: 0 auto;
-  padding: 10px;
+  padding: 20px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .fights-header {
   margin-bottom: 24px;
+  text-align: center;
 }
 
 .fights-title {
@@ -21,13 +23,16 @@
 }
 
 .username-container {
-  margin-bottom: 24px;
+  margin: 0 auto 24px;
   background: linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%);
   padding: 20px;
   border-radius: 12px;
   border: 1px solid #4c1d95;
   position: relative;
   z-index: 2;
+  max-width: 600px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .username-input {
@@ -40,6 +45,7 @@
   font-size: 1rem;
   outline: none;
   transition: all 0.3s ease;
+  box-sizing: border-box;
 }
 
 .fight-card {
@@ -50,6 +56,8 @@
   border: 1px solid #4c1d95;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   transition: transform 0.3s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .fighters-container {
@@ -57,10 +65,12 @@
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .fighter-card {
   flex: 1;
+  min-width: 250px;
   padding: 20px;
   border-radius: 12px;
   background-color: #1a1a1a;
@@ -68,6 +78,7 @@
   cursor: pointer;
   transition: all 0.3s ease;
   color: #e9d5ff;
+  box-sizing: border-box;
 }
 
 .fighter-image {
@@ -82,8 +93,8 @@
 
 @media (max-width: 768px) {
   .fights-container {
-    padding: 5px;
-    padding-bottom: 80px; /* Add space for keyboard */
+    padding: 10px;
+    padding-bottom: 80px;
   }
 
   .fights-header {
@@ -104,18 +115,18 @@
   }
 
   .fighters-container {
-    flex-direction: column;
+    flex-direction: row;
     gap: 10px;
   }
 
   .fighter-card {
-    width: 100%;
+    min-width: calc(50% - 10px);
     padding: 15px;
     margin: 0;
   }
 
   .fighter-image {
-    max-width: 150px;
+    max-width: 120px;
   }
 
   .vs-text {
@@ -130,5 +141,16 @@
 
   .stat-row {
     padding: 6px 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .fighters-container {
+    flex-direction: column;
+  }
+
+  .fighter-card {
+    width: 100%;
+    min-width: unset;
   }
 } 
