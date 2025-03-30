@@ -98,6 +98,7 @@
   .fights-container {
     padding: 10px;
     padding-bottom: 80px;
+    min-height: unset;
   }
 
   .fights-header {
@@ -120,16 +121,28 @@
   .fighters-container {
     flex-direction: row;
     gap: 10px;
+    flex-wrap: nowrap;
+    margin: 0;
+    height: calc(100vh - 200px);
   }
 
   .fighter-card {
-    min-width: calc(50% - 10px);
+    flex: 1;
+    width: 50%;
+    min-width: unset;
     padding: 15px;
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 
   .fighter-image {
     max-width: 120px;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
   }
 
   .vs-text {
@@ -140,6 +153,7 @@
 
   .stat-container {
     margin-top: 10px;
+    width: 100%;
   }
 
   .stat-row {
@@ -149,11 +163,17 @@
 
 @media (max-width: 480px) {
   .fighters-container {
-    flex-direction: column;
+    flex-direction: row;
+    height: calc(100vh - 180px);
   }
 
   .fighter-card {
-    width: 100%;
+    width: 50%;
     min-width: unset;
+    padding: 10px;
+  }
+
+  .fighter-image {
+    max-width: 100px;
   }
 } 
