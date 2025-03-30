@@ -42,7 +42,7 @@ function VotedFights() {
           fightMap.set(fight.id, {
             fight_id: fight.id,
             fight_details: fight,
-            username: username // Add current username to help highlight user's votes
+            username: username
           });
         });
         
@@ -77,10 +77,9 @@ function VotedFights() {
 
   const containerStyle = {
     width: '100%',
-    maxWidth: '100%',
+    maxWidth: '800px',
     margin: '0 auto',
-    padding: '20px',
-    overflowX: 'hidden'
+    padding: '20px'
   };
 
   const headerStyle = {
@@ -106,19 +105,12 @@ function VotedFights() {
     scrollSnapType: 'x mandatory',
     gap: '20px',
     padding: '20px 0',
-    margin: '0 -20px',
-    WebkitOverflowScrolling: 'touch', // For smooth scrolling on iOS
-    msOverflowStyle: 'none', // Hide scrollbar on IE/Edge
-    scrollbarWidth: 'none', // Hide scrollbar on Firefox
-    '::-webkit-scrollbar': { // Hide scrollbar on Chrome/Safari
+    WebkitOverflowScrolling: 'touch',
+    msOverflowStyle: 'none',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
       display: 'none'
     }
-  };
-
-  const scrollWrapperStyle = {
-    width: '100%',
-    position: 'relative',
-    overflow: 'hidden'
   };
 
   const fightCardStyle = {
@@ -127,39 +119,20 @@ function VotedFights() {
     scrollSnapStop: 'always',
     width: '100%',
     maxWidth: '100%',
-    paddingLeft: '20px',
-    paddingRight: '20px',
-    boxSizing: 'border-box'
+    padding: '20px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '16px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    marginBottom: '20px'
   };
-
-  const navigationStyle = {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
-    marginTop: '20px'
-  };
-
-  const dotStyle = (isActive) => ({
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: isActive ? '#3b82f6' : '#4b5563',
-    transition: 'background-color 0.3s ease'
-  });
 
   if (!username) {
-    return (
-      <div style={containerStyle}>
-        <div style={errorStyle}>
-          Please set your username to view predictions
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
     <div style={containerStyle}>
-      <h2 style={headerStyle}>Past Predictions</h2>
+      <h2 style={headerStyle}>Fight Votes</h2>
       
       {error && (
         <div style={errorStyle}>
@@ -168,32 +141,20 @@ function VotedFights() {
       )}
 
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          Loading predictions...
+        <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+          Loading votes...
         </div>
       ) : predictions.length > 0 ? (
-        <>
-          <div style={scrollWrapperStyle}>
-            <div style={scrollContainerStyle}>
-              {predictions.map((prediction) => (
-                <div key={prediction.fight_id} style={fightCardStyle}>
-                  <FightVotes fight={prediction} />
-                </div>
-              ))}
+        <div>
+          {predictions.map((prediction) => (
+            <div key={prediction.fight_id} style={fightCardStyle}>
+              <FightVotes fight={prediction} />
             </div>
-          </div>
-          <div style={navigationStyle}>
-            {predictions.map((prediction, index) => (
-              <div
-                key={prediction.fight_id}
-                style={dotStyle(index === 0)}
-              />
-            ))}
-          </div>
-        </>
+          ))}
+        </div>
       ) : (
         <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-          No fights found
+          No votes found
         </div>
       )}
     </div>
