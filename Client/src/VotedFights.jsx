@@ -10,8 +10,10 @@ function VotedFights({ currentUsername }) {
 
   // Fetch all predictions and filter by current username
   useEffect(() => {
-    if (!currentUsername) {
+    // Check for null, undefined, or empty username
+    if (!currentUsername?.trim()) {
       setIsLoading(false);
+      setError('No username provided');
       return;
     }
 
@@ -37,8 +39,11 @@ function VotedFights({ currentUsername }) {
     ])
       .then(([fightsData, predictionsData]) => {
         setFights(fightsData);
+        // Safely filter predictions
         const filtered = predictionsData.filter(
-          (pred) => pred.username.toLowerCase() === currentUsername.toLowerCase()
+          (pred) => pred.username && 
+          currentUsername && 
+          pred.username.toLowerCase() === currentUsername.toLowerCase()
         );
         setUserPredictions(filtered);
         setIsLoading(false);
@@ -55,6 +60,15 @@ function VotedFights({ currentUsername }) {
       <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
         <h2>Fight Predictions</h2>
         <p>Loading predictions...</p>
+      </div>
+    );
+  }
+
+  if (!currentUsername?.trim()) {
+    return (
+      <div style={{ padding: '20px', borderTop: '1px solid #ccc', marginTop: '40px' }}>
+        <h2>Fight Predictions</h2>
+        <p>Please enter a username to view predictions.</p>
       </div>
     );
   }
