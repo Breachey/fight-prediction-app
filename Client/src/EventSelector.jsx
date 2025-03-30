@@ -5,6 +5,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [hoveredId, setHoveredId] = useState(null);
 
   useEffect(() => {
     fetchEvents();
@@ -74,19 +75,16 @@ function EventSelector({ onEventSelect, selectedEventId }) {
     boxShadow: '0 4px 20px rgba(139, 92, 246, 0.1)'
   };
 
-  const optionStyle = (isSelected) => ({
+  const optionStyle = (isSelected, isHovered) => ({
     padding: '14px 16px',
     cursor: 'pointer',
-    backgroundColor: isSelected ? '#4c1d95' : 'transparent',
+    backgroundColor: isSelected ? '#4c1d95' : isHovered ? '#2d1f47' : 'transparent',
     color: '#ffffff',
     transition: 'all 0.2s ease',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #2d1f47',
-    ':hover': {
-      backgroundColor: '#2d1f47'
-    }
+    borderBottom: '1px solid #2d1f47'
   });
 
   const chevronStyle = {
@@ -154,11 +152,13 @@ function EventSelector({ onEventSelect, selectedEventId }) {
         {events.map((event) => (
           <div
             key={event.id}
-            style={optionStyle(event.id === selectedEventId)}
+            style={optionStyle(event.id === selectedEventId, hoveredId === event.id)}
             onClick={() => {
               onEventSelect(event.id);
               setIsOpen(false);
             }}
+            onMouseEnter={() => setHoveredId(event.id)}
+            onMouseLeave={() => setHoveredId(null)}
           >
             <span>
               {event.name} - {new Date(event.date).toLocaleDateString()}
