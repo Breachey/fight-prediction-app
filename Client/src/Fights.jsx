@@ -105,7 +105,7 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter1_rank ? `${fight.fighter1_rank}` : 'N/A'}</span>
+                  <span>{fight.fighter1_rank ? `Rank ${fight.fighter1_rank}` : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -113,7 +113,7 @@ function Fights({ eventId }) {
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter1_odds ? (parseInt(fight.fighter1_odds) > 0 ? `+${fight.fighter1_odds}` : fight.fighter1_odds) : 'N/A'}</span>
+                  <span>{fight.fighter1_odds ? (parseInt(fight.fighter1_odds) > 0 ? `+ ${fight.fighter1_odds}` : fight.fighter1_odds) : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
@@ -136,7 +136,7 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter2_rank ? `${fight.fighter2_rank}` : 'N/A'}</span>
+                  <span>{fight.fighter2_rank ? `Rank ${fight.fighter2_rank}` : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -144,7 +144,7 @@ function Fights({ eventId }) {
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter2_odds ? (parseInt(fight.fighter2_odds) > 0 ? `+${fight.fighter2_odds}` : fight.fighter2_odds) : 'N/A'}</span>
+                  <span>{fight.fighter2_odds ? (parseInt(fight.fighter2_odds) > 0 ? `+ ${fight.fighter2_odds}` : fight.fighter2_odds) : 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Style</span>
