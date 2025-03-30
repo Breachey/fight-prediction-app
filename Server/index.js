@@ -89,11 +89,22 @@ app.get('/fights', async (req, res) => {
   
     res.status(200).json({ message: "Prediction received!", data });
   });
-  
+
 app.get('/', (req, res) => {
   res.send('API is running');
 });
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+  });
+
+  app.get('/predictions', async (req, res) => {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('*');
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Error fetching predictions' });
+    }
+    res.json(data);
   });

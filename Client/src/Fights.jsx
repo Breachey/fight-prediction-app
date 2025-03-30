@@ -1,4 +1,4 @@
-// client/src/Fights.js
+// client/src/Fights.jsx
 import React, { useEffect, useState } from 'react';
 
 function Fights() {
@@ -6,6 +6,7 @@ function Fights() {
   const [selectedFighter, setSelectedFighter] = useState(null);
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
+  const [predictions, setPredictions] = useState([]);
 
   // Fetch fight data when component mounts
   useEffect(() => {
@@ -13,6 +14,18 @@ function Fights() {
       .then(response => response.json())
       .then(data => setFights(data))
       .catch(error => console.error('Error fetching fights:', error));
+  }, []);
+
+  // Fetch predictions when component mounts and after each submission
+  const fetchPredictions = () => {
+    fetch('https://fight-prediction-app-b0vt.onrender.com/predictions')
+      .then(response => response.json())
+      .then(data => setPredictions(data))
+      .catch(error => console.error('Error fetching predictions:', error));
+  };
+
+  useEffect(() => {
+    fetchPredictions();
   }, []);
 
   // When user clicks a fighter, update the selection
@@ -27,7 +40,7 @@ function Fights() {
       return;
     }
 
-    // Assuming one fight (fight[0]) for demonstration.
+    // Assuming one fight (fights[0]) for demonstration.
     const fightId = fights[0].id;
 
     fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
@@ -36,7 +49,11 @@ function Fights() {
       body: JSON.stringify({ fightId, selectedFighter, username })
     })
       .then(response => response.json())
-      .then(data => setMessage(data.message))
+      .then(data => {
+        setMessage(data.message);
+        // Re-fetch predictions after successful submission
+        fetchPredictions();
+      })
       .catch(error => {
         console.error('Error submitting prediction:', error);
         setMessage('Error submitting prediction');
@@ -102,6 +119,22 @@ function Fights() {
 
       <button onClick={handleSubmit} style={{ marginTop: '20px' }}>Submit Prediction</button>
       {message && <p>{message}</p>}
+
+      {/* Display Predictions */}
+      <div style={{ marginTop: '40px' }}>
+        <h2>Past Predictions</h2>
+        {predictions.length > 0 ? (
+          <ul>
+            {predictions.map((prediction) => (
+              <li key={prediction.id}>
+                {prediction.username} predicted {prediction.selected_fighter} for fight {prediction.fight_id} on {new Date(prediction.created_at).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No predictions yet.</p>
+        )}
+      </div>
     </div>
   );
 }
