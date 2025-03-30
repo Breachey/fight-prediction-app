@@ -160,33 +160,48 @@ app.post('/fights/:id/result', async (req, res) => {
 
 app.get('/leaderboard', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // First get all fight results
+    const { data: results, error: resultsError } = await supabase
       .from('fight_results')
-      .select(`
-        user_id,
-        total_predictions:count(*),
-        correct_predictions:count(case when predicted_correctly = true then 1 end)
-      `)
-      .groupBy('user_id')
-      .order('correct_predictions', { ascending: false });
+      .select('*');
 
-    if (error) {
-      console.error('Error fetching leaderboard:', error);
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
-    // Calculate accuracy for each user
-    const leaderboardWithAccuracy = data.map(entry => ({
-      ...entry,
-      accuracy: ((entry.correct_predictions / entry.total_predictions) * 100).toFixed(2)
-    }))
-    .sort((a, b) => b.correct_predictions - a.correct_predictions || b.accuracy - a.accuracy)
-    .slice(0, 10);
+    // Process the results to create the leaderboard
+    const userStats = {};
+    results.forEach(result => {
+      if (!userStats[result.user_id]) {
+        userStats[result.user_id] = {
+          user_id: result.user_id,
+          total_predictions: 0,
+          correct_predictions: 0
+        };
+      }
+      userStats[result.user_id].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[result.user_id].correct_predictions++;
+      }
+    });
 
-    res.json(leaderboardWithAccuracy);
+    // Convert to array and calculate accuracy
+    const leaderboard = Object.values(userStats)
+      .map(user => ({
+        ...user,
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+      }))
+      .sort((a, b) => 
+        b.correct_predictions - a.correct_predictions || 
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+      )
+      .slice(0, 10);
+
+    res.json(leaderboard);
   } catch (error) {
-    console.error('Error fetching leaderboard:', error);
-    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    console.error('Error processing leaderboard:', error);
+    res.status(500).json({ error: 'Failed to process leaderboard' });
   }
 });
 
