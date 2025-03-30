@@ -121,28 +121,74 @@ function Fights({ eventId }) {
     }
   };
 
-  const fighterContainerStyle = {
+  const fightersContainerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
     gap: '20px',
     marginBottom: '16px'
   };
 
-  const fighterStyle = (isSelected) => ({
+  const fighterCardStyle = (isSelected) => ({
     flex: 1,
-    padding: '16px',
-    textAlign: 'center',
+    padding: '20px',
     borderRadius: '12px',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
     backgroundColor: isSelected ? '#4c1d95' : '#1a1a1a',
     border: `1px solid ${isSelected ? '#8b5cf6' : '#4c1d95'}`,
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
     color: isSelected ? '#ffffff' : '#e9d5ff',
+    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+    boxShadow: isSelected ? '0 8px 16px rgba(139, 92, 246, 0.2)' : 'none',
     ':hover': {
-      backgroundColor: isSelected ? '#4c1d95' : '#2d1f47'
+      backgroundColor: isSelected ? '#4c1d95' : '#2d1f47',
+      transform: 'scale(1.02)'
     }
   });
+
+  const imageStyle = {
+    width: '100%',
+    height: 'auto',
+    borderRadius: '8px',
+    marginBottom: '15px',
+    border: '1px solid #4c1d95'
+  };
+
+  const fighterNameStyle = {
+    fontSize: '1.5rem',
+    fontWeight: '600',
+    marginBottom: '16px',
+    textAlign: 'center',
+    background: isSelected => isSelected ? '#ffffff' : 'linear-gradient(to right, #e9d5ff, #ffffff)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent'
+  };
+
+  const statContainerStyle = {
+    background: 'rgba(76, 29, 149, 0.1)',
+    borderRadius: '8px',
+    padding: '12px',
+    marginTop: '16px'
+  };
+
+  const statStyle = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid #2d1f47'
+  };
+
+  const statLabelStyle = {
+    color: '#8b5cf6',
+    fontWeight: '500'
+  };
+
+  const vsStyle = {
+    alignSelf: 'center',
+    fontSize: '1.5rem',
+    fontWeight: '600',
+    color: '#8b5cf6',
+    padding: '0 10px'
+  };
 
   const errorStyle = {
     color: '#ef4444',
@@ -186,24 +232,93 @@ function Fights({ eventId }) {
 
       {fights.map((fight) => (
         <div key={fight.id} style={fightCardStyle}>
-          <div style={fighterContainerStyle}>
+          <div style={fightersContainerStyle}>
+            {/* Fighter 1 Card */}
             <div
-              style={fighterStyle(selectedFights[fight.id] === fight.fighter1_name)}
+              style={fighterCardStyle(selectedFights[fight.id] === fight.fighter1_name)}
               onClick={() => handleVote(fight.id, fight.fighter1_name)}
             >
-              {fight.fighter1_name}
+              <img src={fight.fighter1_image} alt={fight.fighter1_name} style={imageStyle} />
+              <h3 style={fighterNameStyle(selectedFights[fight.id] === fight.fighter1_name)}>
+                {fight.fighter1_name}
+              </h3>
+              <div style={statContainerStyle}>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Rank</span>
+                  <span>{fight.fighter1_rank || 'N/A'}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Record</span>
+                  <span>{fight.fighter1_record}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Odds</span>
+                  <span>{fight.fighter1_odds}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Style</span>
+                  <span>{fight.fighter1_style}</span>
+                </div>
+              </div>
             </div>
-            <div style={{ color: '#9ca3af', fontSize: '1.2rem' }}>vs</div>
+
+            <div style={vsStyle}>VS</div>
+
+            {/* Fighter 2 Card */}
             <div
-              style={fighterStyle(selectedFights[fight.id] === fight.fighter2_name)}
+              style={fighterCardStyle(selectedFights[fight.id] === fight.fighter2_name)}
               onClick={() => handleVote(fight.id, fight.fighter2_name)}
             >
-              {fight.fighter2_name}
+              <img src={fight.fighter2_image} alt={fight.fighter2_name} style={imageStyle} />
+              <h3 style={fighterNameStyle(selectedFights[fight.id] === fight.fighter2_name)}>
+                {fight.fighter2_name}
+              </h3>
+              <div style={statContainerStyle}>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Rank</span>
+                  <span>{fight.fighter2_rank || 'N/A'}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Record</span>
+                  <span>{fight.fighter2_record}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Odds</span>
+                  <span>{fight.fighter2_odds}</span>
+                </div>
+                <div style={statStyle}>
+                  <span style={statLabelStyle}>Style</span>
+                  <span>{fight.fighter2_style}</span>
+                </div>
+              </div>
             </div>
           </div>
+
           {selectedFights[fight.id] && (
-            <div style={{ textAlign: 'center', color: '#8b5cf6' }}>
+            <div style={{ 
+              textAlign: 'center', 
+              color: '#8b5cf6', 
+              marginTop: '16px',
+              padding: '12px',
+              background: 'rgba(139, 92, 246, 0.1)',
+              borderRadius: '8px',
+              fontWeight: '500'
+            }}>
               You picked: {selectedFights[fight.id]}
+            </div>
+          )}
+
+          {fight.is_completed && (
+            <div style={{
+              textAlign: 'center',
+              color: '#9ca3af',
+              marginTop: '16px',
+              padding: '12px',
+              background: 'rgba(76, 29, 149, 0.1)',
+              borderRadius: '8px',
+              border: '1px solid #4c1d95'
+            }}>
+              This fight has been completed. Winner: {fight.winner}
             </div>
           )}
         </div>
