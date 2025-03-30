@@ -7,6 +7,7 @@ import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
 import SplashScreen from './SplashScreen';
+import './App.css';
 
 function App() {
   const [selectedEventId, setSelectedEventId] = useState(null);
@@ -20,106 +21,42 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const appStyle = {
-    minHeight: '100vh',
-    backgroundColor: '#0f0f0f',
-    color: '#ffffff',
-    padding: '20px',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    opacity: showApp ? 1 : 0,
-    visibility: showApp ? 'visible' : 'hidden',
-    transition: 'opacity 0.5s ease',
-    position: 'relative',
-    zIndex: 1
-  };
-
-  const headerStyle = {
-    textAlign: 'center',
-    marginBottom: '40px',
-    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
-    padding: '30px',
-    borderRadius: '16px',
-    boxShadow: '0 4px 20px rgba(109, 40, 217, 0.2)'
-  };
-
-  const titleStyle = {
-    fontSize: '2.5rem',
-    fontWeight: '700',
-    marginBottom: '10px',
-    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
-  };
-
-  const subtitleStyle = {
-    fontSize: '1.1rem',
-    color: '#e9d5ff',
-    opacity: 0.9
-  };
-
-  const sectionStyle = {
-    background: '#1a1a1a',
-    borderRadius: '16px',
-    padding: '24px',
-    marginBottom: '30px',
-    border: '1px solid #2d1f47',
-    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)'
-  };
-
-  const adminSectionStyle = {
-    ...sectionStyle,
-    borderColor: '#4c1d95',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)'
-  };
-
-  const splashStyle = {
-    opacity: showApp ? 0 : 1,
-    visibility: showApp ? 'hidden' : 'visible',
-    transition: 'opacity 0.5s ease',
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 2
-  };
-
   return (
     <>
-      <div style={splashStyle}>
+      <div className={`splash-container ${showApp ? 'hidden' : 'visible'}`}>
         <SplashScreen />
       </div>
-      <div style={appStyle}>
-        <header style={headerStyle}>
-          <h1 style={titleStyle}>Fight Prediction App</h1>
-          <p style={subtitleStyle}>Predict fights, track your accuracy, compete with others</p>
+      <div className={`app ${showApp ? 'visible' : 'hidden'}`}>
+        <header className="header">
+          <h1 className="title">Fight Prediction App</h1>
+          <p className="subtitle">Predict fights, track your accuracy, compete with others</p>
         </header>
 
-        <div style={sectionStyle}>
+        <div className="section">
           <EventSelector 
             onEventSelect={setSelectedEventId} 
             selectedEventId={selectedEventId}
           />
         </div>
 
-        <div style={sectionStyle}>
+        <div className="section">
           <Fights eventId={selectedEventId} />
         </div>
 
-        <div style={sectionStyle}>
+        <div className="section">
           <VotedFights eventId={selectedEventId} />
         </div>
 
-        <div style={sectionStyle}>
+        <div className="section">
           <Leaderboard eventId={selectedEventId} />
         </div>
 
         {!isAdminAuthenticated ? (
-          <div style={adminSectionStyle}>
+          <div className="admin-section">
             <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
           </div>
         ) : (
-          <div style={adminSectionStyle}>
+          <div className="admin-section">
             <FightAdmin eventId={selectedEventId} />
           </div>
         )}
