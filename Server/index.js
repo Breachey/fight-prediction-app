@@ -13,34 +13,6 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Initialize database tables
-async function initializeTables() {
-  try {
-    // Create users table if it doesn't exist
-    const { error } = await supabase.rpc('create_users_table', {
-      sql: `
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          username TEXT NOT NULL,
-          phone_number TEXT NOT NULL UNIQUE,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-      `
-    });
-
-    if (error) {
-      console.error('Error creating users table:', error);
-    } else {
-      console.log('Users table initialized successfully');
-    }
-  } catch (error) {
-    console.error('Error initializing tables:', error);
-  }
-}
-
-// Initialize tables when server starts
-initializeTables();
-
 // User Registration
 app.post('/register', async (req, res) => {
   try {
