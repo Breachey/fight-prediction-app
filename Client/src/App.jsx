@@ -40,7 +40,7 @@ function App() {
 
       {!isAdminAuthenticated ? (
         <div className="admin-section">
-          <AdminPin onAuthenticate={() => setIsAdminAuthenticated(true)} />
+          <AdminPin onSuccess={() => setIsAdminAuthenticated(true)} />
         </div>
       ) : (
         <div className="admin-section">
