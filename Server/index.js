@@ -13,6 +13,100 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// User Registration
+app.post('/register', async (req, res) => {
+  try {
+    const { phoneNumber, username } = req.body;
+
+    // Validate input
+    if (!phoneNumber || !username) {
+      return res.status(400).json({ error: 'Phone number and username are required' });
+    }
+
+    if (phoneNumber.length !== 10 || !/^\d+$/.test(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+
+    // Check if phone number already exists
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('phone_number', phoneNumber)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing user:', checkError);
+      return res.status(500).json({ error: 'Failed to check existing user' });
+    }
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Phone number already registered' });
+    }
+
+    // Insert new user
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert([
+        { phone_number: phoneNumber, username: username }
+      ])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Error creating user:', insertError);
+      return res.status(500).json({ error: 'Failed to create user' });
+    }
+
+    res.json({
+      username: newUser.username,
+      phoneNumber: newUser.phone_number
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// User Login
+app.post('/login', async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+
+    // Validate input
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    if (phoneNumber.length !== 10 || !/^\d+$/.test(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+
+    // Find user by phone number
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('phone_number', phoneNumber)
+      .single();
+
+    if (error) {
+      console.error('Error finding user:', error);
+      return res.status(500).json({ error: 'Failed to find user' });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      username: user.username,
+      phoneNumber: user.phone_number
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
