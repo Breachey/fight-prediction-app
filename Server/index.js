@@ -13,6 +13,34 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Initialize database tables
+async function initializeTables() {
+  try {
+    // Create users table if it doesn't exist
+    const { error } = await supabase.rpc('create_users_table', {
+      sql: `
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL,
+          phone_number TEXT NOT NULL UNIQUE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `
+    });
+
+    if (error) {
+      console.error('Error creating users table:', error);
+    } else {
+      console.log('Users table initialized successfully');
+    }
+  } catch (error) {
+    console.error('Error initializing tables:', error);
+  }
+}
+
+// Initialize tables when server starts
+initializeTables();
+
 // User Registration
 app.post('/register', async (req, res) => {
   try {
@@ -27,23 +55,7 @@ app.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
 
-    // Check if phone number already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('phone_number', phoneNumber)
-      .single();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Error checking existing user:', checkError);
-      return res.status(500).json({ error: 'Failed to check existing user' });
-    }
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'Phone number already registered' });
-    }
-
-    // Insert new user
+    // Try to insert the user directly
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([
@@ -53,6 +65,11 @@ app.post('/register', async (req, res) => {
       .single();
 
     if (insertError) {
+      // If error is about duplicate phone number
+      if (insertError.code === '23505') {
+        return res.status(400).json({ error: 'Phone number already registered' });
+      }
+      
       console.error('Error creating user:', insertError);
       return res.status(500).json({ error: 'Failed to create user' });
     }
