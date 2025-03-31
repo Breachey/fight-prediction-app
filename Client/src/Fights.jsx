@@ -107,7 +107,7 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter1_rank ? `Rank ${fight.fighter1_rank}` : 'N/A'}</span>
+                  <span>{fight.fighter1_rank || 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -140,7 +140,7 @@ function Fights({ eventId }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter2_rank ? `Rank ${fight.fighter2_rank}` : 'N/A'}</span>
+                  <span>{fight.fighter2_rank || 'N/A'}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
