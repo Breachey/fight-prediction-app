@@ -7,7 +7,7 @@ import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
 import UserAuth from './UserAuth';
-import logo from './assets/logo.png';
+import logo from './assets/Logos/Fight Picks Logo_500x500.png';
 import './App.css';
 
 function App() {
@@ -38,7 +38,8 @@ function App() {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px 20px'
+    padding: '20px',
+    marginBottom: '40px'
   };
 
   const userInfoStyle = {
@@ -60,7 +61,7 @@ function App() {
   if (!user) {
     return (
       <div className="app">
-        <header className="header">
+        <header className="header" style={headerStyle}>
           <img src={logo} alt="Fight Picks Logo" className="logo" />
         </header>
         <UserAuth onAuthenticate={handleAuthentication} />
