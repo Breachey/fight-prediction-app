@@ -7,7 +7,7 @@ import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
 import UserAuth from './UserAuth';
-import logo from './assets/logo.png';
+import logo from './assets/Fight Picks Logo.png';
 import './App.css';
 
 function App() {
