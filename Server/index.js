@@ -27,7 +27,18 @@ app.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
 
-    // Try to insert the user directly
+    // Check if username already exists
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', username)
+      .single();
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
+    // Try to insert the user
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([
@@ -38,8 +49,12 @@ app.post('/register', async (req, res) => {
 
     if (insertError) {
       // If error is about duplicate phone number
-      if (insertError.code === '23505') {
+      if (insertError.code === '23505' && insertError.message.includes('phone_number')) {
         return res.status(400).json({ error: 'Phone number already registered' });
+      }
+      // If error is about duplicate username (as a backup check)
+      if (insertError.code === '23505' && insertError.message.includes('username')) {
+        return res.status(400).json({ error: 'Username already taken' });
       }
       
       console.error('Error creating user:', insertError);
