@@ -1,0 +1,139 @@
+.fight-votes-container {
+  height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.fight-votes-card {
+  height: 100%;
+  width: 100%;
+  padding: 20px;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.fight-votes-header {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2c2c2c;
+  text-align: center;
+}
+
+.votes-sections-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fighter-votes-section {
+  background-color: #242424;
+  padding: 15px;
+  border-radius: 8px;
+  flex: 1;
+}
+
+.fighter-votes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.votes-count {
+  background-color: #374151;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.vote-item {
+  padding: 12px;
+  background-color: #2c2c2c;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: background-color 0.2s;
+}
+
+.vote-item.current-user {
+  background-color: #1e3a8a;
+  border: 1px solid #3b82f6;
+}
+
+.vote-username {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.vote-timestamp {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.no-votes {
+  text-align: center;
+  color: #9ca3af;
+  padding: 20px;
+}
+
+/* Swipeable container styles */
+.swipeable-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.swipeable-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipeable-item {
+  width: 100%;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+
+@media (max-width: 768px) {
+  .fight-votes-card {
+    padding: 15px;
+  }
+
+  .fighter-votes-section {
+    padding: 12px;
+  }
+
+  .vote-item {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fight-votes-card {
+    padding: 10px;
+  }
+
+  .fight-votes-header {
+    font-size: 1.2rem;
+  }
+
+  .fighter-votes-section {
+    padding: 10px;
+  }
+
+  .vote-item {
+    padding: 8px;
+  }
+} 
