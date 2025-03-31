@@ -174,7 +174,19 @@ app.post('/fights/:id/result', async (req, res) => {
       }
     }
 
-    res.json({ message: 'Fight result updated successfully' });
+    // Get the updated fight data
+    const { data: updatedFight, error: getFightError } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getFightError) {
+      console.error('Error fetching updated fight:', getFightError);
+      return res.status(500).json({ error: 'Failed to fetch updated fight' });
+    }
+
+    res.json(updatedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
     res.status(500).json({ error: 'Failed to update fight result' });
@@ -225,59 +237,6 @@ app.get('/leaderboard', async (req, res) => {
   } catch (error) {
     console.error('Error processing leaderboard:', error);
     res.status(500).json({ error: 'Failed to process leaderboard' });
-  }
-});
-
-// Update fight result
-app.put('/fights/:id/result', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { result } = req.body;
-
-    // Update the fight result
-    const { data: updatedFight, error: updateError } = await supabase
-      .from('fights')
-      .update({ 
-        winner: result,
-        is_completed: true 
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating fight result:', updateError);
-      return res.status(500).json({ error: 'Failed to update fight result' });
-    }
-
-    // Update predictions accuracy
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('*')
-      .eq('fight_id', id);
-
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ error: 'Failed to fetch predictions' });
-    }
-
-    // Update each prediction's accuracy
-    for (const prediction of predictions) {
-      const isCorrect = prediction.selected_fighter === result;
-      const { error: predictionUpdateError } = await supabase
-        .from('predictions')
-        .update({ is_correct: isCorrect })
-        .eq('id', prediction.id);
-
-      if (predictionUpdateError) {
-        console.error('Error updating prediction:', predictionUpdateError);
-      }
-    }
-
-    res.json(updatedFight);
-  } catch (error) {
-    console.error('Error in PUT /fights/:id/result:', error);
-    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

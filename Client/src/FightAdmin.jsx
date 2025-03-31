@@ -26,20 +26,22 @@ function FightAdmin() {
   const handleResultUpdate = async (fightId, winner) => {
     try {
       const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/fights/${fightId}/result`, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ result: winner }),
+        body: JSON.stringify({ winner }),
       });
 
       if (!response.ok) {
         throw new Error('Failed to update fight result');
       }
 
-      // Update local state
+      const updatedFight = await response.json();
+      
+      // Update local state with the complete updated fight data
       setFights(fights.map(fight => 
-        fight.id === fightId ? { ...fight, winner } : fight
+        fight.id === fightId ? updatedFight : fight
       ));
       setEditingFight(null);
     } catch (err) {

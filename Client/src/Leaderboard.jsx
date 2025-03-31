@@ -8,6 +8,10 @@ function Leaderboard({ eventId }) {
 
   useEffect(() => {
     fetchLeaderboards();
+    // Refresh leaderboard data every 30 seconds
+    const refreshInterval = setInterval(fetchLeaderboards, 30000);
+    
+    return () => clearInterval(refreshInterval);
   }, [eventId]);
 
   const fetchLeaderboards = async () => {
