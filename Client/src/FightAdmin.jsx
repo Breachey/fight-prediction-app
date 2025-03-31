@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 
-function FightAdmin() {
+function FightAdmin({ eventId }) {
   const [fights, setFights] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [editingFight, setEditingFight] = useState(null);
 
   useEffect(() => {
-    fetchFights();
-  }, []);
+    if (eventId) {
+      fetchFights();
+    }
+  }, [eventId]);
 
   const fetchFights = async () => {
     try {
-      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/fights');
+      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch fights');
+      }
       const data = await response.json();
       setFights(data);
       setIsLoading(false);
