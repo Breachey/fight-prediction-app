@@ -51,6 +51,9 @@ function FightVotes({ fight }) {
   }
 
   const fightDetails = fight.fight_details;
+  const totalVotes = fighter1Votes.length + fighter2Votes.length;
+  const fighter1Percentage = totalVotes ? Math.round((fighter1Votes.length / totalVotes) * 100) : 0;
+  const fighter2Percentage = totalVotes ? Math.round((fighter2Votes.length / totalVotes) * 100) : 0;
 
   return (
     <div className="fight-votes-container">
@@ -60,65 +63,80 @@ function FightVotes({ fight }) {
         </h3>
         
         {error && (
-          <p className="error-message">
-            {error}
-          </p>
+          <p className="error-message">{error}</p>
         )}
 
         {isLoading ? (
           <p className="loading-message">Loading votes...</p>
         ) : (
-          <div className="votes-sections-container">
-            <div className="fighter-votes-section">
-              <div className="fighter-votes-header">
-                <span>{fightDetails.fighter1_name}</span>
-                <span className="votes-count">
-                  {fighter1Votes.length} votes
-                </span>
+          <>
+            <div className="vote-distribution">
+              <div 
+                className="vote-bar fighter1-bar" 
+                style={{ width: `${fighter1Percentage}%` }}
+              >
+                {fighter1Percentage > 15 && `${fighter1Percentage}%`}
               </div>
-              {fighter1Votes.length > 0 ? (
-                <div className="votes-list">
-                  {fighter1Votes.map((vote, index) => (
-                    <div key={index} className={`vote-item ${vote.username === fight.username ? 'current-user' : ''}`}>
-                      <div className="vote-username">
-                        {vote.username} {vote.username === fight.username && '(You)'}
-                      </div>
-                      <div className="vote-timestamp">
-                        {new Date(vote.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="no-votes">No votes yet</p>
-              )}
+              <div 
+                className="vote-bar fighter2-bar" 
+                style={{ width: `${fighter2Percentage}%` }}
+              >
+                {fighter2Percentage > 15 && `${fighter2Percentage}%`}
+              </div>
             </div>
 
-            <div className="fighter-votes-section">
-              <div className="fighter-votes-header">
-                <span>{fightDetails.fighter2_name}</span>
-                <span className="votes-count">
-                  {fighter2Votes.length} votes
-                </span>
-              </div>
-              {fighter2Votes.length > 0 ? (
-                <div className="votes-list">
-                  {fighter2Votes.map((vote, index) => (
-                    <div key={index} className={`vote-item ${vote.username === fight.username ? 'current-user' : ''}`}>
-                      <div className="vote-username">
-                        {vote.username} {vote.username === fight.username && '(You)'}
-                      </div>
-                      <div className="vote-timestamp">
-                        {new Date(vote.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
+            <div className="votes-sections-container">
+              <div className="fighter-votes-section">
+                <div className="fighter-votes-header">
+                  <div className="fighter-header-info">
+                    <span className="fighter-name">{fightDetails.fighter1_name}</span>
+                    <span className="votes-count">{fighter1Votes.length} votes</span>
+                  </div>
                 </div>
-              ) : (
-                <p className="no-votes">No votes yet</p>
-              )}
+                <div className="votes-list">
+                  {fighter1Votes.length > 0 ? (
+                    fighter1Votes.map((vote, index) => (
+                      <div key={index} className={`vote-item ${vote.username === fight.username ? 'current-user' : ''}`}>
+                        <div className="vote-username">
+                          {vote.username} {vote.username === fight.username && '(You)'}
+                        </div>
+                        <div className="vote-timestamp">
+                          {new Date(vote.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="no-votes">No votes yet</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="fighter-votes-section">
+                <div className="fighter-votes-header">
+                  <div className="fighter-header-info">
+                    <span className="fighter-name">{fightDetails.fighter2_name}</span>
+                    <span className="votes-count">{fighter2Votes.length} votes</span>
+                  </div>
+                </div>
+                <div className="votes-list">
+                  {fighter2Votes.length > 0 ? (
+                    fighter2Votes.map((vote, index) => (
+                      <div key={index} className={`vote-item ${vote.username === fight.username ? 'current-user' : ''}`}>
+                        <div className="vote-username">
+                          {vote.username} {vote.username === fight.username && '(You)'}
+                        </div>
+                        <div className="vote-timestamp">
+                          {new Date(vote.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="no-votes">No votes yet</p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
