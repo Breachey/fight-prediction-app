@@ -2,11 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import './Fights.css';
 
-function Fights({ eventId }) {
+function Fights({ eventId, username }) {
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [username, setUsername] = useState(localStorage.getItem('username') || '');
   const [selectedFights, setSelectedFights] = useState({});
 
   useEffect(() => {
@@ -32,8 +31,8 @@ function Fights({ eventId }) {
   };
 
   const handleVote = async (fightId, selectedFighter) => {
-    if (!username.trim()) {
-      setError('Please enter your username first');
+    if (!username) {
+      setError('Please log in to vote');
       return;
     }
 
@@ -58,8 +57,6 @@ function Fights({ eventId }) {
         ...prev,
         [fightId]: selectedFighter
       }));
-
-      localStorage.setItem('username', username);
     } catch (err) {
       console.error('Error submitting prediction:', err);
       setError('Failed to submit prediction');
@@ -78,16 +75,6 @@ function Fights({ eventId }) {
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
-      </div>
-
-      <div className="username-container">
-        <input
-          type="text"
-          placeholder="Enter your username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="username-input"
-        />
       </div>
 
       {fights.map((fight) => (
