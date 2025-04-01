@@ -43,7 +43,8 @@ function UserAuth({ onAuthenticate }) {
     padding: '20px',
     maxWidth: '400px',
     margin: '0 auto',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    width: '100%'
   };
 
   const titleStyle = {
@@ -59,7 +60,10 @@ function UserAuth({ onAuthenticate }) {
     padding: '30px',
     borderRadius: '16px',
     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #4c1d95'
+    border: '1px solid #4c1d95',
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box'
   };
 
   const inputStyle = {
