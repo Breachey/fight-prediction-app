@@ -67,6 +67,17 @@ function App() {
     transition: 'opacity 0.2s ease'
   };
 
+  const footerStyle = {
+    textAlign: 'center',
+    padding: '20px',
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: '0.8rem',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    letterSpacing: '0.05em',
+    marginTop: 'auto',
+    background: 'linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.2))'
+  };
+
   if (!user) {
     return (
       <div className="app">
@@ -74,6 +85,7 @@ function App() {
           <img src={logo} alt="Fight Picks Logo" className="logo" />
         </header>
         <UserAuth onAuthenticate={handleAuthentication} />
+        <footer style={footerStyle}>Made by Scrap & Screach</footer>
       </div>
     );
   }
@@ -118,6 +130,8 @@ function App() {
           <FightAdmin eventId={selectedEventId} />
         </div>
       )}
+
+      <footer style={footerStyle}>Made by Scrap & Screach</footer>
     </div>
   );
 }
