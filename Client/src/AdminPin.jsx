@@ -15,10 +15,51 @@ function AdminPin({ onSuccess }) {
   };
 
   const containerStyle = {
-    padding: '20px',
+    padding: '0',
     maxWidth: '400px',
     margin: '0 auto',
+    boxSizing: 'border-box',
+    width: '100%'
+  };
+
+  const formStyle = {
+    backgroundColor: '#1a1a1a',
+    padding: '30px',
+    borderRadius: '16px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    border: '1px solid #4c1d95',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    width: '100%',
     boxSizing: 'border-box'
+  };
+
+  const inputStyle = {
+    width: '100%',
+    padding: '12px',
+    marginBottom: '15px',
+    borderRadius: '8px',
+    backgroundColor: '#2c2c2c',
+    border: '1px solid #6d28d9',
+    color: '#ffffff',
+    fontSize: '1rem',
+    outline: 'none',
+    transition: 'border-color 0.3s ease',
+    boxSizing: 'border-box'
+  };
+
+  const buttonStyle = {
+    width: '100%',
+    padding: '12px',
+    borderRadius: '8px',
+    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
+    color: '#ffffff',
+    border: 'none',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    marginBottom: '15px',
+    transition: 'opacity 0.2s ease'
   };
 
   const titleStyle = {
@@ -27,41 +68,6 @@ function AdminPin({ onSuccess }) {
     textAlign: 'center',
     marginBottom: '30px',
     color: '#ffffff'
-  };
-
-  const formStyle = {
-    backgroundColor: '#1a1a1a',
-    padding: '30px',
-    borderRadius: '16px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '12px',
-    borderRadius: '8px',
-    backgroundColor: '#2c2c2c',
-    border: '1px solid #3b3b3b',
-    color: '#ffffff',
-    fontSize: '1.5rem',
-    textAlign: 'center',
-    letterSpacing: '0.5em',
-    marginBottom: '20px',
-    outline: 'none',
-    transition: 'border-color 0.3s ease'
-  };
-
-  const buttonStyle = {
-    width: '100%',
-    padding: '14px',
-    borderRadius: '8px',
-    backgroundColor: '#3b82f6',
-    color: '#ffffff',
-    border: 'none',
-    fontSize: '1rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease'
   };
 
   const errorStyle = {
