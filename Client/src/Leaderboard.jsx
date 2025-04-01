@@ -55,93 +55,142 @@ function Leaderboard({ eventId }) {
 
   const containerStyle = {
     padding: '20px',
-    maxWidth: '800px',
+    maxWidth: '900px',
     margin: '0 auto',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    fontFamily: 'Inter, system-ui, sans-serif'
   };
 
   const titleStyle = {
     fontSize: '2.5rem',
-    fontWeight: 'bold',
+    fontWeight: '800',
     textAlign: 'center',
     marginBottom: '30px',
-    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    textShadow: '0 2px 10px rgba(233, 213, 255, 0.2)'
+    color: '#ffffff',
+    letterSpacing: '-0.02em'
   };
 
   const sectionTitleStyle = {
     fontSize: '1.8rem',
-    fontWeight: 'bold',
+    fontWeight: '700',
     textAlign: 'center',
-    marginBottom: '20px',
-    color: '#e9d5ff'
+    marginBottom: '25px',
+    color: '#ffffff',
+    letterSpacing: '-0.01em'
   };
 
   const tableContainerStyle = {
     overflowX: 'auto',
-    borderRadius: '16px',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
+    borderRadius: '20px',
+    background: 'rgba(26, 26, 26, 0.7)',
+    backdropFilter: 'blur(10px)',
     marginBottom: '40px',
     WebkitOverflowScrolling: 'touch',
-    border: '1px solid #4c1d95',
-    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)'
+    border: '1px solid rgba(76, 29, 149, 0.2)',
+    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1)'
   };
 
   const tableStyle = {
     width: '100%',
     borderCollapse: 'separate',
     borderSpacing: '0',
-    minWidth: '500px'
+    minWidth: '700px'
   };
 
   const headerStyle = {
-    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
+    background: 'rgba(76, 29, 149, 0.3)',
+    backdropFilter: 'blur(5px)',
     color: '#ffffff',
-    padding: '15px',
+    padding: '20px',
     textAlign: 'left',
     whiteSpace: 'nowrap',
     fontSize: '1.1rem',
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: '0.05em'
+    letterSpacing: '0.08em'
   };
 
   const firstHeaderStyle = {
     ...headerStyle,
-    borderTopLeftRadius: '12px'
+    borderTopLeftRadius: '20px',
+    width: '80px',
+    textAlign: 'center'
   };
 
   const lastHeaderStyle = {
     ...headerStyle,
-    borderTopRightRadius: '12px'
+    borderTopRightRadius: '20px',
+    width: '120px',
+    textAlign: 'center'
+  };
+
+  const userHeaderStyle = {
+    ...headerStyle,
+    width: '250px'
+  };
+
+  const statsHeaderStyle = {
+    ...headerStyle,
+    width: '100px',
+    textAlign: 'center'
   };
 
   const rowStyle = (index) => ({
-    backgroundColor: index % 2 === 0 ? 'rgba(26, 26, 26, 0.8)' : 'rgba(31, 41, 55, 0.8)',
+    backgroundColor: index % 2 === 0 
+      ? 'rgba(26, 26, 26, 0.4)' 
+      : 'rgba(76, 29, 149, 0.1)',
     transition: 'all 0.3s ease',
     cursor: 'default',
+    position: 'relative',
     '&:hover': {
-      backgroundColor: 'rgba(76, 29, 149, 0.1)'
+      backgroundColor: 'rgba(76, 29, 149, 0.2)',
+      transform: 'translateY(-1px)',
+      boxShadow: '0 4px 20px rgba(76, 29, 149, 0.2)'
     }
   });
 
   const cellStyle = {
-    padding: '15px',
+    padding: '20px',
     color: '#ffffff',
-    borderBottom: '1px solid rgba(76, 29, 149, 0.3)',
-    fontSize: '1rem'
+    borderBottom: '1px solid rgba(76, 29, 149, 0.1)',
+    fontSize: '1rem',
+    letterSpacing: '0.02em',
+    textAlign: 'center'
+  };
+
+  const userCellStyle = {
+    ...cellStyle,
+    textAlign: 'left',
+    fontWeight: '500'
+  };
+
+  const getRankBadge = (index) => {
+    const badges = ['🥇', '🥈', '🥉'];
+    return index < 3 ? badges[index] : (index + 1);
   };
 
   const rankStyle = (index) => ({
     ...cellStyle,
     fontWeight: 'bold',
-    color: index === 0 ? '#ffd700' : // Gold
-          index === 1 ? '#c0c0c0' : // Silver
-          index === 2 ? '#cd7f32' : // Bronze
-          '#ffffff',
-    textShadow: index < 3 ? '0 0 10px rgba(255, 255, 255, 0.3)' : 'none'
+    fontSize: index < 3 ? '1.5rem' : '1rem',
+    background: index === 0 
+      ? 'linear-gradient(135deg, #ffd700 0%, #ffb700 100%)' 
+      : index === 1 
+      ? 'linear-gradient(135deg, #c0c0c0 0%, #a0a0a0 100%)'
+      : index === 2 
+      ? 'linear-gradient(135deg, #cd7f32 0%, #a05a20 100%)'
+      : 'transparent',
+    WebkitBackgroundClip: index < 3 ? 'text' : 'none',
+    WebkitTextFillColor: index < 3 ? 'transparent' : '#ffffff',
+    textShadow: index < 3 ? '0 2px 10px rgba(255, 255, 255, 0.3)' : 'none',
+    position: 'relative'
+  });
+
+  const accuracyStyle = (accuracy) => ({
+    ...cellStyle,
+    color: accuracy >= 70 ? '#22c55e' : 
+           accuracy >= 50 ? '#eab308' : 
+           accuracy > 0 ? '#ef4444' : '#6b7280'
   });
 
   const errorStyle = {
@@ -189,20 +238,22 @@ function Leaderboard({ eventId }) {
             <thead>
               <tr>
                 <th style={firstHeaderStyle}>Rank</th>
-                <th style={headerStyle}>User</th>
-                <th style={headerStyle}>Correct</th>
-                <th style={headerStyle}>Total</th>
+                <th style={userHeaderStyle}>User</th>
+                <th style={statsHeaderStyle}>Correct</th>
+                <th style={statsHeaderStyle}>Total</th>
                 <th style={lastHeaderStyle}>Accuracy</th>
               </tr>
             </thead>
             <tbody>
               {data.map((entry, index) => (
                 <tr key={entry.user_id} style={rowStyle(index)}>
-                  <td style={rankStyle(index)}>{index + 1}</td>
-                  <td style={cellStyle}>{entry.user_id}</td>
+                  <td style={rankStyle(index)}>{getRankBadge(index)}</td>
+                  <td style={userCellStyle}>{entry.user_id}</td>
                   <td style={cellStyle}>{entry.correct_predictions}</td>
                   <td style={cellStyle}>{entry.total_predictions}</td>
-                  <td style={cellStyle}>{entry.accuracy}%</td>
+                  <td style={accuracyStyle(parseFloat(entry.accuracy))}>
+                    {entry.accuracy}%
+                  </td>
                 </tr>
               ))}
             </tbody>
