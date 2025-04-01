@@ -58,7 +58,8 @@ function UserAuth({ onAuthenticate }) {
     backgroundColor: '#1a1a1a',
     padding: '30px',
     borderRadius: '16px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    border: '1px solid #4c1d95'
   };
 
   const inputStyle = {
@@ -67,7 +68,7 @@ function UserAuth({ onAuthenticate }) {
     marginBottom: '15px',
     borderRadius: '8px',
     backgroundColor: '#2c2c2c',
-    border: '1px solid #3b3b3b',
+    border: '1px solid #6d28d9',
     color: '#ffffff',
     fontSize: '1rem',
     outline: 'none',
@@ -76,34 +77,35 @@ function UserAuth({ onAuthenticate }) {
 
   const buttonStyle = {
     width: '100%',
-    padding: '14px',
+    padding: '12px',
     borderRadius: '8px',
-    backgroundColor: '#3b82f6',
+    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
     color: '#ffffff',
     border: 'none',
     fontSize: '1rem',
-    fontWeight: 'bold',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    marginBottom: '10px'
+    marginBottom: '15px',
+    transition: 'opacity 0.2s ease'
   };
 
-  const toggleButtonStyle = {
-    ...buttonStyle,
-    backgroundColor: 'transparent',
-    border: '1px solid #3b82f6'
+  const toggleStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#6d28d9',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    textDecoration: 'underline'
   };
 
   const errorStyle = {
     color: '#ef4444',
-    textAlign: 'center',
-    marginTop: '10px',
+    marginBottom: '15px',
     fontSize: '0.9rem'
   };
 
   return (
     <div style={containerStyle}>
-      <h1 style={titleStyle}>{isRegistering ? 'Register' : 'Login'}</h1>
+      <h2 style={titleStyle}>{isRegistering ? 'Register' : 'Login'}</h2>
       <form onSubmit={handleSubmit} style={formStyle}>
         <input
           type="tel"
@@ -127,22 +129,19 @@ function UserAuth({ onAuthenticate }) {
           />
         )}
 
+        {error && <div style={errorStyle}>{error}</div>}
+
         <button type="submit" style={buttonStyle}>
           {isRegistering ? 'Register' : 'Login'}
         </button>
 
-        <button 
-          type="button" 
-          style={toggleButtonStyle}
-          onClick={() => {
-            setIsRegistering(!isRegistering);
-            setError('');
-          }}
+        <button
+          type="button"
+          onClick={() => setIsRegistering(!isRegistering)}
+          style={toggleStyle}
         >
-          {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
+          {isRegistering ? 'Already have an account? Login' : "Don't have an account? Register"}
         </button>
-
-        {error && <div style={errorStyle}>{error}</div>}
       </form>
     </div>
   );

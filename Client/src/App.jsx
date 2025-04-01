@@ -7,7 +7,7 @@ import Leaderboard from './Leaderboard';
 import EventSelector from './EventSelector';
 import AdminPin from './AdminPin';
 import UserAuth from './UserAuth';
-import logo from './assets/Logos/Fight Picks Logo_500x500.png';
+import logo from './assets/Fight Picks Logo_White 500x500.png';
 import './App.css';
 
 function App() {
@@ -42,6 +42,14 @@ function App() {
     marginBottom: '40px'
   };
 
+  const loginHeaderStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '20px',
+    marginBottom: '40px'
+  };
+
   const userInfoStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -51,17 +59,18 @@ function App() {
   const logoutButtonStyle = {
     padding: '8px 16px',
     borderRadius: '8px',
-    backgroundColor: '#dc2626',
+    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
     color: '#ffffff',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '0.9rem'
+    fontSize: '0.9rem',
+    transition: 'opacity 0.2s ease'
   };
 
   if (!user) {
     return (
       <div className="app">
-        <header className="header" style={headerStyle}>
+        <header className="header" style={loginHeaderStyle}>
           <img src={logo} alt="Fight Picks Logo" className="logo" />
         </header>
         <UserAuth onAuthenticate={handleAuthentication} />
