@@ -40,7 +40,7 @@ function UserAuth({ onAuthenticate }) {
   };
 
   const containerStyle = {
-    padding: '20px',
+    padding: '0',
     maxWidth: '400px',
     margin: '0 auto',
     boxSizing: 'border-box',
@@ -61,8 +61,10 @@ function UserAuth({ onAuthenticate }) {
     borderRadius: '16px',
     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
     border: '1px solid #4c1d95',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
     width: '100%',
-    maxWidth: '100%',
     boxSizing: 'border-box'
   };
 
@@ -76,7 +78,8 @@ function UserAuth({ onAuthenticate }) {
     color: '#ffffff',
     fontSize: '1rem',
     outline: 'none',
-    transition: 'border-color 0.3s ease'
+    transition: 'border-color 0.3s ease',
+    boxSizing: 'border-box'
   };
 
   const buttonStyle = {
