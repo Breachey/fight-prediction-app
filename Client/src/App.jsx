@@ -106,7 +106,7 @@ function App() {
       </div>
 
       <div className="section">
-        <Leaderboard eventId={selectedEventId} />
+        <Leaderboard eventId={selectedEventId} currentUser={user.username} />
       </div>
 
       {!isAdminAuthenticated ? (

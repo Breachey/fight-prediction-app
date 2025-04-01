@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-function Leaderboard({ eventId }) {
+function Leaderboard({ eventId, currentUser }) {
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,17 +135,24 @@ function Leaderboard({ eventId }) {
     textAlign: 'center'
   };
 
-  const rowStyle = (index) => ({
-    backgroundColor: index % 2 === 0 
-      ? 'rgba(26, 26, 26, 0.4)' 
-      : 'rgba(76, 29, 149, 0.1)',
+  const rowStyle = (index, isCurrentUser) => ({
+    backgroundColor: isCurrentUser
+      ? 'rgba(139, 92, 246, 0.15)'
+      : index % 2 === 0 
+        ? 'rgba(26, 26, 26, 0.4)' 
+        : 'rgba(76, 29, 149, 0.1)',
     transition: 'all 0.3s ease',
     cursor: 'default',
     position: 'relative',
+    border: isCurrentUser ? '1px solid rgba(139, 92, 246, 0.3)' : 'none',
     '&:hover': {
-      backgroundColor: 'rgba(76, 29, 149, 0.2)',
+      backgroundColor: isCurrentUser
+        ? 'rgba(139, 92, 246, 0.2)'
+        : 'rgba(76, 29, 149, 0.2)',
       transform: 'translateY(-1px)',
-      boxShadow: '0 4px 20px rgba(76, 29, 149, 0.2)'
+      boxShadow: isCurrentUser
+        ? '0 4px 20px rgba(139, 92, 246, 0.3)'
+        : '0 4px 20px rgba(76, 29, 149, 0.2)'
     }
   });
 
@@ -158,11 +165,15 @@ function Leaderboard({ eventId }) {
     textAlign: 'center'
   };
 
-  const userCellStyle = {
+  const userCellStyle = (isCurrentUser) => ({
     ...cellStyle,
     textAlign: 'left',
-    fontWeight: '500'
-  };
+    fontWeight: isCurrentUser ? '600' : '500',
+    color: isCurrentUser ? '#a78bfa' : '#ffffff',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  });
 
   const getRankBadge = (index) => {
     const badges = ['🥇', '🥈', '🥉'];
@@ -221,6 +232,16 @@ function Leaderboard({ eventId }) {
     fontSize: '1.2rem'
   };
 
+  const currentUserBadge = {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    color: '#a78bfa',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    border: '1px solid rgba(139, 92, 246, 0.3)'
+  };
+
   const LeaderboardTable = ({ data, title }) => {
     if (!data.length) {
       return (
@@ -245,17 +266,23 @@ function Leaderboard({ eventId }) {
               </tr>
             </thead>
             <tbody>
-              {data.map((entry, index) => (
-                <tr key={entry.user_id} style={rowStyle(index)}>
-                  <td style={rankStyle(index)}>{getRankBadge(index)}</td>
-                  <td style={userCellStyle}>{entry.user_id}</td>
-                  <td style={cellStyle}>{entry.correct_predictions}</td>
-                  <td style={cellStyle}>{entry.total_predictions}</td>
-                  <td style={accuracyStyle(parseFloat(entry.accuracy))}>
-                    {entry.accuracy}%
-                  </td>
-                </tr>
-              ))}
+              {data.map((entry, index) => {
+                const isCurrentUser = entry.user_id === currentUser;
+                return (
+                  <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
+                    <td style={rankStyle(index)}>{getRankBadge(index)}</td>
+                    <td style={userCellStyle(isCurrentUser)}>
+                      {entry.user_id}
+                      {isCurrentUser && <span style={currentUserBadge}>You</span>}
+                    </td>
+                    <td style={cellStyle}>{entry.correct_predictions}</td>
+                    <td style={cellStyle}>{entry.total_predictions}</td>
+                    <td style={accuracyStyle(parseFloat(entry.accuracy))}>
+                      {entry.accuracy}%
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
