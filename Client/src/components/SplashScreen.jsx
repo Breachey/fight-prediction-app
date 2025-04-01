@@ -1,4 +1,5 @@
 import React from 'react';
+import logo from '../assets/Fight Picks Logo_White 500x500.png';
 import './SplashScreen.css';
 
 function SplashScreen() {
@@ -6,7 +7,7 @@ function SplashScreen() {
     <div className="splash-screen">
       <div className="splash-content">
         <img 
-          src="/src/assets/Fight Picks Logo_White 500x500.png" 
+          src={logo}
           alt="Fight Picks Logo"
           className="splash-logo"
         />
