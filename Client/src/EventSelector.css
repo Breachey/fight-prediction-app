@@ -1,5 +1,5 @@
 .event-selector-container {
-  padding: 20px;
+  width: 100%;
   max-width: 800px;
   margin: 0 auto 20px auto;
   box-sizing: border-box;
@@ -30,8 +30,8 @@
 .options-container {
   position: absolute;
   top: calc(100% - 10px);
-  left: 20px;
-  right: 20px;
+  left: 0px;
+  right: 0px;
   background-color: #1a1a1a;
   border-radius: 12px;
   border: 1px solid #4c1d95;
