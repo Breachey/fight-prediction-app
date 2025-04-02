@@ -226,11 +226,12 @@ app.post('/fights/:id/result', async (req, res) => {
     const { winner } = req.body;
     
     // Update fight with winner and mark as completed
+    // If winner is null, we're unsetting the result
     const { error: updateError } = await supabase
       .from('fights')
       .update({
         winner: winner,
-        is_completed: true
+        is_completed: winner !== null
       })
       .eq('id', id);
 
@@ -239,36 +240,49 @@ app.post('/fights/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update fight' });
     }
 
-    // Get all predictions for this fight
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('username, selected_fighter')
-      .eq('fight_id', id);
-
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ error: 'Failed to fetch predictions' });
-    }
-
-    // Update fight_results for each prediction
-    for (const prediction of predictions) {
-      const predicted_correctly = prediction.selected_fighter === winner;
-      
-      const { error: resultError } = await supabase
+    // If we're unsetting the result, delete any existing fight results
+    if (winner === null) {
+      const { error: deleteError } = await supabase
         .from('fight_results')
-        .upsert([
-          {
-            user_id: prediction.username,
-            fight_id: id,
-            predicted_correctly: predicted_correctly
-          }
-        ], {
-          onConflict: ['user_id', 'fight_id']
-        });
+        .delete()
+        .eq('fight_id', id);
 
-      if (resultError) {
-        console.error('Error updating fight result:', resultError);
-        return res.status(500).json({ error: 'Failed to update fight result' });
+      if (deleteError) {
+        console.error('Error deleting fight results:', deleteError);
+        return res.status(500).json({ error: 'Failed to delete fight results' });
+      }
+    } else {
+      // Get all predictions for this fight
+      const { data: predictions, error: predictionsError } = await supabase
+        .from('predictions')
+        .select('username, selected_fighter')
+        .eq('fight_id', id);
+
+      if (predictionsError) {
+        console.error('Error fetching predictions:', predictionsError);
+        return res.status(500).json({ error: 'Failed to fetch predictions' });
+      }
+
+      // Update fight_results for each prediction
+      for (const prediction of predictions) {
+        const predicted_correctly = prediction.selected_fighter === winner;
+        
+        const { error: resultError } = await supabase
+          .from('fight_results')
+          .upsert([
+            {
+              user_id: prediction.username,
+              fight_id: id,
+              predicted_correctly: predicted_correctly
+            }
+          ], {
+            onConflict: ['user_id', 'fight_id']
+          });
+
+        if (resultError) {
+          console.error('Error updating fight result:', resultError);
+          return res.status(500).json({ error: 'Failed to update fight result' });
+        }
       }
     }
 
