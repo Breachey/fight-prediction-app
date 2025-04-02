@@ -104,8 +104,8 @@ function Fights({ eventId, username }) {
         <div key={fight.id} className="fight-card">
           {(fight.card_tier || fight.weightclass) && (
             <div className="fight-meta">
-              {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>} 
-              {fight.weightclass && <p className="weight-class">{fight.weightclass}</p>}
+              {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>} {/* Card Tier */}
+              {fight.weightclass && <p className="weight-class">{fight.weightclass}</p>} {/* Weight Class */} 
             </div>
           )}
           <div className="fighters-container">
