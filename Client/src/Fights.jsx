@@ -111,13 +111,15 @@ function Fights({ eventId, username }) {
           <div className="fighters-container">
             {/* Fighter 1 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''} ${
-                fight.is_completed ? 'completed' : ''
+              className={`fighter-card ${
+                selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''
+              } ${selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter1_name ? 'unselected' : ''
+              } ${fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter1_name ? 'winner' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
-              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}>
+              <h3 className="fighter-name">
                 {fight.fighter1_name}
               </h3>
               <div className="stat-container">
@@ -144,13 +146,15 @@ function Fights({ eventId, username }) {
 
             {/* Fighter 2 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''} ${
-                fight.is_completed ? 'completed' : ''
+              className={`fighter-card ${
+                selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''
+              } ${selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter2_name ? 'unselected' : ''
+              } ${fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter2_name ? 'winner' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
-              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}>
+              <h3 className="fighter-name">
                 {fight.fighter2_name}
               </h3>
               <div className="stat-container">
