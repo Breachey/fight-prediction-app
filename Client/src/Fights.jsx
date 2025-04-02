@@ -1,4 +1,3 @@
-// client/src/Fights.js
 import React, { useEffect, useState } from 'react';
 import './Fights.css';
 
@@ -7,12 +6,14 @@ function Fights({ eventId, username }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedFights, setSelectedFights] = useState({});
+  const [submittedFights, setSubmittedFights] = useState({});
+  const [voteErrors, setVoteErrors] = useState({});
 
   useEffect(() => {
     if (eventId) {
       fetchFights();
     }
-  }, [eventId]);
+  }, [eventId,]);
 
   const fetchFights = async () => {
     try {
@@ -30,11 +31,28 @@ function Fights({ eventId, username }) {
     }
   };
 
-  const handleVote = async (fightId, selectedFighter) => {
+  // Function to handle selection (but not submission) of a fighter
+  const handleSelection = (fightId, fighterName) => {
+    // Only allow selection if vote hasn't been submitted
+    if (submittedFights[fightId]) return;
+    setSelectedFights(prev => ({ ...prev, [fightId]: fighterName }));
+  };
+
+  // Function to submit the selected vote for a fight
+  const handleSubmitVote = async (fightId) => {
     if (!username) {
-      setError('Please log in to vote');
+      setVoteErrors(prev => ({ ...prev, [fightId]: 'Please log in to vote' }));
       return;
     }
+
+    const selectedFighter = selectedFights[fightId];
+    if (!selectedFighter) {
+      setVoteErrors(prev => ({ ...prev, [fightId]: 'No fighter selected' }));
+      return;
+    }
+
+
+    console.log('Submitting vote with:', { username, fightId, selectedFighter });
 
     try {
       const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
@@ -44,22 +62,24 @@ function Fights({ eventId, username }) {
         },
         body: JSON.stringify({
           username,
-          fightId: fightId,
+          fightId,
           selectedFighter,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit prediction');
+        console.error('Server error on vote submission');
+        setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: updating selection` }));
+        return;
       }
 
-      setSelectedFights(prev => ({
-        ...prev,
-        [fightId]: selectedFighter
-      }));
+      // Mark this fight's vote as submitted
+      setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
+      // Clear any previous vote error for this fight
+      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
     } catch (err) {
-      console.error('Error submitting prediction:', err);
-      setError('Failed to submit prediction');
+      console.error('Error submitting prediction:', err.message, err);
+      setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
     }
   };
 
@@ -67,15 +87,18 @@ function Fights({ eventId, username }) {
     return <div className="loading-message">Loading fights...</div>;
   }
 
-  if (error) {
-    return <div className="error-message">{error}</div>;
-  }
-
+  // Removed the global error return so that even if there's an error, we still render all fights.
+  
   return (
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
       </div>
+
+      {error && (
+        // Global error (e.g. from fetching fights) is still displayed at the top
+        <div className="error-message">{error}</div>
+      )}
 
       {fights.map((fight) => (
         <div key={fight.id} className="fight-card">
@@ -85,7 +108,7 @@ function Fights({ eventId, username }) {
               className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''} ${
                 fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter1_name ? 'winner' : ''}`}
-              onClick={() => !fight.is_completed && handleVote(fight.id, fight.fighter1_name)}
+              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
               <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}>
@@ -118,7 +141,7 @@ function Fights({ eventId, username }) {
               className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''} ${
                 fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter2_name ? 'winner' : ''}`}
-              onClick={() => !fight.is_completed && handleVote(fight.id, fight.fighter2_name)}
+              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
               <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}>
@@ -145,9 +168,21 @@ function Fights({ eventId, username }) {
             </div>
           </div>
 
-          {selectedFights[fight.id] && (
+          {/* Display vote error for this fight if it exists */}
+          {voteErrors[fight.id] && (
+            <div className="error-message">{voteErrors[fight.id]}</div>
+          )}
+
+          {selectedFights[fight.id] && !submittedFights[fight.id] && (
             <div className="selected-fighter-message">
               You picked: {selectedFights[fight.id]}
+              <button className="submit-vote-button" onClick={() => handleSubmitVote(fight.id)}>Submit Vote</button>
+            </div>
+          )}
+
+          {submittedFights[fight.id] && (
+            <div className="completed-fight-message">
+              Vote submitted: {submittedFights[fight.id]}
             </div>
           )}
 
