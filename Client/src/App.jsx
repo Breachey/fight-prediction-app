@@ -1,5 +1,6 @@
 // client/src/App.js
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Fights from './Fights';
 import VotedFights from './VotedFights';
 import FightAdmin from './FightAdmin';
@@ -103,7 +104,9 @@ function App() {
     return (
       <div className="app">
         <header className="header" style={loginHeaderStyle}>
-          <img src={logo} alt="Fight Picks Logo" className="logo" />
+          <Link to="/">
+            <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
+          </Link>
         </header>
         <UserAuth onAuthenticate={handleAuthentication} />
         <footer style={footerStyle}>Made by Scrap & Screach</footer>
@@ -114,7 +117,9 @@ function App() {
   return (
     <div className="app">
       <header className="header" style={headerStyle}>
-        <img src={logo} alt="Fight Picks Logo" className="logo" />
+        <Link to="/">
+          <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
+        </Link>
         <div style={userInfoStyle}>
           <span>Welcome, {user.username}</span>
           <button onClick={handleLogout} style={logoutButtonStyle}>

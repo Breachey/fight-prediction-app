@@ -149,36 +149,63 @@ app.post('/predict', async (req, res) => {
   const { fightId, selectedFighter, username } = req.body;
 
   if (!fightId || !selectedFighter || !username) {
-    return res.status(400).json({ message: "Missing data" });
+    return res.status(400).json({ error: "Missing required data" });
   }
 
   try {
     // Convert fightId to integer
     const fight_id = parseInt(fightId, 10);
     if (isNaN(fight_id)) {
-      return res.status(400).json({ message: "Invalid fight ID" });
+      return res.status(400).json({ error: "Invalid fight ID" });
     }
 
-    // Insert the prediction into the predictions table along with username
-    const { data, error } = await supabase
+    // Check if prediction already exists
+    const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
-      .insert([
-        { 
-          fight_id, 
-          selected_fighter: selectedFighter,
-          username: username 
-        }
-      ]);
+      .select('*')
+      .eq('fight_id', fight_id)
+      .eq('username', username)
+      .single();
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return res.status(500).json({ message: "Error saving prediction", error: error.message });
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
+      console.error('Error checking existing prediction:', checkError);
+      return res.status(500).json({ error: "Error checking existing prediction" });
     }
 
-    res.status(200).json({ message: "Prediction received!", data });
+    if (existingPrediction) {
+      // Update existing prediction
+      const { error: updateError } = await supabase
+        .from('predictions')
+        .update({ selected_fighter: selectedFighter })
+        .eq('fight_id', fight_id)
+        .eq('username', username);
+
+      if (updateError) {
+        console.error('Error updating prediction:', updateError);
+        return res.status(500).json({ error: "Error updating prediction" });
+      }
+
+      return res.status(200).json({ message: "Prediction updated successfully" });
+    }
+
+    // Insert new prediction
+    const { error: insertError } = await supabase
+      .from('predictions')
+      .insert([{ 
+        fight_id, 
+        selected_fighter: selectedFighter,
+        username 
+      }]);
+
+    if (insertError) {
+      console.error('Error inserting prediction:', insertError);
+      return res.status(500).json({ error: "Error saving prediction" });
+    }
+
+    res.status(200).json({ message: "Prediction saved successfully" });
   } catch (err) {
     console.error('Server error:', err);
-    res.status(500).json({ message: "Error saving prediction", error: err.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -226,11 +253,12 @@ app.post('/fights/:id/result', async (req, res) => {
     const { winner } = req.body;
     
     // Update fight with winner and mark as completed
+    // If winner is null, we're unsetting the result
     const { error: updateError } = await supabase
       .from('fights')
       .update({
         winner: winner,
-        is_completed: true
+        is_completed: winner !== null
       })
       .eq('id', id);
 
@@ -239,36 +267,49 @@ app.post('/fights/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update fight' });
     }
 
-    // Get all predictions for this fight
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('username, selected_fighter')
-      .eq('fight_id', id);
-
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ error: 'Failed to fetch predictions' });
-    }
-
-    // Update fight_results for each prediction
-    for (const prediction of predictions) {
-      const predicted_correctly = prediction.selected_fighter === winner;
-      
-      const { error: resultError } = await supabase
+    // If we're unsetting the result, delete any existing fight results
+    if (winner === null) {
+      const { error: deleteError } = await supabase
         .from('fight_results')
-        .upsert([
-          {
-            user_id: prediction.username,
-            fight_id: id,
-            predicted_correctly: predicted_correctly
-          }
-        ], {
-          onConflict: ['user_id', 'fight_id']
-        });
+        .delete()
+        .eq('fight_id', id);
 
-      if (resultError) {
-        console.error('Error updating fight result:', resultError);
-        return res.status(500).json({ error: 'Failed to update fight result' });
+      if (deleteError) {
+        console.error('Error deleting fight results:', deleteError);
+        return res.status(500).json({ error: 'Failed to delete fight results' });
+      }
+    } else {
+      // Get all predictions for this fight
+      const { data: predictions, error: predictionsError } = await supabase
+        .from('predictions')
+        .select('username, selected_fighter')
+        .eq('fight_id', id);
+
+      if (predictionsError) {
+        console.error('Error fetching predictions:', predictionsError);
+        return res.status(500).json({ error: 'Failed to fetch predictions' });
+      }
+
+      // Update fight_results for each prediction
+      for (const prediction of predictions) {
+        const predicted_correctly = prediction.selected_fighter === winner;
+        
+        const { error: resultError } = await supabase
+          .from('fight_results')
+          .upsert([
+            {
+              user_id: prediction.username,
+              fight_id: id,
+              predicted_correctly: predicted_correctly
+            }
+          ], {
+            onConflict: ['user_id', 'fight_id']
+          });
+
+        if (resultError) {
+          console.error('Error updating fight result:', resultError);
+          return res.status(500).json({ error: 'Failed to update fight result' });
+        }
       }
     }
 

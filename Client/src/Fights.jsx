@@ -9,27 +9,49 @@ function Fights({ eventId, username }) {
   const [submittedFights, setSubmittedFights] = useState({});
   const [voteErrors, setVoteErrors] = useState({});
 
+  // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
-    if (eventId) {
-      fetchFights();
-    }
-  }, [eventId,]);
+    if (eventId && username) {
+      Promise.all([
+        // Fetch fights
+        fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`),
+        // Fetch all predictions for the user
+        fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions`)
+      ])
+        .then(async ([fightsResponse, predictionsResponse]) => {
+          if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
+          if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
 
-  const fetchFights = async () => {
-    try {
-      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch fights');
-      }
-      const data = await response.json();
-      setFights(data);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching fights:', err);
-      setError('Failed to load fights');
-      setLoading(false);
+          const [fightsData, predictionsData] = await Promise.all([
+            fightsResponse.json(),
+            predictionsResponse.json()
+          ]);
+
+          // Filter predictions for current user
+          const userPredictions = predictionsData.filter(pred => pred.username === username);
+          
+          // Create a map of fight ID to selected fighter
+          const submittedVotes = {};
+          userPredictions.forEach(pred => {
+            submittedVotes[pred.fight_id] = pred.selected_fighter;
+          });
+
+          setFights(fightsData);
+          setSubmittedFights(submittedVotes);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Error fetching data:', err);
+          setError('Failed to load fights and predictions');
+          setLoading(false);
+        });
     }
-  };
+  }, [eventId, username]);
+
+  // Clear selected fights when username changes
+  useEffect(() => {
+    setSelectedFights({});
+  }, [username]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
@@ -51,9 +73,6 @@ function Fights({ eventId, username }) {
       return;
     }
 
-
-    console.log('Submitting vote with:', { username, fightId, selectedFighter });
-
     try {
       const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
         method: 'POST',
@@ -62,14 +81,15 @@ function Fights({ eventId, username }) {
         },
         body: JSON.stringify({
           username,
-          fightId,
+          fightId: parseInt(fightId, 10),
           selectedFighter,
         }),
       });
 
       if (!response.ok) {
-        console.error('Server error on vote submission');
-        setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: updating selection` }));
+        const errorData = await response.json().catch(() => ({ error: 'Unknown server error' }));
+        console.error('Server error on vote submission:', errorData);
+        setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: ${errorData.error || 'Failed to submit vote'}` }));
         return;
       }
 
@@ -77,8 +97,14 @@ function Fights({ eventId, username }) {
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
       // Clear any previous vote error for this fight
       setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+      // Clear the selection since it's now submitted
+      setSelectedFights(prev => {
+        const newState = { ...prev };
+        delete newState[fightId];
+        return newState;
+      });
     } catch (err) {
-      console.error('Error submitting prediction:', err.message, err);
+      console.error('Error submitting prediction:', err);
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
     }
   };
@@ -102,16 +128,25 @@ function Fights({ eventId, username }) {
 
       {fights.map((fight) => (
         <div key={fight.id} className="fight-card">
+          {(fight.card_tier || fight.weightclass) && (
+            <div className="fight-meta">
+              {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
+              {fight.weightclass && <p className="weight-class">{fight.weightclass}</p>}
+            </div>
+          )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''} ${
-                fight.is_completed ? 'completed' : ''
+              className={`fighter-card ${
+                (selectedFights[fight.id] === fight.fighter1_name || submittedFights[fight.id] === fight.fighter1_name) ? 'selected' : ''
+              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
+                  (selectedFights[fight.id] !== fight.fighter1_name && submittedFights[fight.id] !== fight.fighter1_name) ? 'unselected' : ''
+              } ${fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter1_name ? 'winner' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
-              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter1_name ? 'selected' : ''}`}>
+              <h3 className="fighter-name">
                 {fight.fighter1_name}
               </h3>
               <div className="stat-container">
@@ -138,13 +173,16 @@ function Fights({ eventId, username }) {
 
             {/* Fighter 2 Card */}
             <div
-              className={`fighter-card ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''} ${
-                fight.is_completed ? 'completed' : ''
+              className={`fighter-card ${
+                (selectedFights[fight.id] === fight.fighter2_name || submittedFights[fight.id] === fight.fighter2_name) ? 'selected' : ''
+              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
+                  (selectedFights[fight.id] !== fight.fighter2_name && submittedFights[fight.id] !== fight.fighter2_name) ? 'unselected' : ''
+              } ${fight.is_completed ? 'completed' : ''
               } ${fight.is_completed && fight.winner === fight.fighter2_name ? 'winner' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
-              <h3 className={`fighter-name ${selectedFights[fight.id] === fight.fighter2_name ? 'selected' : ''}`}>
+              <h3 className="fighter-name">
                 {fight.fighter2_name}
               </h3>
               <div className="stat-container">

@@ -106,6 +106,14 @@ function FightAdmin({ eventId }) {
     transition: 'all 0.3s ease'
   };
 
+  const unselectButtonStyle = {
+    ...editButtonStyle,
+    backgroundColor: '#dc2626',
+    marginLeft: '0',
+    marginTop: '10px',
+    width: '100%'
+  };
+
   const errorStyle = {
     color: '#ef4444',
     textAlign: 'center',
@@ -169,20 +177,30 @@ function FightAdmin({ eventId }) {
           </div>
           
           {(editingFight === fight.id || !fight.winner) && (
-            <div style={buttonContainerStyle}>
-              <button
-                style={buttonStyle(fight.winner === fight.fighter1_name)}
-                onClick={() => handleResultUpdate(fight.id, fight.fighter1_name)}
-              >
-                {fight.fighter1_name} Won
-              </button>
-              <button
-                style={buttonStyle(fight.winner === fight.fighter2_name)}
-                onClick={() => handleResultUpdate(fight.id, fight.fighter2_name)}
-              >
-                {fight.fighter2_name} Won
-              </button>
-            </div>
+            <>
+              <div style={buttonContainerStyle}>
+                <button
+                  style={buttonStyle(fight.winner === fight.fighter1_name)}
+                  onClick={() => handleResultUpdate(fight.id, fight.fighter1_name)}
+                >
+                  {fight.fighter1_name} Won
+                </button>
+                <button
+                  style={buttonStyle(fight.winner === fight.fighter2_name)}
+                  onClick={() => handleResultUpdate(fight.id, fight.fighter2_name)}
+                >
+                  {fight.fighter2_name} Won
+                </button>
+              </div>
+              {fight.winner && (
+                <button
+                  style={unselectButtonStyle}
+                  onClick={() => handleResultUpdate(fight.id, null)}
+                >
+                  Unselect Winner
+                </button>
+              )}
+            </>
           )}
           
           {fight.winner && editingFight !== fight.id && (
