@@ -6,14 +6,33 @@ function Fights({ eventId, username }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedFights, setSelectedFights] = useState({});
-  const [submittedFights, setSubmittedFights] = useState({});
+  const [submittedFights, setSubmittedFights] = useState(() => {
+    // Load submitted fights from localStorage on component mount
+    const saved = localStorage.getItem(`submittedFights_${username}`);
+    return saved ? JSON.parse(saved) : {};
+  });
   const [voteErrors, setVoteErrors] = useState({});
+
+  // Save submittedFights to localStorage whenever it changes
+  useEffect(() => {
+    if (username) {
+      localStorage.setItem(`submittedFights_${username}`, JSON.stringify(submittedFights));
+    }
+  }, [submittedFights, username]);
 
   useEffect(() => {
     if (eventId) {
       fetchFights();
     }
-  }, [eventId,]);
+  }, [eventId]);
+
+  // Clear selected fights when username changes
+  useEffect(() => {
+    setSelectedFights({});
+    // Load submitted fights for new user
+    const saved = localStorage.getItem(`submittedFights_${username}`);
+    setSubmittedFights(saved ? JSON.parse(saved) : {});
+  }, [username]);
 
   const fetchFights = async () => {
     try {
@@ -51,9 +70,6 @@ function Fights({ eventId, username }) {
       return;
     }
 
-
-    console.log('Submitting vote with:', { username, fightId, selectedFighter });
-
     try {
       const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
         method: 'POST',
@@ -62,14 +78,15 @@ function Fights({ eventId, username }) {
         },
         body: JSON.stringify({
           username,
-          fightId,
+          fightId: parseInt(fightId, 10), // Ensure fightId is sent as a number
           selectedFighter,
         }),
       });
 
       if (!response.ok) {
-        console.error('Server error on vote submission');
-        setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: updating selection` }));
+        const errorData = await response.json().catch(() => ({ error: 'Unknown server error' }));
+        console.error('Server error on vote submission:', errorData);
+        setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: ${errorData.error || 'Failed to submit vote'}` }));
         return;
       }
 
@@ -77,8 +94,14 @@ function Fights({ eventId, username }) {
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
       // Clear any previous vote error for this fight
       setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+      // Clear the selection since it's now submitted
+      setSelectedFights(prev => {
+        const newState = { ...prev };
+        delete newState[fightId];
+        return newState;
+      });
     } catch (err) {
-      console.error('Error submitting prediction:', err.message, err);
+      console.error('Error submitting prediction:', err);
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
     }
   };

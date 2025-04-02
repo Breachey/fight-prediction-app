@@ -149,36 +149,63 @@ app.post('/predict', async (req, res) => {
   const { fightId, selectedFighter, username } = req.body;
 
   if (!fightId || !selectedFighter || !username) {
-    return res.status(400).json({ message: "Missing data" });
+    return res.status(400).json({ error: "Missing required data" });
   }
 
   try {
     // Convert fightId to integer
     const fight_id = parseInt(fightId, 10);
     if (isNaN(fight_id)) {
-      return res.status(400).json({ message: "Invalid fight ID" });
+      return res.status(400).json({ error: "Invalid fight ID" });
     }
 
-    // Insert the prediction into the predictions table along with username
-    const { data, error } = await supabase
+    // Check if prediction already exists
+    const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
-      .insert([
-        { 
-          fight_id, 
-          selected_fighter: selectedFighter,
-          username: username 
-        }
-      ]);
+      .select('*')
+      .eq('fight_id', fight_id)
+      .eq('username', username)
+      .single();
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return res.status(500).json({ message: "Error saving prediction", error: error.message });
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
+      console.error('Error checking existing prediction:', checkError);
+      return res.status(500).json({ error: "Error checking existing prediction" });
     }
 
-    res.status(200).json({ message: "Prediction received!", data });
+    if (existingPrediction) {
+      // Update existing prediction
+      const { error: updateError } = await supabase
+        .from('predictions')
+        .update({ selected_fighter: selectedFighter })
+        .eq('fight_id', fight_id)
+        .eq('username', username);
+
+      if (updateError) {
+        console.error('Error updating prediction:', updateError);
+        return res.status(500).json({ error: "Error updating prediction" });
+      }
+
+      return res.status(200).json({ message: "Prediction updated successfully" });
+    }
+
+    // Insert new prediction
+    const { error: insertError } = await supabase
+      .from('predictions')
+      .insert([{ 
+        fight_id, 
+        selected_fighter: selectedFighter,
+        username 
+      }]);
+
+    if (insertError) {
+      console.error('Error inserting prediction:', insertError);
+      return res.status(500).json({ error: "Error saving prediction" });
+    }
+
+    res.status(200).json({ message: "Prediction saved successfully" });
   } catch (err) {
     console.error('Server error:', err);
-    res.status(500).json({ message: "Error saving prediction", error: err.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
