@@ -6,49 +6,52 @@ function Fights({ eventId, username }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedFights, setSelectedFights] = useState({});
-  const [submittedFights, setSubmittedFights] = useState(() => {
-    // Load submitted fights from localStorage on component mount
-    const saved = localStorage.getItem(`submittedFights_${username}`);
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [submittedFights, setSubmittedFights] = useState({});
   const [voteErrors, setVoteErrors] = useState({});
 
-  // Save submittedFights to localStorage whenever it changes
+  // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
-    if (username) {
-      localStorage.setItem(`submittedFights_${username}`, JSON.stringify(submittedFights));
-    }
-  }, [submittedFights, username]);
+    if (eventId && username) {
+      Promise.all([
+        // Fetch fights
+        fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`),
+        // Fetch all predictions for the user
+        fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions`)
+      ])
+        .then(async ([fightsResponse, predictionsResponse]) => {
+          if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
+          if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
 
-  useEffect(() => {
-    if (eventId) {
-      fetchFights();
+          const [fightsData, predictionsData] = await Promise.all([
+            fightsResponse.json(),
+            predictionsResponse.json()
+          ]);
+
+          // Filter predictions for current user
+          const userPredictions = predictionsData.filter(pred => pred.username === username);
+          
+          // Create a map of fight ID to selected fighter
+          const submittedVotes = {};
+          userPredictions.forEach(pred => {
+            submittedVotes[pred.fight_id] = pred.selected_fighter;
+          });
+
+          setFights(fightsData);
+          setSubmittedFights(submittedVotes);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Error fetching data:', err);
+          setError('Failed to load fights and predictions');
+          setLoading(false);
+        });
     }
-  }, [eventId]);
+  }, [eventId, username]);
 
   // Clear selected fights when username changes
   useEffect(() => {
     setSelectedFights({});
-    // Load submitted fights for new user
-    const saved = localStorage.getItem(`submittedFights_${username}`);
-    setSubmittedFights(saved ? JSON.parse(saved) : {});
   }, [username]);
-
-  const fetchFights = async () => {
-    try {
-      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch fights');
-      }
-      const data = await response.json();
-      setFights(data);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching fights:', err);
-      setError('Failed to load fights');
-      setLoading(false);
-    }
-  };
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
@@ -78,7 +81,7 @@ function Fights({ eventId, username }) {
         },
         body: JSON.stringify({
           username,
-          fightId: parseInt(fightId, 10), // Ensure fightId is sent as a number
+          fightId: parseInt(fightId, 10),
           selectedFighter,
         }),
       });
