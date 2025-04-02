@@ -102,10 +102,12 @@ function Fights({ eventId, username }) {
 
       {fights.map((fight) => (
         <div key={fight.id} className="fight-card">
-          <div className="fight-meta">
-            <h4 className="card-tier">{fight.card_tier || 'Fight Tier Unknown'}</h4>
-            <p className="weight-class">{fight.weightclass || 'Weight Class Unknown'}</p>
-          </div>
+          {(fight.card_tier || fight.weightclass) && (
+            <div className="fight-meta">
+              {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>} 
+              {fight.weightclass && <p className="weight-class">{fight.weightclass}</p>}
+            </div>
+          )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
             <div
