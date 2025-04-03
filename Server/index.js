@@ -548,16 +548,24 @@ app.get('/leaderboard', async (req, res) => {
 app.get('/events', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('date', { ascending: false });
+      .from('ufc_fight_card')
+      .select('distinct Event, EventId, Location')
+      .order('EventId', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
       return res.status(500).json({ error: 'Failed to fetch events' });
     }
 
-    res.json(data);
+    // Transform the data to match the expected structure
+    const transformedEvents = data.map(event => ({
+      id: event.EventId,
+      name: event.Event,
+      date: null, // If you need this, we'll need to add it to the database
+      location: event.Location
+    }));
+
+    res.json(transformedEvents);
   } catch (error) {
     console.error('Error in GET /events:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -571,16 +579,17 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     
     // Get all fights for this event
     const { data: eventFights, error: fightsError } = await supabase
-      .from('fights')
-      .select('id')
-      .eq('event_id', id);
+      .from('ufc_fight_card')
+      .select('distinct FightNumber')
+      .eq('EventId', id);
 
     if (fightsError) {
       console.error('Error fetching event fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch event fights' });
     }
 
-    const fightIds = eventFights.map(fight => fight.id);
+    // Create fight IDs in the same format we used when creating them
+    const fightIds = eventFights.map(fight => `${id}-${fight.FightNumber}`);
 
     // Get all fight results for these fights
     const { data: results, error: resultsError } = await supabase
