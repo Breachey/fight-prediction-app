@@ -135,7 +135,6 @@
   margin: 0 auto 15px;
   display: block;
   border-radius: 8px;
-  border: 1px solid #4c1d95;
 }
 
 .stat-row {
@@ -150,6 +149,118 @@
   color: #9ca3af;
   font-size: 0.9rem;
   margin-right: 8px;
+}
+
+.fight-votes-section {
+  margin-top: 20px;
+  border-top: 1px solid #4c1d95;
+  padding-top: 20px;
+}
+
+.expand-votes-button {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%);
+  border: 1px solid #4c1d95;
+  border-radius: 8px;
+  color: #e9d5ff;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.expand-votes-button:hover {
+  background: linear-gradient(145deg, #2d1f47 0%, #1a1a1a 100%);
+  transform: translateY(-1px);
+}
+
+.votes-details {
+  margin-top: 20px;
+}
+
+.vote-distribution {
+  display: flex;
+  height: 32px;
+  background-color: #1a1a1a;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.vote-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: white;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: width 0.3s ease;
+  min-width: 40px;
+}
+
+.fighter1-bar {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+
+.fighter2-bar {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+
+.votes-list-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.fighter-votes {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid #4c1d95;
+}
+
+.fighter-votes h4 {
+  margin: 0 0 15px 0;
+  color: #e9d5ff;
+  font-size: 1rem;
+}
+
+.votes-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.votes-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.votes-list::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.votes-list::-webkit-scrollbar-thumb {
+  background: #4c1d95;
+  border-radius: 3px;
+}
+
+.vote-item {
+  padding: 8px 12px;
+  background-color: #2d1f47;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: #e9d5ff;
+}
+
+.vote-item.current-user {
+  background: linear-gradient(135deg, #4c1d95, #2d1f47);
+  border: 1px solid #6d28d9;
 }
 
 @media (max-width: 768px) {
@@ -250,6 +361,20 @@
 
   .fighter-card:hover:not(.completed):not(.unselected) {
     transform: none;
+  }
+
+  .votes-list-container {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .vote-bar {
+    font-size: 0.8rem;
+    padding: 0 8px;
+  }
+
+  .votes-list {
+    max-height: 150px;
   }
 }
 

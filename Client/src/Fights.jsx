@@ -8,6 +8,8 @@ function Fights({ eventId, username }) {
   const [selectedFights, setSelectedFights] = useState({});
   const [submittedFights, setSubmittedFights] = useState({});
   const [voteErrors, setVoteErrors] = useState({});
+  const [expandedFights, setExpandedFights] = useState({});
+  const [fightVotes, setFightVotes] = useState({});
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -106,6 +108,51 @@ function Fights({ eventId, username }) {
     } catch (err) {
       console.error('Error submitting prediction:', err);
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
+    }
+  };
+
+  const toggleFightExpansion = async (fightId) => {
+    setExpandedFights(prev => {
+      const newState = { ...prev };
+      if (newState[fightId]) {
+        delete newState[fightId];
+      } else {
+        newState[fightId] = true;
+      }
+      return newState;
+    });
+
+    // Fetch votes if expanding and we don't have them yet
+    if (!expandedFights[fightId] && !fightVotes[fightId]) {
+      try {
+        const fight = fights.find(f => f.id === fightId);
+        if (!fight) return;
+
+        const [fighter1Response, fighter2Response] = await Promise.all([
+          fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
+          fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+        ]);
+
+        if (!fighter1Response.ok || !fighter2Response.ok) {
+          throw new Error('Failed to fetch votes');
+        }
+
+        const [fighter1Votes, fighter2Votes] = await Promise.all([
+          fighter1Response.json(),
+          fighter2Response.json()
+        ]);
+
+        setFightVotes(prev => ({
+          ...prev,
+          [fightId]: {
+            fighter1Votes,
+            fighter2Votes
+          }
+        }));
+      } catch (err) {
+        console.error('Error fetching votes:', err);
+        setError('Failed to load votes');
+      }
     }
   };
 
@@ -229,6 +276,63 @@ function Fights({ eventId, username }) {
               This fight has been completed. Winner: {fight.winner}
             </div>
           )}
+
+          <div className="fight-votes-section">
+            <button 
+              className="expand-votes-button"
+              onClick={() => toggleFightExpansion(fight.id)}
+            >
+              {expandedFights[fight.id] ? '▲ Hide Votes' : '▼ Show Votes'}
+            </button>
+
+            {expandedFights[fight.id] && fightVotes[fight.id] && (
+              <div className="votes-details">
+                <div className="vote-distribution">
+                  <div 
+                    className="vote-bar fighter1-bar" 
+                    style={{ 
+                      width: `${Math.round((fightVotes[fight.id].fighter1Votes.length / 
+                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
+                    }}
+                  >
+                    {fight.fighter1_name} ({fightVotes[fight.id].fighter1Votes.length})
+                  </div>
+                  <div 
+                    className="vote-bar fighter2-bar" 
+                    style={{ 
+                      width: `${Math.round((fightVotes[fight.id].fighter2Votes.length / 
+                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
+                    }}
+                  >
+                    {fight.fighter2_name} ({fightVotes[fight.id].fighter2Votes.length})
+                  </div>
+                </div>
+
+                <div className="votes-list-container">
+                  <div className="fighter-votes">
+                    <h4>{fight.fighter1_name}'s Votes</h4>
+                    <div className="votes-list">
+                      {fightVotes[fight.id].fighter1Votes.map((vote, index) => (
+                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                          {vote.username} {vote.username === username && '(You)'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="fighter-votes">
+                    <h4>{fight.fighter2_name}'s Votes</h4>
+                    <div className="votes-list">
+                      {fightVotes[fight.id].fighter2Votes.map((vote, index) => (
+                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                          {vote.username} {vote.username === username && '(You)'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       ))}
 
