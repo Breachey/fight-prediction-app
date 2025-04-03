@@ -282,7 +282,7 @@ function Fights({ eventId, username }) {
               className="expand-votes-button"
               onClick={() => toggleFightExpansion(fight.id)}
             >
-              {expandedFights[fight.id] ? '▼ Hide Votes' : '▲ Show Votes'}
+              {expandedFights[fight.id] ? '▲ Hide Votes' : '▼ Show Votes'}
             </button>
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
