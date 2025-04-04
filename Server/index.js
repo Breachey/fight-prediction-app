@@ -542,7 +542,7 @@ app.get('/events', async (req, res) => {
 
     const { data, error } = await supabase
       .from('ufc_fight_card')
-      .select('distinct Event, EventId, EventDate')
+      .select('Event, EventId, EventDate')
       .order('EventDate', { ascending: false });
 
     if (error) {
@@ -561,13 +561,18 @@ app.get('/events', async (req, res) => {
       return res.status(404).json({ error: 'No events found' });
     }
 
-    console.log(`Successfully fetched ${data.length} events`);
+    // Remove duplicates using Set
+    const uniqueEvents = Array.from(
+      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event, date: event.EventDate })))
+    ).map(str => JSON.parse(str));
+
+    console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
 
     // Transform the data to match the expected structure
-    const transformedEvents = data.map(event => ({
-      id: event.EventId,
-      name: event.Event,
-      date: event.EventDate,
+    const transformedEvents = uniqueEvents.map(event => ({
+      id: event.id,
+      name: event.name,
+      date: event.date,
       is_completed: false // We'll need to add this to the database if needed
     }));
 
