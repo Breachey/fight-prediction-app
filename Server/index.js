@@ -429,7 +429,7 @@ app.get('/', (req, res) => {
   res.json({ status: 'API is running' });
 });
 
-app.post('/fights/:id/result', async (req, res) => {
+app.post('/ufc_fight_card/:id/result', async (req, res) => {
   try {
     const { id } = req.params;
     const { winner } = req.body;
