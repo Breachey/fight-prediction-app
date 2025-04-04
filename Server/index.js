@@ -434,6 +434,8 @@ app.post('/fights/:id/result', async (req, res) => {
     const { id } = req.params;
     const { winner } = req.body;
 
+    console.log('Updating fight result:', { id, winner, idType: typeof id });
+
     // Update fight_results table
     const { error: updateError } = await supabase
       .from('fight_results')
@@ -449,11 +451,18 @@ app.post('/fights/:id/result', async (req, res) => {
 
     if (updateError) {
       console.error('Error updating fight result:', updateError);
+      console.error('Error details:', {
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+        code: updateError.code
+      });
       return res.status(500).json({ error: 'Failed to update fight result' });
     }
 
     // If we're unsetting the result, delete any existing prediction results
     if (winner === null) {
+      console.log('Deleting prediction results for fight:', id);
       const { error: deleteError } = await supabase
         .from('prediction_results')
         .delete()
@@ -461,10 +470,17 @@ app.post('/fights/:id/result', async (req, res) => {
 
       if (deleteError) {
         console.error('Error deleting prediction results:', deleteError);
+        console.error('Error details:', {
+          message: deleteError.message,
+          details: deleteError.details,
+          hint: deleteError.hint,
+          code: deleteError.code
+        });
         return res.status(500).json({ error: 'Failed to delete prediction results' });
       }
     } else {
       // Get all predictions for this fight
+      console.log('Fetching predictions for fight:', id);
       const { data: predictions, error: predictionsError } = await supabase
         .from('predictions')
         .select('username, selected_fighter')
@@ -472,12 +488,25 @@ app.post('/fights/:id/result', async (req, res) => {
 
       if (predictionsError) {
         console.error('Error fetching predictions:', predictionsError);
+        console.error('Error details:', {
+          message: predictionsError.message,
+          details: predictionsError.details,
+          hint: predictionsError.hint,
+          code: predictionsError.code
+        });
         return res.status(500).json({ error: 'Failed to fetch predictions' });
       }
+
+      console.log('Found predictions for this fight:', predictions);
 
       // Update prediction_results for each prediction
       for (const prediction of predictions) {
         const predicted_correctly = prediction.selected_fighter === winner;
+        console.log('Updating prediction result:', {
+          user_id: prediction.username,
+          fight_id: id,
+          predicted_correctly
+        });
         
         const { error: resultError } = await supabase
           .from('prediction_results')
@@ -493,6 +522,12 @@ app.post('/fights/:id/result', async (req, res) => {
 
         if (resultError) {
           console.error('Error updating prediction result:', resultError);
+          console.error('Error details:', {
+            message: resultError.message,
+            details: resultError.details,
+            hint: resultError.hint,
+            code: resultError.code
+          });
           return res.status(500).json({ error: 'Failed to update prediction result' });
         }
       }
@@ -500,6 +535,8 @@ app.post('/fights/:id/result', async (req, res) => {
 
     // Get the updated fight data
     const [eventId, fightNumber] = id.split('-').map(part => parseInt(part, 10));
+    console.log('Parsed fight ID:', { eventId, fightNumber });
+    
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_fight_card')
       .select('*')
@@ -510,6 +547,8 @@ app.post('/fights/:id/result', async (req, res) => {
       console.error('Error fetching updated fight:', getFightError);
       return res.status(500).json({ error: 'Failed to fetch updated fight' });
     }
+
+    console.log('Fetched fight data:', fightData);
 
     // Transform the fight data to match the expected structure
     const fightMap = new Map();
@@ -533,6 +572,7 @@ app.post('/fights/:id/result', async (req, res) => {
 
     const fight = fightMap.get(fightNumber);
     if (!fight || !fight.red || !fight.blue) {
+      console.error('Fight not found in transformed data:', { fightNumber, fight });
       return res.status(404).json({ error: 'Fight not found' });
     }
 
@@ -561,9 +601,11 @@ app.post('/fights/:id/result', async (req, res) => {
       bout_order: fightNumber
     };
 
+    console.log('Returning transformed fight:', transformedFight);
     res.json(transformedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to update fight result' });
   }
 });
