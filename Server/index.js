@@ -259,18 +259,11 @@ app.post('/predict', async (req, res) => {
   }
 
   try {
-    // Parse the composite fight ID (eventId-fightNumber)
-    const [eventId, fightNumber] = fightId.split('-').map(part => parseInt(part, 10));
-    if (isNaN(eventId) || isNaN(fightNumber)) {
-      return res.status(400).json({ error: "Invalid fight ID format" });
-    }
-
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
       .select('*')
-      .eq('event_id', eventId)
-      .eq('fight_number', fightNumber)
+      .eq('fight_id', fightId)
       .eq('username', username)
       .single();
 
@@ -284,8 +277,7 @@ app.post('/predict', async (req, res) => {
       const { error: updateError } = await supabase
         .from('predictions')
         .update({ selected_fighter: selectedFighter })
-        .eq('event_id', eventId)
-        .eq('fight_number', fightNumber)
+        .eq('fight_id', fightId)
         .eq('username', username);
 
       if (updateError) {
@@ -300,8 +292,7 @@ app.post('/predict', async (req, res) => {
     const { error: insertError } = await supabase
       .from('predictions')
       .insert([{ 
-        event_id: eventId,
-        fight_number: fightNumber,
+        fight_id: fightId,
         selected_fighter: selectedFighter,
         username 
       }]);
@@ -339,18 +330,11 @@ app.get('/predictions/filter', async (req, res) => {
   }
 
   try {
-    // Parse the composite fight ID (eventId-fightNumber)
-    const [eventId, fightNumber] = fight_id.split('-').map(part => parseInt(part, 10));
-    if (isNaN(eventId) || isNaN(fightNumber)) {
-      return res.status(400).json({ error: 'Invalid fight ID format' });
-    }
-    
     // Get predictions for this fight
     const { data, error } = await supabase
       .from('predictions')
       .select('username, created_at')
-      .eq('event_id', eventId)
-      .eq('fight_number', fightNumber)
+      .eq('fight_id', fight_id)
       .eq('selected_fighter', selected_fighter);
     
     if (error) {
@@ -373,25 +357,18 @@ app.post('/fights/:id/result', async (req, res) => {
   try {
     const { id } = req.params;
     const { winner } = req.body;
-    
-    // Parse the composite ID to get eventId and fightNumber
-    const [eventId, fightNumber] = id.split('-').map(part => parseInt(part, 10));
-    if (isNaN(eventId) || isNaN(fightNumber)) {
-      return res.status(400).json({ error: 'Invalid fight ID format' });
-    }
 
     // Update fight_results table
     const { error: updateError } = await supabase
       .from('fight_results')
       .upsert([
         {
-          event_id: eventId,
-          fight_number: fightNumber,
+          fight_id: id,
           winner: winner,
           is_completed: winner !== null
         }
       ], {
-        onConflict: ['event_id', 'fight_number']
+        onConflict: ['fight_id']
       });
 
     if (updateError) {
@@ -404,8 +381,7 @@ app.post('/fights/:id/result', async (req, res) => {
       const { error: deleteError } = await supabase
         .from('prediction_results')
         .delete()
-        .eq('event_id', eventId)
-        .eq('fight_number', fightNumber);
+        .eq('fight_id', id);
 
       if (deleteError) {
         console.error('Error deleting prediction results:', deleteError);
@@ -432,12 +408,11 @@ app.post('/fights/:id/result', async (req, res) => {
           .upsert([
             {
               user_id: prediction.username,
-              event_id: eventId,
-              fight_number: fightNumber,
+              fight_id: id,
               predicted_correctly: predicted_correctly
             }
           ], {
-            onConflict: ['user_id', 'event_id', 'fight_number']
+            onConflict: ['user_id', 'fight_id']
           });
 
         if (resultError) {
@@ -448,6 +423,7 @@ app.post('/fights/:id/result', async (req, res) => {
     }
 
     // Get the updated fight data
+    const [eventId, fightNumber] = id.split('-').map(part => parseInt(part, 10));
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_fight_card')
       .select('*')
