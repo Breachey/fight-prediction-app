@@ -11,6 +11,28 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Add connection test
+async function testSupabaseConnection() {
+  try {
+    console.log('Testing Supabase connection...');
+    const { data, error } = await supabase
+      .from('ufc_fight_card')
+      .select('count')
+      .limit(1);
+
+    if (error) {
+      console.error('Supabase connection test failed:', error);
+      return false;
+    }
+
+    console.log('Supabase connection test successful');
+    return true;
+  } catch (error) {
+    console.error('Error testing Supabase connection:', error);
+    return false;
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -314,7 +336,7 @@ app.get('/predictions/filter', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('API is running');
+  res.json({ status: 'API is running' });
 });
 
 app.post('/fights/:id/result', async (req, res) => {
@@ -514,6 +536,10 @@ app.get('/leaderboard', async (req, res) => {
 // Get all events
 app.get('/events', async (req, res) => {
   try {
+    console.log('Attempting to fetch events from Supabase...');
+    console.log('Using Supabase URL:', process.env.SUPABASE_URL);
+    console.log('Supabase key exists:', !!process.env.SUPABASE_ANON_KEY);
+
     const { data, error } = await supabase
       .from('ufc_fight_card')
       .select('distinct Event, EventId, EventDate')
@@ -521,8 +547,21 @@ app.get('/events', async (req, res) => {
 
     if (error) {
       console.error('Error fetching events:', error);
-      return res.status(500).json({ error: 'Failed to fetch events' });
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      return res.status(500).json({ error: 'Failed to fetch events', details: error.message });
     }
+
+    if (!data) {
+      console.log('No data returned from Supabase');
+      return res.status(404).json({ error: 'No events found' });
+    }
+
+    console.log(`Successfully fetched ${data.length} events`);
 
     // Transform the data to match the expected structure
     const transformedEvents = data.map(event => ({
@@ -534,8 +573,13 @@ app.get('/events', async (req, res) => {
 
     res.json(transformedEvents);
   } catch (error) {
-    console.error('Error in GET /events:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Unexpected error in GET /events:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -663,6 +707,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  const connectionSuccess = await testSupabaseConnection();
+  if (!connectionSuccess) {
+    console.error('WARNING: Failed to connect to Supabase on startup');
+  }
 });
