@@ -330,11 +330,13 @@ app.get('/predictions/filter', async (req, res) => {
   }
 
   try {
+    console.log('Fetching predictions for fight_id:', fight_id, 'and selected_fighter:', selected_fighter);
+    
     // Get predictions for this fight
     const { data, error } = await supabase
       .from('predictions')
       .select('username, created_at')
-      .eq('fight_id', fight_id)
+      .eq('fight_id', fight_id.toString()) // Ensure fight_id is treated as string
       .eq('selected_fighter', selected_fighter);
     
     if (error) {
@@ -342,6 +344,7 @@ app.get('/predictions/filter', async (req, res) => {
       return res.status(500).json({ message: "Error fetching predictions" });
     }
     
+    console.log('Successfully fetched predictions:', data);
     res.json(data);
   } catch (error) {
     console.error('Error in predictions/filter:', error);
