@@ -259,17 +259,18 @@ app.post('/predict', async (req, res) => {
   }
 
   try {
-    // Convert fightId to integer
-    const fight_id = parseInt(fightId, 10);
-    if (isNaN(fight_id)) {
-      return res.status(400).json({ error: "Invalid fight ID" });
+    // Parse the composite fight ID (eventId-fightNumber)
+    const [eventId, fightNumber] = fightId.split('-').map(part => parseInt(part, 10));
+    if (isNaN(eventId) || isNaN(fightNumber)) {
+      return res.status(400).json({ error: "Invalid fight ID format" });
     }
 
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
       .select('*')
-      .eq('fight_id', fight_id)
+      .eq('event_id', eventId)
+      .eq('fight_number', fightNumber)
       .eq('username', username)
       .single();
 
@@ -283,7 +284,8 @@ app.post('/predict', async (req, res) => {
       const { error: updateError } = await supabase
         .from('predictions')
         .update({ selected_fighter: selectedFighter })
-        .eq('fight_id', fight_id)
+        .eq('event_id', eventId)
+        .eq('fight_number', fightNumber)
         .eq('username', username);
 
       if (updateError) {
@@ -298,7 +300,8 @@ app.post('/predict', async (req, res) => {
     const { error: insertError } = await supabase
       .from('predictions')
       .insert([{ 
-        fight_id, 
+        event_id: eventId,
+        fight_number: fightNumber,
         selected_fighter: selectedFighter,
         username 
       }]);
@@ -334,19 +337,32 @@ app.get('/predictions/filter', async (req, res) => {
   if (!fight_id || !selected_fighter) {
     return res.status(400).json({ message: "Missing query parameters" });
   }
-  
-  const { data, error } = await supabase
-    .from('predictions')
-    .select('username, created_at')
-    .eq('fight_id', fight_id)
-    .eq('selected_fighter', selected_fighter);
-  
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error fetching predictions" });
+
+  try {
+    // Parse the composite fight ID (eventId-fightNumber)
+    const [eventId, fightNumber] = fight_id.split('-').map(part => parseInt(part, 10));
+    if (isNaN(eventId) || isNaN(fightNumber)) {
+      return res.status(400).json({ error: 'Invalid fight ID format' });
+    }
+    
+    // Get predictions for this fight
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('username, created_at')
+      .eq('event_id', eventId)
+      .eq('fight_number', fightNumber)
+      .eq('selected_fighter', selected_fighter);
+    
+    if (error) {
+      console.error('Error fetching predictions:', error);
+      return res.status(500).json({ message: "Error fetching predictions" });
+    }
+    
+    res.json(data);
+  } catch (error) {
+    console.error('Error in predictions/filter:', error);
+    res.status(500).json({ message: "Internal server error" });
   }
-  
-  res.json(data);
 });
 
 app.get('/', (req, res) => {
