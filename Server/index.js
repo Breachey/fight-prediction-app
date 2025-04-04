@@ -551,13 +551,11 @@ app.get('/leaderboard', async (req, res) => {
 app.get('/events', async (req, res) => {
   try {
     console.log('Attempting to fetch events from Supabase...');
-    console.log('Using Supabase URL:', process.env.SUPABASE_URL);
-    console.log('Supabase key exists:', !!process.env.SUPABASE_ANON_KEY);
 
     const { data, error } = await supabase
       .from('ufc_fight_card')
-      .select('Event, EventId, Date')
-      .order('Date', { ascending: false });
+      .select('Event, EventId')
+      .order('EventId', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
@@ -577,7 +575,7 @@ app.get('/events', async (req, res) => {
 
     // Remove duplicates using Set
     const uniqueEvents = Array.from(
-      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event, date: event.Date })))
+      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event })))
     ).map(str => JSON.parse(str));
 
     console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
@@ -586,7 +584,7 @@ app.get('/events', async (req, res) => {
     const transformedEvents = uniqueEvents.map(event => ({
       id: event.id,
       name: event.name,
-      date: event.date,
+      date: null, // We don't have date information in the table
       is_completed: false // We'll need to add this to the database if needed
     }));
 
