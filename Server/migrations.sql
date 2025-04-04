@@ -22,4 +22,7 @@ CREATE TABLE IF NOT EXISTS public.prediction_results (
     predicted_correctly BOOLEAN NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
     PRIMARY KEY (user_id, fight_id)
-); 
+);
+
+-- Add is_completed column to fight_results table
+ALTER TABLE fight_results ADD COLUMN IF NOT EXISTS is_completed BOOLEAN DEFAULT false; 

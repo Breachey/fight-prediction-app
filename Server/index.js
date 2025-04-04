@@ -442,8 +442,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       .upsert([
         {
           fight_id: id,
-          winner: winner,
-          is_completed: winner !== null
+          winner: winner
         }
       ], {
         onConflict: ['fight_id']
