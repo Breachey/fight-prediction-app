@@ -1,0 +1,1 @@
+ALTER TABLE predictions ALTER COLUMN fight_id TYPE TEXT;

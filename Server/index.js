@@ -336,7 +336,7 @@ app.get('/predictions/filter', async (req, res) => {
     const { data, error } = await supabase
       .from('predictions')
       .select('username, created_at')
-      .eq('fight_id', fight_id.toString()) // Ensure fight_id is treated as string
+      .eq('fight_id', fight_id) // PostgreSQL will handle the type conversion
       .eq('selected_fighter', selected_fighter);
     
     if (error) {
