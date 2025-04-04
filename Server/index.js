@@ -1,14 +1,51 @@
 const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
 const supabase = createClient(
-  'https://rnixnohdeayspegtrfds.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuaXhub2hkZWF5c3BlZ3RyZmRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyODE3NzksImV4cCI6MjA1ODg1Nzc3OX0.quxIKY4BIWXAxSXVUSP353-sR_NBTCcrVZ8Fuj6hmiE'
+  process.env.SUPABASE_URL || 'https://rnixnohdeayspegtrfds.supabase.co',
+  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuaXhub2hkZWF5c3BlZ3RyZmRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyODE3NzksImV4cCI6MjA1ODg1Nzc3OX0.quxIKY4BIWXAxSXVUSP353-sR_NBTCcrVZ8Fuj6hmiE'
 );
 
 const express = require('express');
 const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Add connection test
+async function testSupabaseConnection() {
+  try {
+    console.log('Testing Supabase connection...');
+    
+    // First test basic connection
+    const { data: countData, error: countError } = await supabase
+      .from('ufc_fight_card')
+      .select('count')
+      .limit(1);
+
+    if (countError) {
+      console.error('Supabase connection test failed:', countError);
+      return false;
+    }
+
+    // Get table structure
+    const { data, error } = await supabase
+      .from('ufc_fight_card')
+      .select()
+      .limit(1);
+
+    if (error) {
+      console.error('Failed to get table structure:', error);
+    } else if (data && data.length > 0) {
+      console.log('Available columns in ufc_fight_card:', Object.keys(data[0]).join(', '));
+    }
+
+    console.log('Supabase connection test successful');
+    return true;
+  } catch (error) {
+    console.error('Error testing Supabase connection:', error);
+    return false;
+  }
+}
 
 app.use(cors());
 app.use(express.json());
@@ -111,34 +148,103 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// Helper function to transform fighter data
+function transformFighterData(fighter) {
+  const record = `${fighter.Wins}-${fighter.Losses}${fighter.Draws > 0 ? `-${fighter.Draws}` : ''}${fighter.NoContests > 0 ? ` (${fighter.NoContests}NC)` : ''}`;
+  const fullName = fighter.Nickname ? 
+    `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
+    `${fighter.FirstName} ${fighter.LastName}`;
+  
+  return {
+    name: fullName,
+    record: record,
+    style: fighter.Stance || 'N/A',
+    image: fighter.ImageURL,
+    rank: null, // We'll need to add this to the database if needed
+    odds: null  // We'll need to add this to the database if needed
+  };
+}
+
 app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
-    const { data: latestEvent, error: eventError } = await supabase
-      .from('events')
-      .select('id')
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
+    const { data: events, error: eventError } = await supabase
+      .from('ufc_fight_card')
+      .select('Event, EventId')
+      .order('EventId', { ascending: false })
+      .limit(1);
 
-    if (eventError) {
+    if (eventError || !events.length) {
       console.error('Error fetching latest event:', eventError);
       return res.status(500).json({ error: 'Failed to fetch latest event' });
     }
 
+    const latestEventId = events[0].EventId;
+
     // Get fights for the latest event
-    const { data: fights, error: fightsError } = await supabase
-      .from('fights')
+    const { data, error: fightsError } = await supabase
+      .from('ufc_fight_card')
       .select('*')
-      .eq('event_id', latestEvent.id)
-      .order('id');
+      .eq('EventId', latestEventId)
+      .order('FightNumber');
 
     if (fightsError) {
       console.error('Error fetching fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
 
-    res.json(fights);
+    // Group fighters by FightNumber
+    const fightMap = new Map();
+    data.forEach(fighter => {
+      if (!fightMap.has(fighter.FightNumber)) {
+        fightMap.set(fighter.FightNumber, {
+          red: null,
+          blue: null,
+          weightclass: fighter.WeightClass,
+          card_tier: fighter.CardSegment
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightNumber).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightNumber).blue = fighter;
+      }
+    });
+
+    // Transform the grouped data into the expected structure
+    const transformedFights = Array.from(fightMap.entries())
+      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
+      .map(([fightNumber, fight]) => {
+        const redFighter = transformFighterData(fight.red);
+        const blueFighter = transformFighterData(fight.blue);
+
+        return {
+          id: `${latestEventId}-${fightNumber}`, // Create a unique ID
+          event_id: latestEventId,
+          fighter1_name: redFighter.name,
+          fighter1_rank: redFighter.rank,
+          fighter1_record: redFighter.record,
+          fighter1_odds: redFighter.odds,
+          fighter1_style: redFighter.style,
+          fighter1_image: redFighter.image,
+          fighter2_name: blueFighter.name,
+          fighter2_rank: blueFighter.rank,
+          fighter2_record: blueFighter.record,
+          fighter2_odds: blueFighter.odds,
+          fighter2_style: blueFighter.style,
+          fighter2_image: blueFighter.image,
+          winner: null, // We'll need to add this to the database if needed
+          is_completed: false, // We'll need to add this to the database if needed
+          card_tier: fight.card_tier,
+          weightclass: fight.weightclass,
+          bout_order: fightNumber
+        };
+      })
+      .sort((a, b) => a.bout_order - b.bout_order);
+
+    res.json(transformedFights);
   } catch (error) {
     console.error('Error in GET /fights:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -153,17 +259,17 @@ app.post('/predict', async (req, res) => {
   }
 
   try {
-    // Convert fightId to integer
-    const fight_id = parseInt(fightId, 10);
-    if (isNaN(fight_id)) {
-      return res.status(400).json({ error: "Invalid fight ID" });
-    }
+    console.log('Received prediction request:', {
+      fightId,
+      selectedFighter,
+      username
+    });
 
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
       .select('*')
-      .eq('fight_id', fight_id)
+      .eq('fight_id', fightId)
       .eq('username', username)
       .single();
 
@@ -173,11 +279,12 @@ app.post('/predict', async (req, res) => {
     }
 
     if (existingPrediction) {
+      console.log('Updating existing prediction:', existingPrediction);
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
         .update({ selected_fighter: selectedFighter })
-        .eq('fight_id', fight_id)
+        .eq('fight_id', fightId)
         .eq('username', username);
 
       if (updateError) {
@@ -188,11 +295,12 @@ app.post('/predict', async (req, res) => {
       return res.status(200).json({ message: "Prediction updated successfully" });
     }
 
+    console.log('Inserting new prediction');
     // Insert new prediction
     const { error: insertError } = await supabase
       .from('predictions')
       .insert([{ 
-        fight_id, 
+        fight_id: fightId,
         selected_fighter: selectedFighter,
         username 
       }]);
@@ -202,6 +310,7 @@ app.post('/predict', async (req, res) => {
       return res.status(500).json({ error: "Error saving prediction" });
     }
 
+    console.log('Prediction saved successfully');
     res.status(200).json({ message: "Prediction saved successfully" });
   } catch (err) {
     console.error('Server error:', err);
@@ -226,60 +335,151 @@ app.get('/predictions/filter', async (req, res) => {
   const { fight_id, selected_fighter } = req.query;
   
   if (!fight_id || !selected_fighter) {
+    console.log('Missing parameters:', { fight_id, selected_fighter });
     return res.status(400).json({ message: "Missing query parameters" });
   }
-  
-  const { data, error } = await supabase
-    .from('predictions')
-    .select('username, created_at')
-    .eq('fight_id', fight_id)
-    .eq('selected_fighter', selected_fighter);
-  
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error fetching predictions" });
+
+  try {
+    console.log('Fetching predictions with params:', {
+      fight_id,
+      selected_fighter,
+      fight_id_type: typeof fight_id,
+      selected_fighter_type: typeof selected_fighter
+    });
+    
+    // First, let's log what's in the predictions table
+    const { data: allPredictions, error: checkError } = await supabase
+      .from('predictions')
+      .select('*');
+    
+    if (checkError) {
+      console.error('Error checking predictions table:', checkError);
+    } else {
+      console.log('All predictions in table:', allPredictions);
+      
+      // Log unique fighter names in predictions
+      const uniqueFighters = [...new Set(allPredictions.map(p => p.selected_fighter))];
+      console.log('Unique fighters in predictions:', uniqueFighters);
+      
+      // Log predictions for this specific fight
+      const fightPredictions = allPredictions.filter(p => p.fight_id === fight_id);
+      console.log('Predictions for this fight:', fightPredictions);
+    }
+    
+    // Get predictions for this fight with exact match
+    const { data: exactMatches, error: exactError } = await supabase
+      .from('predictions')
+      .select('username, created_at')
+      .eq('fight_id', fight_id)
+      .eq('selected_fighter', selected_fighter);
+    
+    if (exactError) {
+      console.error('Error fetching predictions (exact match):', exactError);
+      console.error('Error details:', {
+        message: exactError.message,
+        details: exactError.details,
+        hint: exactError.hint,
+        code: exactError.code
+      });
+      return res.status(500).json({ message: "Error fetching predictions" });
+    }
+    
+    // Try alternative name formats if no exact matches
+    if (!exactMatches || exactMatches.length === 0) {
+      console.log('No exact matches found, checking alternative formats');
+      
+      // Parse the fighter name components
+      const nameParts = selected_fighter.match(/^([^\s"]+)\s+"([^"]+)"\s+([^\s"]+)$/);
+      if (nameParts) {
+        const [_, firstName, nickname, lastName] = nameParts;
+        console.log('Parsed name parts:', { firstName, nickname, lastName });
+        
+        // Try without nickname
+        const simpleName = `${firstName} ${lastName}`;
+        console.log('Trying simple name format:', simpleName);
+        
+        const { data: simpleMatches, error: simpleError } = await supabase
+          .from('predictions')
+          .select('username, created_at')
+          .eq('fight_id', fight_id)
+          .eq('selected_fighter', simpleName);
+          
+        if (simpleError) {
+          console.error('Error fetching predictions (simple name):', simpleError);
+        } else if (simpleMatches && simpleMatches.length > 0) {
+          console.log('Found matches with simple name format');
+          return res.json(simpleMatches);
+        }
+      }
+    }
+    
+    console.log('Successfully fetched predictions:', {
+      fight_id,
+      selected_fighter,
+      results: exactMatches
+    });
+    res.json(exactMatches || []);
+  } catch (error) {
+    console.error('Error in predictions/filter:', error);
+    res.status(500).json({ message: "Internal server error" });
   }
-  
-  res.json(data);
 });
 
 app.get('/', (req, res) => {
-  res.send('API is running');
+  res.json({ status: 'API is running' });
 });
 
-app.post('/fights/:id/result', async (req, res) => {
+app.post('/ufc_fight_card/:id/result', async (req, res) => {
   try {
     const { id } = req.params;
     const { winner } = req.body;
-    
-    // Update fight with winner and mark as completed
-    // If winner is null, we're unsetting the result
+
+    console.log('Updating fight result:', { id, winner, idType: typeof id });
+
+    // Update fight_results table
     const { error: updateError } = await supabase
-      .from('fights')
-      .update({
-        winner: winner,
-        is_completed: winner !== null
-      })
-      .eq('id', id);
+      .from('fight_results')
+      .upsert([
+        {
+          fight_id: id,
+          winner: winner
+        }
+      ], {
+        onConflict: ['fight_id']
+      });
 
     if (updateError) {
-      console.error('Error updating fight:', updateError);
-      return res.status(500).json({ error: 'Failed to update fight' });
+      console.error('Error updating fight result:', updateError);
+      console.error('Error details:', {
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+        code: updateError.code
+      });
+      return res.status(500).json({ error: 'Failed to update fight result' });
     }
 
-    // If we're unsetting the result, delete any existing fight results
+    // If we're unsetting the result, delete any existing prediction results
     if (winner === null) {
+      console.log('Deleting prediction results for fight:', id);
       const { error: deleteError } = await supabase
-        .from('fight_results')
+        .from('prediction_results')
         .delete()
         .eq('fight_id', id);
 
       if (deleteError) {
-        console.error('Error deleting fight results:', deleteError);
-        return res.status(500).json({ error: 'Failed to delete fight results' });
+        console.error('Error deleting prediction results:', deleteError);
+        console.error('Error details:', {
+          message: deleteError.message,
+          details: deleteError.details,
+          hint: deleteError.hint,
+          code: deleteError.code
+        });
+        return res.status(500).json({ error: 'Failed to delete prediction results' });
       }
     } else {
       // Get all predictions for this fight
+      console.log('Fetching predictions for fight:', id);
       const { data: predictions, error: predictionsError } = await supabase
         .from('predictions')
         .select('username, selected_fighter')
@@ -287,19 +487,35 @@ app.post('/fights/:id/result', async (req, res) => {
 
       if (predictionsError) {
         console.error('Error fetching predictions:', predictionsError);
+        console.error('Error details:', {
+          message: predictionsError.message,
+          details: predictionsError.details,
+          hint: predictionsError.hint,
+          code: predictionsError.code
+        });
         return res.status(500).json({ error: 'Failed to fetch predictions' });
       }
 
-      // Update fight_results for each prediction
+      console.log('Found predictions for this fight:', predictions);
+
+      // Update prediction_results for each prediction
       for (const prediction of predictions) {
         const predicted_correctly = prediction.selected_fighter === winner;
+        const event_id = id.split('-')[0]; // Extract event_id from fight_id
+        console.log('Updating prediction result:', {
+          user_id: prediction.username,
+          fight_id: id,
+          event_id,
+          predicted_correctly
+        });
         
         const { error: resultError } = await supabase
-          .from('fight_results')
+          .from('prediction_results')
           .upsert([
             {
               user_id: prediction.username,
               fight_id: id,
+              event_id: event_id,
               predicted_correctly: predicted_correctly
             }
           ], {
@@ -307,40 +523,104 @@ app.post('/fights/:id/result', async (req, res) => {
           });
 
         if (resultError) {
-          console.error('Error updating fight result:', resultError);
-          return res.status(500).json({ error: 'Failed to update fight result' });
+          console.error('Error updating prediction result:', resultError);
+          console.error('Error details:', {
+            message: resultError.message,
+            details: resultError.details,
+            hint: resultError.hint,
+            code: resultError.code
+          });
+          return res.status(500).json({ error: 'Failed to update prediction result' });
         }
       }
     }
 
     // Get the updated fight data
-    const { data: updatedFight, error: getFightError } = await supabase
-      .from('fights')
+    const [eventId, fightNumber] = id.split('-').map(part => parseInt(part, 10));
+    console.log('Parsed fight ID:', { eventId, fightNumber });
+    
+    const { data: fightData, error: getFightError } = await supabase
+      .from('ufc_fight_card')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('EventId', eventId)
+      .eq('FightNumber', fightNumber);
 
     if (getFightError) {
       console.error('Error fetching updated fight:', getFightError);
       return res.status(500).json({ error: 'Failed to fetch updated fight' });
     }
 
-    res.json(updatedFight);
+    console.log('Fetched fight data:', fightData);
+
+    // Transform the fight data to match the expected structure
+    const fightMap = new Map();
+    fightData.forEach(fighter => {
+      if (!fightMap.has(fighter.FightNumber)) {
+        fightMap.set(fighter.FightNumber, {
+          red: null,
+          blue: null,
+          weightclass: fighter.WeightClass,
+          card_tier: fighter.CardSegment
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightNumber).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightNumber).blue = fighter;
+      }
+    });
+
+    const fight = fightMap.get(fightNumber);
+    if (!fight || !fight.red || !fight.blue) {
+      console.error('Fight not found in transformed data:', { fightNumber, fight });
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+
+    const redFighter = transformFighterData(fight.red);
+    const blueFighter = transformFighterData(fight.blue);
+
+    const transformedFight = {
+      id: id,
+      event_id: eventId,
+      fighter1_name: redFighter.name,
+      fighter1_rank: redFighter.rank,
+      fighter1_record: redFighter.record,
+      fighter1_odds: redFighter.odds,
+      fighter1_style: redFighter.style,
+      fighter1_image: redFighter.image,
+      fighter2_name: blueFighter.name,
+      fighter2_rank: blueFighter.rank,
+      fighter2_record: blueFighter.record,
+      fighter2_odds: blueFighter.odds,
+      fighter2_style: blueFighter.style,
+      fighter2_image: blueFighter.image,
+      winner: winner,
+      is_completed: winner !== null,
+      card_tier: fight.card_tier,
+      weightclass: fight.weightclass,
+      bout_order: fightNumber
+    };
+
+    console.log('Returning transformed fight:', transformedFight);
+    res.json(transformedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to update fight result' });
   }
 });
 
 app.get('/leaderboard', async (req, res) => {
   try {
-    // First get all fight results
+    // Get all prediction results
     const { data: results, error: resultsError } = await supabase
-      .from('fight_results')
+      .from('prediction_results')
       .select('*');
 
     if (resultsError) {
-      console.error('Error fetching fight results:', resultsError);
+      console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
@@ -382,20 +662,53 @@ app.get('/leaderboard', async (req, res) => {
 // Get all events
 app.get('/events', async (req, res) => {
   try {
+    console.log('Attempting to fetch events from Supabase...');
+
     const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('date', { ascending: false });
+      .from('ufc_fight_card')
+      .select('Event, EventId')
+      .order('EventId', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
-      return res.status(500).json({ error: 'Failed to fetch events' });
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      return res.status(500).json({ error: 'Failed to fetch events', details: error.message });
     }
 
-    res.json(data);
+    if (!data) {
+      console.log('No data returned from Supabase');
+      return res.status(404).json({ error: 'No events found' });
+    }
+
+    // Remove duplicates using Set
+    const uniqueEvents = Array.from(
+      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event })))
+    ).map(str => JSON.parse(str));
+
+    console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
+
+    // Transform the data to match the expected structure
+    const transformedEvents = uniqueEvents.map(event => ({
+      id: event.id,
+      name: event.name,
+      date: null, // We don't have date information in the table
+      is_completed: false // We'll need to add this to the database if needed
+    }));
+
+    res.json(transformedEvents);
   } catch (error) {
-    console.error('Error in GET /events:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Unexpected error in GET /events:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -404,17 +717,68 @@ app.get('/events/:id/fights', async (req, res) => {
   try {
     const { id } = req.params;
     const { data, error } = await supabase
-      .from('fights')
+      .from('ufc_fight_card')
       .select('*')
-      .eq('event_id', id)
-      .order('id');
+      .eq('EventId', id)
+      .order('FightNumber');
 
     if (error) {
       console.error('Error fetching fights for event:', error);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
 
-    res.json(data);
+    // Group fighters by FightNumber
+    const fightMap = new Map();
+    data.forEach(fighter => {
+      if (!fightMap.has(fighter.FightNumber)) {
+        fightMap.set(fighter.FightNumber, {
+          red: null,
+          blue: null,
+          weightclass: fighter.WeightClass,
+          card_tier: fighter.CardSegment
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightNumber).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightNumber).blue = fighter;
+      }
+    });
+
+    // Transform the grouped data into the expected structure
+    const transformedFights = Array.from(fightMap.entries())
+      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
+      .map(([fightNumber, fight]) => {
+        const redFighter = transformFighterData(fight.red);
+        const blueFighter = transformFighterData(fight.blue);
+
+        return {
+          id: `${id}-${fightNumber}`, // Create a unique ID
+          event_id: id,
+          fighter1_name: redFighter.name,
+          fighter1_rank: redFighter.rank,
+          fighter1_record: redFighter.record,
+          fighter1_odds: redFighter.odds,
+          fighter1_style: redFighter.style,
+          fighter1_image: redFighter.image,
+          fighter2_name: blueFighter.name,
+          fighter2_rank: blueFighter.rank,
+          fighter2_record: blueFighter.record,
+          fighter2_odds: blueFighter.odds,
+          fighter2_style: blueFighter.style,
+          fighter2_image: blueFighter.image,
+          winner: null, // We'll need to add this to the database if needed
+          is_completed: false, // We'll need to add this to the database if needed
+          card_tier: fight.card_tier,
+          weightclass: fight.weightclass,
+          bout_order: fightNumber
+        };
+      })
+      .sort((a, b) => a.bout_order - b.bout_order);
+
+    res.json(transformedFights);
   } catch (error) {
     console.error('Error in GET /events/:id/fights:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -426,27 +790,14 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get all fights for this event
-    const { data: eventFights, error: fightsError } = await supabase
-      .from('fights')
-      .select('id')
+    // Get all prediction results for this event
+    const { data: results, error: resultsError } = await supabase
+      .from('prediction_results')
+      .select('*')
       .eq('event_id', id);
 
-    if (fightsError) {
-      console.error('Error fetching event fights:', fightsError);
-      return res.status(500).json({ error: 'Failed to fetch event fights' });
-    }
-
-    const fightIds = eventFights.map(fight => fight.id);
-
-    // Get all fight results for these fights
-    const { data: results, error: resultsError } = await supabase
-      .from('fight_results')
-      .select('*')
-      .in('fight_id', fightIds);
-
     if (resultsError) {
-      console.error('Error fetching fight results:', resultsError);
+      console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
@@ -485,6 +836,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  const connectionSuccess = await testSupabaseConnection();
+  if (!connectionSuccess) {
+    console.error('WARNING: Failed to connect to Supabase on startup');
+  }
 });

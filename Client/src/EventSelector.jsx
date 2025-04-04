@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './EventSelector.css';
+import { API_URL } from './config';
 
 function EventSelector({ onEventSelect, selectedEventId }) {
   const [events, setEvents] = useState([]);
@@ -14,7 +15,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
   const fetchEvents = async () => {
     try {
-      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/events');
+      const response = await fetch(`${API_URL}/events`);
       if (!response.ok) {
         throw new Error('Failed to fetch events');
       }
@@ -60,7 +61,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
         <span>
           {selectedEvent ? (
             <>
-              {selectedEvent.name} - {new Date(selectedEvent.date).toLocaleDateString()}
+              {selectedEvent.name}
               <span className={`status-badge ${selectedEvent.is_completed ? 'completed' : 'active'}`}>
                 {selectedEvent.is_completed ? 'Completed' : 'Active'}
               </span>
@@ -83,7 +84,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             onMouseLeave={() => setHoveredId(null)}
           >
             <span>
-              {event.name} - {new Date(event.date).toLocaleDateString()}
+              {event.name}
             </span>
             <span className={`status-badge ${event.is_completed ? 'completed' : 'active'}`}>
               {event.is_completed ? 'Completed' : 'Active'}
@@ -102,4 +103,4 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   );
 }
 
-export default EventSelector; 
+export default EventSelector;
