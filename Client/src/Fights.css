@@ -73,17 +73,67 @@
 }
 
 .fighter-card {
-  flex: 1;
-  min-width: 250px;
-  padding: 20px;
-  border-radius: 12px;
   background-color: #1a1a1a;
-  border: 1px solid #4c1d95;
-  cursor: pointer;
+  border-radius: 12px;
+  padding: 20px;
+  color: #ffffff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
-  color: #e9d5ff;
-  box-sizing: border-box;
   position: relative;
+  overflow: hidden;
+}
+
+.fighter-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+}
+
+.fighter-card:first-child::before {
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+}
+
+.fighter-card:last-child::before {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+}
+
+.fighter-card:first-child {
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 6px rgba(239, 68, 68, 0.1);
+}
+
+.fighter-card:last-child {
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 6px rgba(59, 130, 246, 0.1);
+}
+
+.fighter-card:first-child::after {
+  content: 'RED CORNER';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #ef4444;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.fighter-card:last-child::after {
+  content: 'BLUE CORNER';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #3b82f6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
 }
 
 .fighter-card:hover:not(.completed):not(.unselected) {
@@ -91,10 +141,16 @@
   box-shadow: 0 4px 12px rgba(76, 29, 149, 0.2);
 }
 
-.fighter-card.selected {
-  border: 2px solid #22c55e;
-  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
-  background: linear-gradient(145deg, #1a1a1a 0%, #1c2f1e 100%);
+.fighter-card.selected:first-child {
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+  background: linear-gradient(145deg, #1a1a1a 0%, #2d1f1f 100%);
+}
+
+.fighter-card.selected:last-child {
+  border: 2px solid #3b82f6;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+  background: linear-gradient(145deg, #1a1a1a 0%, #1f2d3d 100%);
 }
 
 .fighter-card.unselected {
@@ -354,7 +410,7 @@
     box-sizing: border-box;
   }
 
-  .fighter-card.selected {
+  .fighter-card.selected:first-child {
     transform: none;
     border-width: 2px;
   }
