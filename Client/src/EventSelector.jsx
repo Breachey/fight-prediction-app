@@ -61,7 +61,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
         <span>
           {selectedEvent ? (
             <>
-              {selectedEvent.name} - {new Date(selectedEvent.date).toLocaleDateString()}
+              {selectedEvent.name}
               <span className={`status-badge ${selectedEvent.is_completed ? 'completed' : 'active'}`}>
                 {selectedEvent.is_completed ? 'Completed' : 'Active'}
               </span>
@@ -84,7 +84,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             onMouseLeave={() => setHoveredId(null)}
           >
             <span>
-              {event.name} - {new Date(event.date).toLocaleDateString()}
+              {event.name}
             </span>
             <span className={`status-badge ${event.is_completed ? 'completed' : 'active'}`}>
               {event.is_completed ? 'Completed' : 'Active'}
@@ -103,4 +103,4 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   );
 }
 
-export default EventSelector; 
+export default EventSelector;
