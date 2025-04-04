@@ -321,31 +321,42 @@ app.post('/fights/:id/result', async (req, res) => {
     const { id } = req.params;
     const { winner } = req.body;
     
-    // Update fight with winner and mark as completed
-    // If winner is null, we're unsetting the result
-    const { error: updateError } = await supabase
-      .from('fights')
-      .update({
-        winner: winner,
-        is_completed: winner !== null
-      })
-      .eq('id', id);
-
-    if (updateError) {
-      console.error('Error updating fight:', updateError);
-      return res.status(500).json({ error: 'Failed to update fight' });
+    // Parse the composite ID to get eventId and fightNumber
+    const [eventId, fightNumber] = id.split('-').map(part => parseInt(part, 10));
+    if (isNaN(eventId) || isNaN(fightNumber)) {
+      return res.status(400).json({ error: 'Invalid fight ID format' });
     }
 
-    // If we're unsetting the result, delete any existing fight results
+    // Update fight_results table
+    const { error: updateError } = await supabase
+      .from('fight_results')
+      .upsert([
+        {
+          event_id: eventId,
+          fight_number: fightNumber,
+          winner: winner,
+          is_completed: winner !== null
+        }
+      ], {
+        onConflict: ['event_id', 'fight_number']
+      });
+
+    if (updateError) {
+      console.error('Error updating fight result:', updateError);
+      return res.status(500).json({ error: 'Failed to update fight result' });
+    }
+
+    // If we're unsetting the result, delete any existing prediction results
     if (winner === null) {
       const { error: deleteError } = await supabase
-        .from('fight_results')
+        .from('prediction_results')
         .delete()
-        .eq('fight_id', id);
+        .eq('event_id', eventId)
+        .eq('fight_number', fightNumber);
 
       if (deleteError) {
-        console.error('Error deleting fight results:', deleteError);
-        return res.status(500).json({ error: 'Failed to delete fight results' });
+        console.error('Error deleting prediction results:', deleteError);
+        return res.status(500).json({ error: 'Failed to delete prediction results' });
       }
     } else {
       // Get all predictions for this fight
@@ -359,42 +370,93 @@ app.post('/fights/:id/result', async (req, res) => {
         return res.status(500).json({ error: 'Failed to fetch predictions' });
       }
 
-      // Update fight_results for each prediction
+      // Update prediction_results for each prediction
       for (const prediction of predictions) {
         const predicted_correctly = prediction.selected_fighter === winner;
         
         const { error: resultError } = await supabase
-          .from('fight_results')
+          .from('prediction_results')
           .upsert([
             {
               user_id: prediction.username,
-              fight_id: id,
+              event_id: eventId,
+              fight_number: fightNumber,
               predicted_correctly: predicted_correctly
             }
           ], {
-            onConflict: ['user_id', 'fight_id']
+            onConflict: ['user_id', 'event_id', 'fight_number']
           });
 
         if (resultError) {
-          console.error('Error updating fight result:', resultError);
-          return res.status(500).json({ error: 'Failed to update fight result' });
+          console.error('Error updating prediction result:', resultError);
+          return res.status(500).json({ error: 'Failed to update prediction result' });
         }
       }
     }
 
     // Get the updated fight data
-    const { data: updatedFight, error: getFightError } = await supabase
-      .from('fights')
+    const { data: fightData, error: getFightError } = await supabase
+      .from('ufc_fight_card')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('EventId', eventId)
+      .eq('FightNumber', fightNumber);
 
     if (getFightError) {
       console.error('Error fetching updated fight:', getFightError);
       return res.status(500).json({ error: 'Failed to fetch updated fight' });
     }
 
-    res.json(updatedFight);
+    // Transform the fight data to match the expected structure
+    const fightMap = new Map();
+    fightData.forEach(fighter => {
+      if (!fightMap.has(fighter.FightNumber)) {
+        fightMap.set(fighter.FightNumber, {
+          red: null,
+          blue: null,
+          weightclass: fighter.WeightClass,
+          card_tier: fighter.CardSegment
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightNumber).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightNumber).blue = fighter;
+      }
+    });
+
+    const fight = fightMap.get(fightNumber);
+    if (!fight || !fight.red || !fight.blue) {
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+
+    const redFighter = transformFighterData(fight.red);
+    const blueFighter = transformFighterData(fight.blue);
+
+    const transformedFight = {
+      id: id,
+      event_id: eventId,
+      fighter1_name: redFighter.name,
+      fighter1_rank: redFighter.rank,
+      fighter1_record: redFighter.record,
+      fighter1_odds: redFighter.odds,
+      fighter1_style: redFighter.style,
+      fighter1_image: redFighter.image,
+      fighter2_name: blueFighter.name,
+      fighter2_rank: blueFighter.rank,
+      fighter2_record: blueFighter.record,
+      fighter2_odds: blueFighter.odds,
+      fighter2_style: blueFighter.style,
+      fighter2_image: blueFighter.image,
+      winner: winner,
+      is_completed: winner !== null,
+      card_tier: fight.card_tier,
+      weightclass: fight.weightclass,
+      bout_order: fightNumber
+    };
+
+    res.json(transformedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
     res.status(500).json({ error: 'Failed to update fight result' });
@@ -452,16 +514,24 @@ app.get('/leaderboard', async (req, res) => {
 app.get('/events', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('date', { ascending: false });
+      .from('ufc_fight_card')
+      .select('distinct Event, EventId, EventDate')
+      .order('EventDate', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
       return res.status(500).json({ error: 'Failed to fetch events' });
     }
 
-    res.json(data);
+    // Transform the data to match the expected structure
+    const transformedEvents = data.map(event => ({
+      id: event.EventId,
+      name: event.Event,
+      date: event.EventDate,
+      is_completed: false // We'll need to add this to the database if needed
+    }));
+
+    res.json(transformedEvents);
   } catch (error) {
     console.error('Error in GET /events:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -546,27 +616,14 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get all fights for this event
-    const { data: eventFights, error: fightsError } = await supabase
-      .from('fights')
-      .select('id')
+    // Get all prediction results for this event
+    const { data: results, error: resultsError } = await supabase
+      .from('prediction_results')
+      .select('*')
       .eq('event_id', id);
 
-    if (fightsError) {
-      console.error('Error fetching event fights:', fightsError);
-      return res.status(500).json({ error: 'Failed to fetch event fights' });
-    }
-
-    const fightIds = eventFights.map(fight => fight.id);
-
-    // Get all fight results for these fights
-    const { data: results, error: resultsError } = await supabase
-      .from('fight_results')
-      .select('*')
-      .in('fight_id', fightIds);
-
     if (resultsError) {
-      console.error('Error fetching fight results:', resultsError);
+      console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
