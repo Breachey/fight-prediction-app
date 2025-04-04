@@ -156,7 +156,7 @@ app.get('/fights', async (req, res) => {
     // Get the latest event
     const { data: events, error: eventError } = await supabase
       .from('ufc_fight_card')
-      .select('distinct Event, EventId')
+      .select('Event, EventId')
       .order('EventId', { ascending: false })
       .limit(1);
 
