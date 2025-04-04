@@ -614,13 +614,13 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
 
 app.get('/leaderboard', async (req, res) => {
   try {
-    // First get all fight results
+    // Get all prediction results
     const { data: results, error: resultsError } = await supabase
-      .from('fight_results')
+      .from('prediction_results')
       .select('*');
 
     if (resultsError) {
-      console.error('Error fetching fight results:', resultsError);
+      console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
