@@ -326,25 +326,52 @@ app.get('/predictions/filter', async (req, res) => {
   const { fight_id, selected_fighter } = req.query;
   
   if (!fight_id || !selected_fighter) {
+    console.log('Missing parameters:', { fight_id, selected_fighter });
     return res.status(400).json({ message: "Missing query parameters" });
   }
 
   try {
-    console.log('Fetching predictions for fight_id:', fight_id, 'and selected_fighter:', selected_fighter);
+    console.log('Fetching predictions with params:', {
+      fight_id,
+      selected_fighter,
+      fight_id_type: typeof fight_id,
+      selected_fighter_type: typeof selected_fighter
+    });
+    
+    // First, let's log what's in the predictions table
+    const { data: allPredictions, error: checkError } = await supabase
+      .from('predictions')
+      .select('*');
+    
+    if (checkError) {
+      console.error('Error checking predictions table:', checkError);
+    } else {
+      console.log('All predictions in table:', allPredictions);
+    }
     
     // Get predictions for this fight
     const { data, error } = await supabase
       .from('predictions')
       .select('username, created_at')
-      .eq('fight_id', fight_id) // PostgreSQL will handle the type conversion
+      .eq('fight_id', fight_id)
       .eq('selected_fighter', selected_fighter);
     
     if (error) {
       console.error('Error fetching predictions:', error);
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
       return res.status(500).json({ message: "Error fetching predictions" });
     }
     
-    console.log('Successfully fetched predictions:', data);
+    console.log('Successfully fetched predictions:', {
+      fight_id,
+      selected_fighter,
+      results: data
+    });
     res.json(data);
   } catch (error) {
     console.error('Error in predictions/filter:', error);

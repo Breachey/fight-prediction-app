@@ -129,19 +129,43 @@ function Fights({ eventId, username }) {
         const fight = fights.find(f => f.id === fightId);
         if (!fight) return;
 
+        console.log('Fetching votes for fight:', {
+          fightId,
+          fighter1: fight.fighter1_name,
+          fighter2: fight.fighter2_name,
+          encodedFighter1: encodeURIComponent(fight.fighter1_name),
+          encodedFighter2: encodeURIComponent(fight.fighter2_name)
+        });
+
         const [fighter1Response, fighter2Response] = await Promise.all([
           fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
           fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
         ]);
 
-        if (!fighter1Response.ok || !fighter2Response.ok) {
-          throw new Error('Failed to fetch votes');
+        if (!fighter1Response.ok) {
+          console.error('Fighter 1 response error:', await fighter1Response.text());
+          throw new Error('Failed to fetch votes for fighter 1');
+        }
+        if (!fighter2Response.ok) {
+          console.error('Fighter 2 response error:', await fighter2Response.text());
+          throw new Error('Failed to fetch votes for fighter 2');
         }
 
         const [fighter1Votes, fighter2Votes] = await Promise.all([
           fighter1Response.json(),
           fighter2Response.json()
         ]);
+
+        console.log('Received votes:', {
+          fighter1: {
+            name: fight.fighter1_name,
+            votes: fighter1Votes
+          },
+          fighter2: {
+            name: fight.fighter2_name,
+            votes: fighter2Votes
+          }
+        });
 
         setFightVotes(prev => ({
           ...prev,
