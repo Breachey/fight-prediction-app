@@ -40,6 +40,8 @@ function FightAdmin({ eventId }) {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
         throw new Error('Failed to update fight result');
       }
 
@@ -215,4 +217,4 @@ function FightAdmin({ eventId }) {
   );
 }
 
-export default FightAdmin; 
+export default FightAdmin;
