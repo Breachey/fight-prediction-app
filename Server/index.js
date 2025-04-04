@@ -111,177 +111,34 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Helper function to transform fighter data
-function transformFighterData(fighter) {
-  const record = `${fighter.Wins}-${fighter.Losses}${fighter.Draws > 0 ? `-${fighter.Draws}` : ''}${fighter.NoContests > 0 ? ` (${fighter.NoContests}NC)` : ''}`;
-  const fullName = fighter.Nickname ? 
-    `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
-    `${fighter.FirstName} ${fighter.LastName}`;
-  
-  return {
-    name: fullName,
-    record: record,
-    style: fighter.Stance || 'N/A',
-    image: fighter.ImageURL,
-    rank: null, // We'll need to add this to the database if needed
-    odds: null  // We'll need to add this to the database if needed
-  };
-}
-
-// Get fights for a specific event
-app.get('/events/:id/fights', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data, error } = await supabase
-      .from('ufc_fight_card')
-      .select('*')
-      .eq('EventId', id)
-      .order('FightNumber');
-
-    if (error) {
-      console.error('Error fetching fights for event:', error);
-      return res.status(500).json({ error: 'Failed to fetch fights' });
-    }
-
-    // Group fighters by FightNumber
-    const fightMap = new Map();
-    data.forEach(fighter => {
-      if (!fightMap.has(fighter.FightNumber)) {
-        fightMap.set(fighter.FightNumber, {
-          red: null,
-          blue: null,
-          weightclass: fighter.WeightClass,
-          card_tier: fighter.CardSegment
-        });
-      }
-      
-      const corner = fighter.Corner?.toLowerCase();
-      if (corner === 'red') {
-        fightMap.get(fighter.FightNumber).red = fighter;
-      } else if (corner === 'blue') {
-        fightMap.get(fighter.FightNumber).blue = fighter;
-      }
-    });
-
-    // Transform the grouped data into the expected structure
-    const transformedFights = Array.from(fightMap.entries())
-      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightNumber, fight]) => {
-        const redFighter = transformFighterData(fight.red);
-        const blueFighter = transformFighterData(fight.blue);
-
-        return {
-          id: `${id}-${fightNumber}`, // Create a unique ID
-          event_id: id,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
-          winner: null, // We'll need to add this to the database if needed
-          is_completed: false, // We'll need to add this to the database if needed
-          card_tier: fight.card_tier,
-          weightclass: fight.weightclass,
-          bout_order: fightNumber
-        };
-      })
-      .sort((a, b) => a.bout_order - b.bout_order);
-
-    res.json(transformedFights);
-  } catch (error) {
-    console.error('Error in GET /events/:id/fights:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Modify the /fights endpoint similarly
 app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
-    const { data: events, error: eventError } = await supabase
-      .from('ufc_fight_card')
-      .select('distinct EventId, Event')
-      .order('EventId', { ascending: false })
-      .limit(1);
+    const { data: latestEvent, error: eventError } = await supabase
+      .from('events')
+      .select('id')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
 
-    if (eventError || !events.length) {
+    if (eventError) {
       console.error('Error fetching latest event:', eventError);
       return res.status(500).json({ error: 'Failed to fetch latest event' });
     }
 
-    const latestEventId = events[0].EventId;
-
-    // Get fights for the latest event using the same logic as above
-    const { data, error: fightsError } = await supabase
-      .from('ufc_fight_card')
+    // Get fights for the latest event
+    const { data: fights, error: fightsError } = await supabase
+      .from('fights')
       .select('*')
-      .eq('EventId', latestEventId)
-      .order('FightNumber');
+      .eq('event_id', latestEvent.id)
+      .order('id');
 
     if (fightsError) {
       console.error('Error fetching fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
 
-    // Group fighters by FightNumber
-    const fightMap = new Map();
-    data.forEach(fighter => {
-      if (!fightMap.has(fighter.FightNumber)) {
-        fightMap.set(fighter.FightNumber, {
-          red: null,
-          blue: null,
-          weightclass: fighter.WeightClass,
-          card_tier: fighter.CardSegment
-        });
-      }
-      
-      const corner = fighter.Corner?.toLowerCase();
-      if (corner === 'red') {
-        fightMap.get(fighter.FightNumber).red = fighter;
-      } else if (corner === 'blue') {
-        fightMap.get(fighter.FightNumber).blue = fighter;
-      }
-    });
-
-    // Transform the grouped data into the expected structure
-    const transformedFights = Array.from(fightMap.entries())
-      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightNumber, fight]) => {
-        const redFighter = transformFighterData(fight.red);
-        const blueFighter = transformFighterData(fight.blue);
-
-        return {
-          id: `${latestEventId}-${fightNumber}`, // Create a unique ID
-          event_id: latestEventId,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
-          winner: null, // We'll need to add this to the database if needed
-          is_completed: false, // We'll need to add this to the database if needed
-          card_tier: fight.card_tier,
-          weightclass: fight.weightclass,
-          bout_order: fightNumber
-        };
-      })
-      .sort((a, b) => a.bout_order - b.bout_order);
-
-    res.json(transformedFights);
+    res.json(fights);
   } catch (error) {
     console.error('Error in GET /fights:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -398,7 +255,7 @@ app.post('/fights/:id/result', async (req, res) => {
     // Update fight with winner and mark as completed
     // If winner is null, we're unsetting the result
     const { error: updateError } = await supabase
-      .from('ufc_fight_card')
+      .from('fights')
       .update({
         winner: winner,
         is_completed: winner !== null
@@ -458,7 +315,7 @@ app.post('/fights/:id/result', async (req, res) => {
 
     // Get the updated fight data
     const { data: updatedFight, error: getFightError } = await supabase
-      .from('ufc_fight_card')
+      .from('fights')
       .select('*')
       .eq('id', id)
       .single();
@@ -468,29 +325,7 @@ app.post('/fights/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch updated fight' });
     }
 
-    // Transform the fight data to match the expected structure
-    const transformedFight = {
-      id: updatedFight.id,
-      event_id: updatedFight.event_id,
-      fighter1_name: updatedFight.fighter_1,
-      fighter1_rank: updatedFight.fighter_1_rank,
-      fighter1_record: updatedFight.fighter_1_record,
-      fighter1_odds: updatedFight.fighter_1_odds,
-      fighter1_style: updatedFight.fighter_1_style,
-      fighter1_image: updatedFight.fighter_1_image,
-      fighter2_name: updatedFight.fighter_2,
-      fighter2_rank: updatedFight.fighter_2_rank,
-      fighter2_record: updatedFight.fighter_2_record,
-      fighter2_odds: updatedFight.fighter_2_odds,
-      fighter2_style: updatedFight.fighter_2_style,
-      fighter2_image: updatedFight.fighter_2_image,
-      winner: updatedFight.winner,
-      is_completed: updatedFight.is_completed,
-      card_tier: updatedFight.card_tier,
-      weightclass: updatedFight.weight_class
-    };
-
-    res.json(transformedFight);
+    res.json(updatedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
     res.status(500).json({ error: 'Failed to update fight result' });
@@ -548,26 +383,40 @@ app.get('/leaderboard', async (req, res) => {
 app.get('/events', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('ufc_fight_card')
-      .select('distinct Event, EventId, Location')
-      .order('EventId', { ascending: false });
+      .from('events')
+      .select('*')
+      .order('date', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
       return res.status(500).json({ error: 'Failed to fetch events' });
     }
 
-    // Transform the data to match the expected structure
-    const transformedEvents = data.map(event => ({
-      id: event.EventId,
-      name: event.Event,
-      date: null, // If you need this, we'll need to add it to the database
-      location: event.Location
-    }));
-
-    res.json(transformedEvents);
+    res.json(data);
   } catch (error) {
     console.error('Error in GET /events:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get fights for a specific event
+app.get('/events/:id/fights', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('event_id', id)
+      .order('id');
+
+    if (error) {
+      console.error('Error fetching fights for event:', error);
+      return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in GET /events/:id/fights:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -579,17 +428,16 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     
     // Get all fights for this event
     const { data: eventFights, error: fightsError } = await supabase
-      .from('ufc_fight_card')
-      .select('distinct FightNumber')
-      .eq('EventId', id);
+      .from('fights')
+      .select('id')
+      .eq('event_id', id);
 
     if (fightsError) {
       console.error('Error fetching event fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch event fights' });
     }
 
-    // Create fight IDs in the same format we used when creating them
-    const fightIds = eventFights.map(fight => `${id}-${fight.FightNumber}`);
+    const fightIds = eventFights.map(fight => fight.id);
 
     // Get all fight results for these fights
     const { data: results, error: resultsError } = await supabase
