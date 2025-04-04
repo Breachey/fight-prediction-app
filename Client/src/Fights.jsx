@@ -84,7 +84,7 @@ function Fights({ eventId, username }) {
         },
         body: JSON.stringify({
           username,
-          fightId: parseInt(fightId, 10),
+          fightId,
           selectedFighter,
         }),
       });
@@ -106,6 +106,30 @@ function Fights({ eventId, username }) {
         delete newState[fightId];
         return newState;
       });
+
+      // Refresh the votes display if the fight is expanded
+      if (expandedFights[fightId]) {
+        const fight = fights.find(f => f.id === fightId);
+        if (fight) {
+          const [fighter1Response, fighter2Response] = await Promise.all([
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+          ]);
+
+          const [fighter1Votes, fighter2Votes] = await Promise.all([
+            fighter1Response.json(),
+            fighter2Response.json()
+          ]);
+
+          setFightVotes(prev => ({
+            ...prev,
+            [fightId]: {
+              fighter1Votes,
+              fighter2Votes
+            }
+          }));
+        }
+      }
     } catch (err) {
       console.error('Error submitting prediction:', err);
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));

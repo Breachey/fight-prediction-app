@@ -259,6 +259,12 @@ app.post('/predict', async (req, res) => {
   }
 
   try {
+    console.log('Received prediction request:', {
+      fightId,
+      selectedFighter,
+      username
+    });
+
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
@@ -273,6 +279,7 @@ app.post('/predict', async (req, res) => {
     }
 
     if (existingPrediction) {
+      console.log('Updating existing prediction:', existingPrediction);
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
@@ -288,6 +295,7 @@ app.post('/predict', async (req, res) => {
       return res.status(200).json({ message: "Prediction updated successfully" });
     }
 
+    console.log('Inserting new prediction');
     // Insert new prediction
     const { error: insertError } = await supabase
       .from('predictions')
@@ -302,6 +310,7 @@ app.post('/predict', async (req, res) => {
       return res.status(500).json({ error: "Error saving prediction" });
     }
 
+    console.log('Prediction saved successfully');
     res.status(200).json({ message: "Prediction saved successfully" });
   } catch (err) {
     console.error('Server error:', err);
