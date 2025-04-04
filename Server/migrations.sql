@@ -1,3 +1,8 @@
+-- Drop all tables first to ensure clean schema
+DROP TABLE IF EXISTS public.prediction_results;
+DROP TABLE IF EXISTS public.fight_results;
+DROP TABLE IF EXISTS public.predictions;
+
 -- Create predictions table
 CREATE TABLE IF NOT EXISTS public.predictions (
     id SERIAL PRIMARY KEY,
@@ -19,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.fight_results (
 CREATE TABLE IF NOT EXISTS public.prediction_results (
     user_id TEXT NOT NULL,
     fight_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
     predicted_correctly BOOLEAN NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
     PRIMARY KEY (user_id, fight_id)

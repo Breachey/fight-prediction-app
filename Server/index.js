@@ -501,9 +501,11 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       // Update prediction_results for each prediction
       for (const prediction of predictions) {
         const predicted_correctly = prediction.selected_fighter === winner;
+        const event_id = id.split('-')[0]; // Extract event_id from fight_id
         console.log('Updating prediction result:', {
           user_id: prediction.username,
           fight_id: id,
+          event_id,
           predicted_correctly
         });
         
@@ -513,6 +515,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
             {
               user_id: prediction.username,
               fight_id: id,
+              event_id: event_id,
               predicted_correctly: predicted_correctly
             }
           ], {
