@@ -15,14 +15,28 @@ const PORT = process.env.PORT || 3001;
 async function testSupabaseConnection() {
   try {
     console.log('Testing Supabase connection...');
-    const { data, error } = await supabase
+    
+    // First test basic connection
+    const { data: countData, error: countError } = await supabase
       .from('ufc_fight_card')
       .select('count')
       .limit(1);
 
-    if (error) {
-      console.error('Supabase connection test failed:', error);
+    if (countError) {
+      console.error('Supabase connection test failed:', countError);
       return false;
+    }
+
+    // Get table structure
+    const { data, error } = await supabase
+      .from('ufc_fight_card')
+      .select()
+      .limit(1);
+
+    if (error) {
+      console.error('Failed to get table structure:', error);
+    } else if (data && data.length > 0) {
+      console.log('Available columns in ufc_fight_card:', Object.keys(data[0]).join(', '));
     }
 
     console.log('Supabase connection test successful');
@@ -542,8 +556,8 @@ app.get('/events', async (req, res) => {
 
     const { data, error } = await supabase
       .from('ufc_fight_card')
-      .select('Event, EventId, EventDate')
-      .order('EventDate', { ascending: false });
+      .select('Event, EventId, Date')
+      .order('Date', { ascending: false });
 
     if (error) {
       console.error('Error fetching events:', error);
@@ -563,7 +577,7 @@ app.get('/events', async (req, res) => {
 
     // Remove duplicates using Set
     const uniqueEvents = Array.from(
-      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event, date: event.EventDate })))
+      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event, date: event.Date })))
     ).map(str => JSON.parse(str));
 
     console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
