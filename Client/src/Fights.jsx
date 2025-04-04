@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from './config';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -16,9 +17,9 @@ function Fights({ eventId, username }) {
     if (eventId && username) {
       Promise.all([
         // Fetch fights
-        fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`),
+        fetch(`${API_URL}/events/${eventId}/fights`),
         // Fetch all predictions for the user
-        fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions`)
+        fetch(`${API_URL}/predictions`)
       ])
         .then(async ([fightsResponse, predictionsResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
@@ -76,7 +77,7 @@ function Fights({ eventId, username }) {
     }
 
     try {
-      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/predict', {
+      const response = await fetch(`${API_URL}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,8 +130,8 @@ function Fights({ eventId, username }) {
         if (!fight) return;
 
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
-          fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
         ]);
 
         if (!fighter1Response.ok || !fighter2Response.ok) {

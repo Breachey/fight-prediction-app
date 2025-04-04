@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from './config';
 import './FightVotes.css';
 
 function FightVotes({ fight }) {
@@ -18,7 +19,7 @@ function FightVotes({ fight }) {
     setIsLoading(true);
     Promise.all([
       // Fetch votes for fighter 1
-      fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
+      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
         .then(response => {
           if (!response.ok) {
             throw new Error('Failed to fetch votes');
@@ -26,7 +27,7 @@ function FightVotes({ fight }) {
           return response.json();
         }),
       // Fetch votes for fighter 2
-      fetch(`https://fight-prediction-app-b0vt.onrender.com/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
+      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
         .then(response => {
           if (!response.ok) {
             throw new Error('Failed to fetch votes');

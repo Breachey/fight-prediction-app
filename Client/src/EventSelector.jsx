@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './EventSelector.css';
+import { API_URL } from './config';
 
 function EventSelector({ onEventSelect, selectedEventId }) {
   const [events, setEvents] = useState([]);
@@ -14,7 +15,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
   const fetchEvents = async () => {
     try {
-      const response = await fetch('https://fight-prediction-app-b0vt.onrender.com/events');
+      const response = await fetch(`${API_URL}/events`);
       if (!response.ok) {
         throw new Error('Failed to fetch events');
       }

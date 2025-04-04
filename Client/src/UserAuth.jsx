@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_URL } from './config';
 
 function UserAuth({ onAuthenticate }) {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -16,7 +17,7 @@ function UserAuth({ onAuthenticate }) {
         ? { phoneNumber, username }
         : { phoneNumber };
 
-      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

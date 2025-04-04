@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from './config';
 
 function Leaderboard({ eventId, currentUser }) {
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
@@ -21,8 +22,8 @@ function Leaderboard({ eventId, currentUser }) {
 
       // Fetch both leaderboards in parallel
       const [eventResponse, overallResponse] = await Promise.all([
-        eventId ? fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/leaderboard`) : Promise.resolve(null),
-        fetch('https://fight-prediction-app-b0vt.onrender.com/leaderboard')
+        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`) : Promise.resolve(null),
+        fetch(`${API_URL}/leaderboard`)
       ]);
 
       // Check overall leaderboard response

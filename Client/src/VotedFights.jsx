@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import FightVotes from './FightVotes';
 import './FightVotes.css';
+import { API_URL } from './config';
 
 function VotedFights() {
   const [predictions, setPredictions] = useState([]);
@@ -28,8 +29,8 @@ function VotedFights() {
 
     setIsLoading(true);
     Promise.all([
-      fetch('https://fight-prediction-app-b0vt.onrender.com/fights').then(response => response.json()),
-      fetch('https://fight-prediction-app-b0vt.onrender.com/predictions').then(response => response.json())
+      fetch(`${API_URL}/fights`).then(response => response.json()),
+      fetch(`${API_URL}/predictions`).then(response => response.json())
     ])
       .then(([fightsData, predictionsData]) => {
         // Create a map of fights with their predictions

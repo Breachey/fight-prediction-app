@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from './config';
 
 function FightAdmin({ eventId }) {
   const [fights, setFights] = useState([]);
@@ -14,7 +15,7 @@ function FightAdmin({ eventId }) {
 
   const fetchFights = async () => {
     try {
-      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/events/${eventId}/fights`);
+      const response = await fetch(`${API_URL}/events/${eventId}/fights`);
       if (!response.ok) {
         throw new Error('Failed to fetch fights');
       }
@@ -30,7 +31,7 @@ function FightAdmin({ eventId }) {
 
   const handleResultUpdate = async (fightId, winner) => {
     try {
-      const response = await fetch(`https://fight-prediction-app-b0vt.onrender.com/fights/${fightId}/result`, {
+      const response = await fetch(`${API_URL}/fights/${fightId}/result`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
