@@ -356,32 +356,69 @@ app.get('/predictions/filter', async (req, res) => {
       console.error('Error checking predictions table:', checkError);
     } else {
       console.log('All predictions in table:', allPredictions);
+      
+      // Log unique fighter names in predictions
+      const uniqueFighters = [...new Set(allPredictions.map(p => p.selected_fighter))];
+      console.log('Unique fighters in predictions:', uniqueFighters);
+      
+      // Log predictions for this specific fight
+      const fightPredictions = allPredictions.filter(p => p.fight_id === fight_id);
+      console.log('Predictions for this fight:', fightPredictions);
     }
     
-    // Get predictions for this fight
-    const { data, error } = await supabase
+    // Get predictions for this fight with exact match
+    const { data: exactMatches, error: exactError } = await supabase
       .from('predictions')
       .select('username, created_at')
       .eq('fight_id', fight_id)
       .eq('selected_fighter', selected_fighter);
     
-    if (error) {
-      console.error('Error fetching predictions:', error);
+    if (exactError) {
+      console.error('Error fetching predictions (exact match):', exactError);
       console.error('Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
+        message: exactError.message,
+        details: exactError.details,
+        hint: exactError.hint,
+        code: exactError.code
       });
       return res.status(500).json({ message: "Error fetching predictions" });
+    }
+    
+    // Try alternative name formats if no exact matches
+    if (!exactMatches || exactMatches.length === 0) {
+      console.log('No exact matches found, checking alternative formats');
+      
+      // Parse the fighter name components
+      const nameParts = selected_fighter.match(/^([^\s"]+)\s+"([^"]+)"\s+([^\s"]+)$/);
+      if (nameParts) {
+        const [_, firstName, nickname, lastName] = nameParts;
+        console.log('Parsed name parts:', { firstName, nickname, lastName });
+        
+        // Try without nickname
+        const simpleName = `${firstName} ${lastName}`;
+        console.log('Trying simple name format:', simpleName);
+        
+        const { data: simpleMatches, error: simpleError } = await supabase
+          .from('predictions')
+          .select('username, created_at')
+          .eq('fight_id', fight_id)
+          .eq('selected_fighter', simpleName);
+          
+        if (simpleError) {
+          console.error('Error fetching predictions (simple name):', simpleError);
+        } else if (simpleMatches && simpleMatches.length > 0) {
+          console.log('Found matches with simple name format');
+          return res.json(simpleMatches);
+        }
+      }
     }
     
     console.log('Successfully fetched predictions:', {
       fight_id,
       selected_fighter,
-      results: data
+      results: exactMatches
     });
-    res.json(data);
+    res.json(exactMatches || []);
   } catch (error) {
     console.error('Error in predictions/filter:', error);
     res.status(500).json({ message: "Internal server error" });
