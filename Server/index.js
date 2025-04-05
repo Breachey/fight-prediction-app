@@ -160,8 +160,8 @@ function transformFighterData(fighter) {
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: null, // We'll need to add this to the database if needed
-    odds: null  // We'll need to add this to the database if needed
+    rank: fighter.Rank || null,
+    odds: fighter.Odds || null
   };
 }
 
