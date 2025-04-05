@@ -140,10 +140,6 @@ function App() {
       </div>
 
       <div className="section">
-        <VotedFights eventId={selectedEventId} username={user.username} />
-      </div>
-
-      <div className="section">
         <Leaderboard eventId={selectedEventId} currentUser={user.username} />
       </div>
 
