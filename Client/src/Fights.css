@@ -304,6 +304,67 @@
   border: 1px solid #6d28d9;
 }
 
+.fight-meta {
+  text-align: center;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(76, 29, 149, 0.1) 0%, rgba(76, 29, 149, 0.05) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(76, 29, 149, 0.2);
+}
+
+.card-tier {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  background: linear-gradient(to right, #e9d5ff, #ffffff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.weight-class {
+  font-size: 1.1rem;
+  color: #9ca3af;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vs-text {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0 20px;
+  align-self: center;
+  background: linear-gradient(135deg, #4c1d95, #6d28d9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.vs-text::before,
+.vs-text::after {
+  content: '';
+  position: absolute;
+  width: 30px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(76, 29, 149, 0.5), rgba(109, 40, 217, 0.5));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.vs-text::before {
+  right: calc(100% + 10px);
+}
+
+.vs-text::after {
+  left: calc(100% + 10px);
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
