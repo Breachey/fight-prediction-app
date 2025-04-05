@@ -343,18 +343,14 @@ function Fights({ eventId, username }) {
                       width: `${Math.round((fightVotes[fight.id].fighter1Votes.length / 
                         (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
                     }}
-                  >
-                    {fight.fighter1_name} ({fightVotes[fight.id].fighter1Votes.length})
-                  </div>
+                  />
                   <div 
                     className="vote-bar fighter2-bar" 
                     style={{ 
                       width: `${Math.round((fightVotes[fight.id].fighter2Votes.length / 
                         (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
                     }}
-                  >
-                    {fight.fighter2_name} ({fightVotes[fight.id].fighter2Votes.length})
-                  </div>
+                  />
                 </div>
 
                 <div className="votes-list-container">
