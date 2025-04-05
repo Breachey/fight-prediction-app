@@ -365,6 +365,42 @@
   left: calc(100% + 10px);
 }
 
+.completed-fight-message,
+.selected-fighter-message {
+  text-align: center;
+  padding: 12px;
+  margin: 16px 0;
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(76, 29, 149, 0.1), rgba(109, 40, 217, 0.1));
+  border: 1px solid rgba(76, 29, 149, 0.2);
+  color: #e9d5ff;
+}
+
+.fade-out {
+  animation: fadeOut 0.5s ease-in-out forwards;
+  animation-delay: 3s;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    max-height: 100px;
+    margin: 16px 0;
+    padding: 12px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+}
+
+.fight-votes-section {
+  margin-top: 32px;
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
@@ -478,6 +514,10 @@
   .votes-list {
     max-height: 150px;
   }
+
+  .fight-votes-section {
+    margin-top: 24px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -510,5 +550,9 @@
 
   .stat-label {
     font-size: 0.85rem;
+  }
+
+  .fight-votes-section {
+    margin-top: 20px;
   }
 }

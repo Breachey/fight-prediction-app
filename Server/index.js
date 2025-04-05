@@ -155,13 +155,20 @@ function transformFighterData(fighter) {
     `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
     `${fighter.FirstName} ${fighter.LastName}`;
   
+  // Format odds to include + sign for positive values
+  let formattedOdds = null;
+  if (fighter.Odds) {
+    const oddsNum = parseInt(fighter.Odds);
+    formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
+  }
+  
   return {
     name: fullName,
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: null, // We'll need to add this to the database if needed
-    odds: null  // We'll need to add this to the database if needed
+    rank: fighter.Rank || null,
+    odds: formattedOdds
   };
 }
 
