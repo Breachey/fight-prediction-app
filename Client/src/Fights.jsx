@@ -11,6 +11,7 @@ function Fights({ eventId, username }) {
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
+  const [fadeOutMessages, setFadeOutMessages] = useState({});
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -63,6 +64,26 @@ function Fights({ eventId, username }) {
     setSelectedFights(prev => ({ ...prev, [fightId]: fighterName }));
   };
 
+  // Function to handle message fade out
+  const handleMessageFadeOut = (fightId) => {
+    setTimeout(() => {
+      setFadeOutMessages(prev => ({ ...prev, [fightId]: true }));
+      // Remove the message completely after animation
+      setTimeout(() => {
+        setSubmittedFights(prev => {
+          const newState = { ...prev };
+          delete newState[fightId];
+          return newState;
+        });
+        setFadeOutMessages(prev => {
+          const newState = { ...prev };
+          delete newState[fightId];
+          return newState;
+        });
+      }, 500); // Match this with the CSS animation duration
+    }, 3000); // Show message for 3 seconds before starting fade
+  };
+
   // Function to submit the selected vote for a fight
   const handleSubmitVote = async (fightId) => {
     if (!username) {
@@ -98,6 +119,8 @@ function Fights({ eventId, username }) {
 
       // Mark this fight's vote as submitted
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
+      // Start fade out timer
+      handleMessageFadeOut(fightId);
       // Clear any previous vote error for this fight
       setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
       // Clear the selection since it's now submitted
@@ -315,7 +338,7 @@ function Fights({ eventId, username }) {
           )}
 
           {submittedFights[fight.id] && (
-            <div className="completed-fight-message">
+            <div className={`completed-fight-message ${fadeOutMessages[fight.id] ? 'fade-out' : ''}`}>
               Vote submitted: {submittedFights[fight.id]}
             </div>
           )}
