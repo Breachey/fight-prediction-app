@@ -219,6 +219,8 @@
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 20px;
+  border: 1px solid #4c1d95;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .vote-bar {
@@ -228,19 +230,21 @@
   padding: 0 10px;
   color: white;
   font-size: 0.9rem;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: width 0.3s ease;
   min-width: 40px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .fighter1-bar {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
 }
 
 .fighter2-bar {
-  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
 .votes-list-container {
