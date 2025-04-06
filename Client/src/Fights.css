@@ -153,6 +153,10 @@
   animation: borderGlow 2s ease-in-out infinite alternate;
 }
 
+.fighter-card.winner {
+  overflow: visible;
+}
+
 @keyframes borderGlow {
   from {
     box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
@@ -401,6 +405,96 @@
   margin-top: 32px;
 }
 
+/* Add styles for completed fights */
+.fight-card.completed {
+  position: relative;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.85));
+  margin-top: 20px;
+}
+
+.fight-card.completed::before {
+  content: 'FIGHT COMPLETED';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, #4c1d95, #6d28d9);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #fff;
+  z-index: 1;
+  border: 1px solid rgba(109, 40, 217, 0.5);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+/* Winner styles */
+.fighter-card.winner {
+  position: relative;
+  border: 2px solid #ffd700;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  opacity: 1;
+  filter: none;
+  background: linear-gradient(145deg, rgba(26, 26, 26, 0.9), rgba(45, 31, 71, 0.9));
+}
+
+.fighter-card.winner::after {
+  content: 'WINNER';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, #ffd700, #ffa500);
+  height: 28px;
+  padding: 2px 16px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #000;
+  z-index: 2;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* Loser styles */
+.fighter-card.loser {
+  opacity: 0.5;
+  filter: grayscale(70%);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  background: linear-gradient(145deg, rgba(26, 26, 26, 0.7), rgba(45, 31, 71, 0.7));
+}
+
+/* Completed fight message styles */
+.completed-fight-message {
+  text-align: center;
+  padding: 12px;
+  margin: 16px 0;
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(76, 29, 149, 0.2), rgba(109, 40, 217, 0.2));
+  border: 1px solid rgba(76, 29, 149, 0.3);
+  color: #e9d5ff;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+/* Add animation for winner glow effect */
+@keyframes winnerGlow {
+  0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.5); }
+  100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
+}
+
+.fighter-card.winner {
+  animation: winnerGlow 2s infinite;
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
@@ -518,6 +612,20 @@
   .fight-votes-section {
     margin-top: 24px;
   }
+
+  .fight-card.completed {
+    margin-top: 32px;
+  }
+
+  .fight-card.completed::before {
+    top: -28px;
+  }
+
+  .fighter-card.winner::after {
+    height: 24px;
+    font-size: 0.8rem;
+    padding: 2px 12px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -554,5 +662,15 @@
 
   .fight-votes-section {
     margin-top: 20px;
+  }
+
+  .fight-card.completed {
+    margin-top: 40px;
+  }
+
+  .fight-card.completed::before {
+    top: -32px;
+    font-size: 0.8rem;
+    padding: 6px 12px;
   }
 }

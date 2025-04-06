@@ -246,7 +246,7 @@ function Fights({ eventId, username }) {
       )}
 
       {fights.map((fight) => (
-        <div key={fight.id} className="fight-card">
+        <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''}`}>
           {(fight.card_tier || fight.weightclass) && (
             <div className="fight-meta">
               {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
@@ -260,8 +260,7 @@ function Fights({ eventId, username }) {
                 (selectedFights[fight.id] === fight.fighter1_name || submittedFights[fight.id] === fight.fighter1_name) ? 'selected' : ''
               } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
                   (selectedFights[fight.id] !== fight.fighter1_name && submittedFights[fight.id] !== fight.fighter1_name) ? 'unselected' : ''
-              } ${fight.is_completed ? 'completed' : ''
-              } ${fight.is_completed && fight.winner === fight.fighter1_name ? 'winner' : ''}`}
+              } ${fight.is_completed ? (fight.winner === fight.fighter1_name ? 'winner' : 'loser') : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
@@ -296,8 +295,7 @@ function Fights({ eventId, username }) {
                 (selectedFights[fight.id] === fight.fighter2_name || submittedFights[fight.id] === fight.fighter2_name) ? 'selected' : ''
               } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
                   (selectedFights[fight.id] !== fight.fighter2_name && submittedFights[fight.id] !== fight.fighter2_name) ? 'unselected' : ''
-              } ${fight.is_completed ? 'completed' : ''
-              } ${fight.is_completed && fight.winner === fight.fighter2_name ? 'winner' : ''}`}
+              } ${fight.is_completed ? (fight.winner === fight.fighter2_name ? 'winner' : 'loser') : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
@@ -345,7 +343,7 @@ function Fights({ eventId, username }) {
 
           {fight.is_completed && (
             <div className="completed-fight-message">
-              This fight has been completed. Winner: {fight.winner}
+              Winner: {fight.winner}
             </div>
           )}
 

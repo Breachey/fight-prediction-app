@@ -200,6 +200,25 @@ app.get('/fights', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
 
+    // Get fight results
+    const { data: fightResults, error: resultsError } = await supabase
+      .from('fight_results')
+      .select('*');
+
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
+      return res.status(500).json({ error: 'Failed to fetch fight results' });
+    }
+
+    // Create a map of fight results
+    const resultsMap = new Map();
+    fightResults.forEach(result => {
+      resultsMap.set(result.fight_id, {
+        winner: result.winner,
+        is_completed: result.winner !== null
+      });
+    });
+
     // Group fighters by FightNumber
     const fightMap = new Map();
     data.forEach(fighter => {
@@ -226,9 +245,11 @@ app.get('/fights', async (req, res) => {
       .map(([fightNumber, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
+        const fightId = `${latestEventId}-${fightNumber}`;
+        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
 
         return {
-          id: `${latestEventId}-${fightNumber}`, // Create a unique ID
+          id: fightId,
           event_id: latestEventId,
           fighter1_name: redFighter.name,
           fighter1_rank: redFighter.rank,
@@ -242,8 +263,8 @@ app.get('/fights', async (req, res) => {
           fighter2_odds: blueFighter.odds,
           fighter2_style: blueFighter.style,
           fighter2_image: blueFighter.image,
-          winner: null, // We'll need to add this to the database if needed
-          is_completed: false, // We'll need to add this to the database if needed
+          winner: result.winner,
+          is_completed: result.is_completed,
           card_tier: fight.card_tier,
           weightclass: fight.weightclass,
           bout_order: fightNumber
@@ -449,7 +470,8 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       .upsert([
         {
           fight_id: id,
-          winner: winner
+          winner: winner,
+          is_completed: winner !== null
         }
       ], {
         onConflict: ['fight_id']
@@ -722,6 +744,8 @@ app.get('/events', async (req, res) => {
 app.get('/events/:id/fights', async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Get fights for the event
     const { data, error } = await supabase
       .from('ufc_fight_card')
       .select('*')
@@ -732,6 +756,25 @@ app.get('/events/:id/fights', async (req, res) => {
       console.error('Error fetching fights for event:', error);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
+
+    // Get fight results
+    const { data: fightResults, error: resultsError } = await supabase
+      .from('fight_results')
+      .select('*');
+
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
+      return res.status(500).json({ error: 'Failed to fetch fight results' });
+    }
+
+    // Create a map of fight results
+    const resultsMap = new Map();
+    fightResults.forEach(result => {
+      resultsMap.set(result.fight_id, {
+        winner: result.winner,
+        is_completed: result.winner !== null
+      });
+    });
 
     // Group fighters by FightNumber
     const fightMap = new Map();
@@ -759,9 +802,11 @@ app.get('/events/:id/fights', async (req, res) => {
       .map(([fightNumber, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
+        const fightId = `${id}-${fightNumber}`;
+        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
 
         return {
-          id: `${id}-${fightNumber}`, // Create a unique ID
+          id: fightId,
           event_id: id,
           fighter1_name: redFighter.name,
           fighter1_rank: redFighter.rank,
@@ -775,8 +820,8 @@ app.get('/events/:id/fights', async (req, res) => {
           fighter2_odds: blueFighter.odds,
           fighter2_style: blueFighter.style,
           fighter2_image: blueFighter.image,
-          winner: null, // We'll need to add this to the database if needed
-          is_completed: false, // We'll need to add this to the database if needed
+          winner: result.winner,
+          is_completed: result.is_completed,
           card_tier: fight.card_tier,
           weightclass: fight.weightclass,
           bout_order: fightNumber
