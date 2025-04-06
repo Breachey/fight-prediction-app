@@ -401,6 +401,55 @@
   margin-top: 32px;
 }
 
+/* Add styles for completed fights */
+.fight-card.completed {
+  position: relative;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.85));
+}
+
+.fight-card.completed::before {
+  content: 'FIGHT COMPLETED';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(128, 128, 128, 0.2);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #888;
+  z-index: 1;
+}
+
+/* Winner styles */
+.fighter-card.winner {
+  position: relative;
+  border: 2px solid #ffd700;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+}
+
+.fighter-card.winner::after {
+  content: 'WINNER';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, #ffd700, #ffa500);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #000;
+  z-index: 2;
+}
+
+/* Loser styles */
+.fighter-card.loser {
+  opacity: 0.7;
+  filter: grayscale(40%);
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
