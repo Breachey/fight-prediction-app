@@ -343,7 +343,7 @@ function Fights({ eventId, username }) {
 
           {fight.is_completed && (
             <div className="completed-fight-message">
-              This fight has been completed. Winner: {fight.winner}
+              Winner: {fight.winner}
             </div>
           )}
 
