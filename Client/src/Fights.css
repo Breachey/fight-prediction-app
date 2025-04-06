@@ -153,6 +153,10 @@
   animation: borderGlow 2s ease-in-out infinite alternate;
 }
 
+.fighter-card.winner {
+  overflow: visible;
+}
+
 @keyframes borderGlow {
   from {
     box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
