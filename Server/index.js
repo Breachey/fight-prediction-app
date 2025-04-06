@@ -656,8 +656,7 @@ app.get('/leaderboard', async (req, res) => {
       .sort((a, b) => 
         b.correct_predictions - a.correct_predictions || 
         parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      )
-      .slice(0, 10);
+      );
 
     res.json(leaderboard);
   } catch (error) {
@@ -833,8 +832,7 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       .sort((a, b) => 
         b.correct_predictions - a.correct_predictions || 
         parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      )
-      .slice(0, 10);
+      );
 
     res.json(leaderboard);
   } catch (error) {
