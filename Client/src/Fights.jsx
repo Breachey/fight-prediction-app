@@ -12,6 +12,7 @@ function Fights({ eventId, username }) {
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
+  const [showAIVotes, setShowAIVotes] = useState(true);
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -228,6 +229,34 @@ function Fights({ eventId, username }) {
     }
   };
 
+  const aiBadge = {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: '#60a5fa',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    border: '1px solid rgba(59, 130, 246, 0.3)',
+    marginLeft: '4px'
+  };
+
+  const toggleButtonStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '8px 16px',
+    borderRadius: '8px',
+    background: showAIVotes ? 'rgba(59, 130, 246, 0.2)' : 'rgba(76, 29, 149, 0.2)',
+    color: showAIVotes ? '#60a5fa' : '#a78bfa',
+    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    transition: 'all 0.2s ease',
+    marginBottom: '10px',
+    width: 'fit-content',
+    margin: '0 auto 20px auto'
+  };
+
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
   }
@@ -244,6 +273,13 @@ function Fights({ eventId, username }) {
         // Global error (e.g. from fetching fights) is still displayed at the top
         <div className="error-message">{error}</div>
       )}
+
+      <button 
+        style={toggleButtonStyle}
+        onClick={() => setShowAIVotes(!showAIVotes)}
+      >
+        {showAIVotes ? 'Hide AI Votes' : 'Show AI Votes'}
+      </button>
 
       {fights.map((fight) => (
         <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''}`}>
@@ -345,43 +381,32 @@ function Fights({ eventId, username }) {
             </button>
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
-              <div className="votes-details">
-                <div className="vote-distribution">
-                  <div 
-                    className="vote-bar fighter1-bar" 
-                    style={{ 
-                      width: `${Math.round((fightVotes[fight.id].fighter1Votes.length / 
-                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
-                    }}
-                  />
-                  <div 
-                    className="vote-bar fighter2-bar" 
-                    style={{ 
-                      width: `${Math.round((fightVotes[fight.id].fighter2Votes.length / 
-                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
-                    }}
-                  />
-                </div>
-
+              <div className="votes-container">
                 <div className="votes-list-container">
                   <div className="fighter-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>
                     <div className="votes-list">
-                      {fightVotes[fight.id].fighter1Votes.map((vote, index) => (
-                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                          {vote.username} {vote.username === username && '(You)'}
-                        </div>
-                      ))}
+                      {fightVotes[fight.id].fighter1Votes
+                        .filter(vote => showAIVotes || !vote.is_bot)
+                        .map((vote, index) => (
+                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                            {vote.username} {vote.username === username && '(You)'}
+                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          </div>
+                        ))}
                     </div>
                   </div>
                   <div className="fighter-votes">
                     <h4>{fight.fighter2_name}'s Votes</h4>
                     <div className="votes-list">
-                      {fightVotes[fight.id].fighter2Votes.map((vote, index) => (
-                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                          {vote.username} {vote.username === username && '(You)'}
-                        </div>
-                      ))}
+                      {fightVotes[fight.id].fighter2Votes
+                        .filter(vote => showAIVotes || !vote.is_bot)
+                        .map((vote, index) => (
+                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                            {vote.username} {vote.username === username && '(You)'}
+                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 </div>
