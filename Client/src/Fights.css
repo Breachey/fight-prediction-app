@@ -83,7 +83,7 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
 }
 
@@ -495,6 +495,26 @@
   animation: winnerGlow 2s infinite;
 }
 
+/* Vote badge styles */
+.vote-badge {
+  position: absolute;
+  bottom: -10px;
+  right: -10px;
+  background: linear-gradient(135deg, #4c1d95, #6d28d9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 2;
+}
+
+.vote-badge::before {
+  content: '✓';
+  margin-right: 4px;
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
@@ -626,6 +646,13 @@
     font-size: 0.8rem;
     padding: 2px 12px;
   }
+
+  .vote-badge {
+    bottom: -8px;
+    right: -8px;
+    padding: 3px 6px;
+    font-size: 0.75rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -672,5 +699,12 @@
     top: -32px;
     font-size: 0.8rem;
     padding: 6px 12px;
+  }
+
+  .vote-badge {
+    bottom: -6px;
+    right: -6px;
+    padding: 2px 5px;
+    font-size: 0.7rem;
   }
 }
