@@ -119,9 +119,10 @@ function Leaderboard({ eventId, currentUser }) {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     '@media (max-width: 768px)': {
-      padding: '10px 5px',
-      fontSize: '0.8rem',
-      letterSpacing: '0.02em'
+      padding: '8px 4px',
+      fontSize: '0.7rem',
+      letterSpacing: '0',
+      textAlign: 'center'
     }
   };
 
@@ -132,7 +133,7 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     '@media (max-width: 768px)': {
       ...headerStyle['@media (max-width: 768px)'],
-      width: '15%'
+      width: '12%'
     }
   };
 
@@ -143,7 +144,7 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     '@media (max-width: 768px)': {
       ...headerStyle['@media (max-width: 768px)'],
-      width: '20%'
+      width: '18%'
     }
   };
 
@@ -152,7 +153,7 @@ function Leaderboard({ eventId, currentUser }) {
     width: '45%',
     '@media (max-width: 768px)': {
       ...headerStyle['@media (max-width: 768px)'],
-      width: '35%'
+      width: '40%'
     }
   };
 
@@ -195,8 +196,8 @@ function Leaderboard({ eventId, currentUser }) {
     letterSpacing: '0.02em',
     textAlign: 'center',
     '@media (max-width: 768px)': {
-      padding: '10px 5px',
-      fontSize: '0.9rem'
+      padding: '8px 4px',
+      fontSize: '0.85rem'
     }
   };
 
@@ -342,11 +343,11 @@ function Leaderboard({ eventId, currentUser }) {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={firstHeaderStyle}>Rank</th>
-                <th style={userHeaderStyle}>User</th>
+                <th style={firstHeaderStyle}>RANK</th>
+                <th style={userHeaderStyle}>USER</th>
                 <th style={statsHeaderStyle}>✓</th>
-                <th style={statsHeaderStyle}>Total</th>
-                <th style={lastHeaderStyle}>Acc %</th>
+                <th style={statsHeaderStyle}>TOT</th>
+                <th style={lastHeaderStyle}>ACC</th>
               </tr>
             </thead>
             <tbody>
@@ -356,7 +357,12 @@ function Leaderboard({ eventId, currentUser }) {
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
                     <td style={rankStyle(index)}>{getRankBadge(index)}</td>
                     <td style={userCellStyle(isCurrentUser)}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        maxWidth: '100%'
+                      }}>
                         {entry.user_id}
                       </span>
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
