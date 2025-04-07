@@ -11,6 +11,20 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Enable CORS for all routes
+app.use(cors({
+  origin: [
+    'https://fight-prediction-app.vercel.app',
+    'https://fight-prediction-app-git-breachey-brandons-projects-a1d75233.vercel.app',
+    'http://localhost:3000',  // For local development
+    'http://localhost:5173'   // For Vite's default port
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
+
 // Add connection test
 async function testSupabaseConnection() {
   try {
@@ -46,9 +60,6 @@ async function testSupabaseConnection() {
     return false;
   }
 }
-
-app.use(cors());
-app.use(express.json());
 
 // User Registration
 app.post('/register', async (req, res) => {
@@ -641,6 +652,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
   }
 });
 
+// Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
     // Get all prediction results
@@ -650,7 +662,10 @@ app.get('/leaderboard', async (req, res) => {
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch leaderboard data',
+        details: resultsError.message 
+      });
     }
 
     // Get all users with their is_bot status
@@ -660,7 +675,10 @@ app.get('/leaderboard', async (req, res) => {
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: 'Failed to fetch users' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch user data',
+        details: usersError.message 
+      });
     }
 
     // Create a map of username to is_bot status
@@ -697,7 +715,10 @@ app.get('/leaderboard', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
-    res.status(500).json({ error: 'Failed to process leaderboard' });
+    res.status(500).json({ 
+      error: 'Failed to process leaderboard',
+      details: error.message 
+    });
   }
 });
 
@@ -863,7 +884,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch event leaderboard data',
+        details: resultsError.message 
+      });
     }
 
     // Get all users with their is_bot status
@@ -873,7 +897,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: 'Failed to fetch users' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch user data',
+        details: usersError.message 
+      });
     }
 
     // Create a map of username to is_bot status
@@ -910,7 +937,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing event leaderboard:', error);
-    res.status(500).json({ error: 'Failed to process leaderboard' });
+    res.status(500).json({ 
+      error: 'Failed to process event leaderboard',
+      details: error.message 
+    });
   }
 });
 
