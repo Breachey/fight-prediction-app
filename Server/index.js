@@ -653,12 +653,26 @@ app.get('/leaderboard', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
+    // Get all users with their is_bot status
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('username, is_bot');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+
+    // Create a map of username to is_bot status
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
       if (!userStats[result.user_id]) {
         userStats[result.user_id] = {
           user_id: result.user_id,
+          is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
           correct_predictions: 0
         };
@@ -852,12 +866,26 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
 
+    // Get all users with their is_bot status
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('username, is_bot');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ error: 'Failed to fetch users' });
+    }
+
+    // Create a map of username to is_bot status
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
       if (!userStats[result.user_id]) {
         userStats[result.user_id] = {
           user_id: result.user_id,
+          is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
           correct_predictions: 0
         };
