@@ -6,6 +6,7 @@ function Leaderboard({ eventId, currentUser }) {
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showBots, setShowBots] = useState(false);
 
   useEffect(() => {
     fetchLeaderboards();
@@ -243,6 +244,39 @@ function Leaderboard({ eventId, currentUser }) {
     border: '1px solid rgba(139, 92, 246, 0.3)'
   };
 
+  const aiBadge = {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: '#60a5fa',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    border: '1px solid rgba(59, 130, 246, 0.3)',
+    marginLeft: '8px'
+  };
+
+  const filterToggleStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    marginBottom: '20px'
+  };
+
+  const toggleButtonStyle = {
+    padding: '8px 16px',
+    borderRadius: '8px',
+    background: showBots ? 'rgba(59, 130, 246, 0.2)' : 'rgba(76, 29, 149, 0.2)',
+    color: showBots ? '#60a5fa' : '#a78bfa',
+    border: `1px solid ${showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      background: showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(76, 29, 149, 0.3)'
+    }
+  };
+
   const LeaderboardTable = ({ data, title }) => {
     if (!data.length) {
       return (
@@ -251,6 +285,9 @@ function Leaderboard({ eventId, currentUser }) {
         </div>
       );
     }
+
+    // Filter out bots if showBots is false
+    const filteredData = showBots ? data : data.filter(entry => !entry.is_bot);
 
     return (
       <>
@@ -267,7 +304,7 @@ function Leaderboard({ eventId, currentUser }) {
               </tr>
             </thead>
             <tbody>
-              {data.map((entry, index) => {
+              {filteredData.map((entry, index) => {
                 const isCurrentUser = entry.user_id === currentUser;
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
@@ -275,6 +312,7 @@ function Leaderboard({ eventId, currentUser }) {
                     <td style={userCellStyle(isCurrentUser)}>
                       {entry.user_id}
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
+                      {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
@@ -314,6 +352,15 @@ function Leaderboard({ eventId, currentUser }) {
   return (
     <div style={containerStyle}>
       <h1 style={titleStyle}>Leaderboard</h1>
+      
+      <div style={filterToggleStyle}>
+        <button 
+          style={toggleButtonStyle}
+          onClick={() => setShowBots(!showBots)}
+        >
+          {showBots ? 'Hide AI Users' : 'Show AI Users'}
+        </button>
+      </div>
       
       {eventId && (
         <LeaderboardTable 
