@@ -244,17 +244,22 @@ function Fights({ eventId, username }) {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px 16px',
-    borderRadius: '8px',
-    background: showAIVotes ? 'rgba(59, 130, 246, 0.2)' : 'rgba(76, 29, 149, 0.2)',
-    color: showAIVotes ? '#60a5fa' : '#a78bfa',
-    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+    padding: '6px 12px',
+    borderRadius: '6px',
+    background: 'transparent',
+    color: showAIVotes ? '#60a5fa80' : '#a78bfa80',
+    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
     cursor: 'pointer',
-    fontSize: '0.9rem',
+    fontSize: '0.8rem',
     transition: 'all 0.2s ease',
     marginBottom: '10px',
     width: 'fit-content',
-    margin: '0 auto 20px auto'
+    margin: '0 auto 20px auto',
+    opacity: 0.7,
+    '&:hover': {
+      opacity: 1,
+      background: showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(76, 29, 149, 0.1)'
+    }
   };
 
   if (loading) {
@@ -267,19 +272,18 @@ function Fights({ eventId, username }) {
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
+        <button 
+          style={toggleButtonStyle}
+          onClick={() => setShowAIVotes(!showAIVotes)}
+        >
+          {showAIVotes ? '○ AI Votes' : '● AI Votes'}
+        </button>
       </div>
 
       {error && (
         // Global error (e.g. from fetching fights) is still displayed at the top
         <div className="error-message">{error}</div>
       )}
-
-      <button 
-        style={toggleButtonStyle}
-        onClick={() => setShowAIVotes(!showAIVotes)}
-      >
-        {showAIVotes ? 'Hide AI Votes' : 'Show AI Votes'}
-      </button>
 
       {fights.map((fight) => (
         <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''}`}>
