@@ -119,8 +119,8 @@ function Leaderboard({ eventId, currentUser }) {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     '@media (max-width: 768px)': {
-      padding: '8px 4px',
-      fontSize: '0.7rem',
+      padding: '8px 2px',
+      fontSize: '0.65rem',
       letterSpacing: '0',
       textAlign: 'center'
     }
@@ -133,7 +133,29 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     '@media (max-width: 768px)': {
       ...headerStyle['@media (max-width: 768px)'],
-      width: '12%'
+      width: '15%',
+      padding: '8px 0'
+    }
+  };
+
+  const userHeaderStyle = {
+    ...headerStyle,
+    width: '45%',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '35%',
+      padding: '8px 0'
+    }
+  };
+
+  const statsHeaderStyle = {
+    ...headerStyle,
+    width: '15%',
+    textAlign: 'center',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '15%',
+      padding: '8px 0'
     }
   };
 
@@ -144,26 +166,8 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     '@media (max-width: 768px)': {
       ...headerStyle['@media (max-width: 768px)'],
-      width: '18%'
-    }
-  };
-
-  const userHeaderStyle = {
-    ...headerStyle,
-    width: '45%',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '40%'
-    }
-  };
-
-  const statsHeaderStyle = {
-    ...headerStyle,
-    width: '15%',
-    textAlign: 'center',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '15%'
+      width: '20%',
+      padding: '8px 0'
     }
   };
 
@@ -343,7 +347,7 @@ function Leaderboard({ eventId, currentUser }) {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={firstHeaderStyle}>RANK</th>
+                <th style={firstHeaderStyle}>RNK</th>
                 <th style={userHeaderStyle}>USER</th>
                 <th style={statsHeaderStyle}>✓</th>
                 <th style={statsHeaderStyle}>TOT</th>
@@ -353,6 +357,8 @@ function Leaderboard({ eventId, currentUser }) {
             <tbody>
               {filteredData.map((entry, index) => {
                 const isCurrentUser = entry.user_id === currentUser;
+                // Round the accuracy to the nearest whole number
+                const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
                     <td style={rankStyle(index)}>{getRankBadge(index)}</td>
@@ -370,8 +376,8 @@ function Leaderboard({ eventId, currentUser }) {
                     </td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
-                    <td style={accuracyStyle(parseFloat(entry.accuracy))}>
-                      {entry.accuracy}%
+                    <td style={accuracyStyle(roundedAccuracy)}>
+                      {roundedAccuracy}%
                     </td>
                   </tr>
                 );
