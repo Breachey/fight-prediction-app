@@ -264,9 +264,7 @@ function Fights({ eventId, username }) {
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
-              <h3 className="fighter-name">
-                {fight.fighter1_name}
-              </h3>
+              <h3 className="fighter-name">{fight.fighter1_name}</h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
@@ -285,6 +283,9 @@ function Fights({ eventId, username }) {
                   <span>{fight.fighter1_style ? fight.fighter1_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
                 </div>
               </div>
+              {submittedFights[fight.id] === fight.fighter1_name && (
+                <div className="vote-badge">Your Pick</div>
+              )}
             </div>
 
             <div className="vs-text">VS</div>
@@ -299,9 +300,7 @@ function Fights({ eventId, username }) {
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
-              <h3 className="fighter-name">
-                {fight.fighter2_name}
-              </h3>
+              <h3 className="fighter-name">{fight.fighter2_name}</h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
@@ -320,6 +319,9 @@ function Fights({ eventId, username }) {
                   <span>{fight.fighter2_style ? fight.fighter2_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
                 </div>
               </div>
+              {submittedFights[fight.id] === fight.fighter2_name && (
+                <div className="vote-badge">Your Pick</div>
+              )}
             </div>
           </div>
 
@@ -330,20 +332,7 @@ function Fights({ eventId, username }) {
 
           {selectedFights[fight.id] && !submittedFights[fight.id] && (
             <div className="selected-fighter-message">
-              You picked: {selectedFights[fight.id]}
               <button className="submit-vote-button" onClick={() => handleSubmitVote(fight.id)}>Submit Vote</button>
-            </div>
-          )}
-
-          {submittedFights[fight.id] && (
-            <div className={`completed-fight-message ${fadeOutMessages[fight.id] ? 'fade-out' : ''}`}>
-              Vote submitted: {submittedFights[fight.id]}
-            </div>
-          )}
-
-          {fight.is_completed && (
-            <div className="completed-fight-message">
-              Winner: {fight.winner}
             </div>
           )}
 
