@@ -23,14 +23,32 @@ function Leaderboard({ eventId, currentUser }) {
 
       // Fetch both leaderboards in parallel
       const [eventResponse, overallResponse] = await Promise.all([
-        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`) : Promise.resolve(null),
-        fetch(`${API_URL}/leaderboard`)
+        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Event leaderboard fetch error:', error);
+          return { ok: false, error };
+        }) : Promise.resolve(null),
+        fetch(`${API_URL}/leaderboard`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Overall leaderboard fetch error:', error);
+          return { ok: false, error };
+        })
       ]);
 
       // Check overall leaderboard response
       if (!overallResponse.ok) {
-        const errorData = await overallResponse.json();
-        throw new Error(errorData.error || 'Failed to load overall leaderboard');
+        const errorMessage = overallResponse.error 
+          ? `Failed to load overall leaderboard: ${overallResponse.error.message}`
+          : 'Failed to load overall leaderboard. Please try again later.';
+        throw new Error(errorMessage);
       }
       const overallData = await overallResponse.json();
       setOverallLeaderboard(overallData || []);
@@ -38,8 +56,10 @@ function Leaderboard({ eventId, currentUser }) {
       // Check event leaderboard response if we have an event ID
       if (eventId && eventResponse) {
         if (!eventResponse.ok) {
-          const errorData = await eventResponse.json();
-          throw new Error(errorData.error || 'Failed to load event leaderboard');
+          const errorMessage = eventResponse.error 
+            ? `Failed to load event leaderboard: ${eventResponse.error.message}`
+            : 'Failed to load event leaderboard. Please try again later.';
+          throw new Error(errorMessage);
         }
         const eventData = await eventResponse.json();
         setEventLeaderboard(eventData || []);
@@ -50,8 +70,12 @@ function Leaderboard({ eventId, currentUser }) {
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
-      setError(error.message);
+      setError(error.message || 'An unexpected error occurred. Please try again later.');
       setIsLoading(false);
+      
+      // Set empty arrays to prevent undefined errors
+      setEventLeaderboard([]);
+      setOverallLeaderboard([]);
     }
   };
 

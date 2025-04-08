@@ -217,6 +217,19 @@
   transform: translateY(-1px);
 }
 
+.expand-votes-button.disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: rgba(76, 29, 149, 0.1);
+  border: 1px solid rgba(76, 29, 149, 0.2);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.expand-votes-button.disabled:hover {
+  background: rgba(76, 29, 149, 0.1);
+  transform: none;
+}
+
 .votes-details {
   margin-top: 20px;
 }

@@ -11,6 +11,20 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Enable CORS for all routes
+app.use(cors({
+  origin: [
+    'https://fight-prediction-app.vercel.app',
+    'https://fight-prediction-app-git-breachey-brandons-projects-a1d75233.vercel.app',
+    'http://localhost:3000',  // For local development
+    'http://localhost:5173'   // For Vite's default port
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
+
 // Add connection test
 async function testSupabaseConnection() {
   try {
@@ -46,9 +60,6 @@ async function testSupabaseConnection() {
     return false;
   }
 }
-
-app.use(cors());
-app.use(express.json());
 
 // User Registration
 app.post('/register', async (req, res) => {
@@ -375,24 +386,18 @@ app.get('/predictions/filter', async (req, res) => {
       selected_fighter_type: typeof selected_fighter
     });
     
-    // First, let's log what's in the predictions table
-    const { data: allPredictions, error: checkError } = await supabase
-      .from('predictions')
-      .select('*');
-    
-    if (checkError) {
-      console.error('Error checking predictions table:', checkError);
-    } else {
-      console.log('All predictions in table:', allPredictions);
-      
-      // Log unique fighter names in predictions
-      const uniqueFighters = [...new Set(allPredictions.map(p => p.selected_fighter))];
-      console.log('Unique fighters in predictions:', uniqueFighters);
-      
-      // Log predictions for this specific fight
-      const fightPredictions = allPredictions.filter(p => p.fight_id === fight_id);
-      console.log('Predictions for this fight:', fightPredictions);
+    // Get all users with their is_bot status
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('username, is_bot');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ message: "Error fetching user data" });
     }
+
+    // Create a map of username to is_bot status
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
     
     // Get predictions for this fight with exact match
     const { data: exactMatches, error: exactError } = await supabase
@@ -403,17 +408,17 @@ app.get('/predictions/filter', async (req, res) => {
     
     if (exactError) {
       console.error('Error fetching predictions (exact match):', exactError);
-      console.error('Error details:', {
-        message: exactError.message,
-        details: exactError.details,
-        hint: exactError.hint,
-        code: exactError.code
-      });
       return res.status(500).json({ message: "Error fetching predictions" });
     }
+
+    // Add is_bot status to each prediction
+    const matchesWithBotStatus = (exactMatches || []).map(match => ({
+      ...match,
+      is_bot: userMap.get(match.username) || false
+    }));
     
     // Try alternative name formats if no exact matches
-    if (!exactMatches || exactMatches.length === 0) {
+    if (!matchesWithBotStatus.length) {
       console.log('No exact matches found, checking alternative formats');
       
       // Parse the fighter name components
@@ -436,7 +441,11 @@ app.get('/predictions/filter', async (req, res) => {
           console.error('Error fetching predictions (simple name):', simpleError);
         } else if (simpleMatches && simpleMatches.length > 0) {
           console.log('Found matches with simple name format');
-          return res.json(simpleMatches);
+          // Add is_bot status to simple matches
+          return res.json(simpleMatches.map(match => ({
+            ...match,
+            is_bot: userMap.get(match.username) || false
+          })));
         }
       }
     }
@@ -444,9 +453,9 @@ app.get('/predictions/filter', async (req, res) => {
     console.log('Successfully fetched predictions:', {
       fight_id,
       selected_fighter,
-      results: exactMatches
+      results: matchesWithBotStatus
     });
-    res.json(exactMatches || []);
+    res.json(matchesWithBotStatus);
   } catch (error) {
     console.error('Error in predictions/filter:', error);
     res.status(500).json({ message: "Internal server error" });
@@ -641,6 +650,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
   }
 });
 
+// Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
     // Get all prediction results
@@ -650,7 +660,10 @@ app.get('/leaderboard', async (req, res) => {
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch leaderboard data',
+        details: resultsError.message 
+      });
     }
 
     // Get all users with their is_bot status
@@ -660,7 +673,10 @@ app.get('/leaderboard', async (req, res) => {
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: 'Failed to fetch users' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch user data',
+        details: usersError.message 
+      });
     }
 
     // Create a map of username to is_bot status
@@ -697,7 +713,10 @@ app.get('/leaderboard', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
-    res.status(500).json({ error: 'Failed to process leaderboard' });
+    res.status(500).json({ 
+      error: 'Failed to process leaderboard',
+      details: error.message 
+    });
   }
 });
 
@@ -863,7 +882,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch event leaderboard data',
+        details: resultsError.message 
+      });
     }
 
     // Get all users with their is_bot status
@@ -873,7 +895,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: 'Failed to fetch users' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch user data',
+        details: usersError.message 
+      });
     }
 
     // Create a map of username to is_bot status
@@ -910,7 +935,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing event leaderboard:', error);
-    res.status(500).json({ error: 'Failed to process leaderboard' });
+    res.status(500).json({ 
+      error: 'Failed to process event leaderboard',
+      details: error.message 
+    });
   }
 });
 

@@ -12,6 +12,7 @@ function Fights({ eventId, username }) {
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
+  const [showAIVotes, setShowAIVotes] = useState(false);
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -119,17 +120,16 @@ function Fights({ eventId, username }) {
 
       // Mark this fight's vote as submitted
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
-      // Start fade out timer
-      handleMessageFadeOut(fightId);
-      // Clear any previous vote error for this fight
-      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
-      // Clear the selection since it's now submitted
+      // Disable further selection for this fight
       setSelectedFights(prev => {
         const newState = { ...prev };
         delete newState[fightId];
         return newState;
       });
-
+      // Start fade out timer
+      handleMessageFadeOut(fightId);
+      // Clear any previous vote error for this fight
+      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
         const fight = fights.find(f => f.id === fightId);
@@ -160,6 +160,15 @@ function Fights({ eventId, username }) {
   };
 
   const toggleFightExpansion = async (fightId) => {
+    const fight = fights.find(f => f.id === fightId);
+    if (!fight) return;
+
+    // Only allow expansion if user has voted or fight is completed
+    if (!submittedFights[fightId] && !fight.is_completed) {
+      setError(`You must vote on this fight to see other predictions`);
+      return;
+    }
+
     setExpandedFights(prev => {
       const newState = { ...prev };
       if (newState[fightId]) {
@@ -173,9 +182,6 @@ function Fights({ eventId, username }) {
     // Fetch votes if expanding and we don't have them yet
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
-        const fight = fights.find(f => f.id === fightId);
-        if (!fight) return;
-
         console.log('Fetching votes for fight:', {
           fightId,
           fighter1: fight.fighter1_name,
@@ -228,6 +234,39 @@ function Fights({ eventId, username }) {
     }
   };
 
+  const aiBadge = {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: '#60a5fa',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    border: '1px solid rgba(59, 130, 246, 0.3)',
+    marginLeft: '4px'
+  };
+
+  const toggleButtonStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '6px 12px',
+    borderRadius: '6px',
+    background: 'transparent',
+    color: showAIVotes ? '#60a5fa80' : '#a78bfa80',
+    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    transition: 'all 0.2s ease',
+    marginBottom: '10px',
+    width: 'fit-content',
+    margin: '0 auto 20px auto',
+    opacity: 0.7,
+    '&:hover': {
+      opacity: 1,
+      background: showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(76, 29, 149, 0.1)'
+    }
+  };
+
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
   }
@@ -238,6 +277,12 @@ function Fights({ eventId, username }) {
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
+        <button 
+          style={toggleButtonStyle}
+          onClick={() => setShowAIVotes(!showAIVotes)}
+        >
+          {showAIVotes ? '○ AI Votes' : '● AI Votes'}
+        </button>
       </div>
 
       {error && (
@@ -338,50 +383,67 @@ function Fights({ eventId, username }) {
 
           <div className="fight-votes-section">
             <button 
-              className="expand-votes-button"
+              className={`expand-votes-button ${(!submittedFights[fight.id] && !fight.is_completed) ? 'disabled' : ''}`}
               onClick={() => toggleFightExpansion(fight.id)}
             >
-              {expandedFights[fight.id] ? '▲ Hide Votes' : '▼ Show Votes'}
+              {expandedFights[fight.id] ? '▲ Hide Votes' : 
+               (!submittedFights[fight.id] && !fight.is_completed) ? 
+               '🔒 Vote to See Predictions' : 
+               '▼ Show Votes'}
             </button>
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
-              <div className="votes-details">
+              <div className="votes-container">
+                {/* Add back the vote distribution bar */}
                 <div className="vote-distribution">
-                  <div 
-                    className="vote-bar fighter1-bar" 
-                    style={{ 
-                      width: `${Math.round((fightVotes[fight.id].fighter1Votes.length / 
-                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
-                    }}
-                  />
-                  <div 
-                    className="vote-bar fighter2-bar" 
-                    style={{ 
-                      width: `${Math.round((fightVotes[fight.id].fighter2Votes.length / 
-                        (fightVotes[fight.id].fighter1Votes.length + fightVotes[fight.id].fighter2Votes.length)) * 100) || 0}%` 
-                    }}
-                  />
+                  {(() => {
+                    // Filter votes based on showAIVotes setting
+                    const fighter1FilteredVotes = fightVotes[fight.id].fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
+                    const fighter2FilteredVotes = fightVotes[fight.id].fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
+                    const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
+                    const fighter1Percentage = totalVotes ? Math.round((fighter1FilteredVotes.length / totalVotes) * 100) : 50;
+                    const fighter2Percentage = totalVotes ? Math.round((fighter2FilteredVotes.length / totalVotes) * 100) : 50;
+
+                    return (
+                      <>
+                        <div 
+                          className="vote-bar fighter1-bar" 
+                          style={{ width: `${fighter1Percentage}%` }}
+                        />
+                        <div 
+                          className="vote-bar fighter2-bar" 
+                          style={{ width: `${fighter2Percentage}%` }}
+                        />
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="votes-list-container">
                   <div className="fighter-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>
                     <div className="votes-list">
-                      {fightVotes[fight.id].fighter1Votes.map((vote, index) => (
-                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                          {vote.username} {vote.username === username && '(You)'}
-                        </div>
-                      ))}
+                      {fightVotes[fight.id].fighter1Votes
+                        .filter(vote => showAIVotes || !vote.is_bot)
+                        .map((vote, index) => (
+                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                            {vote.username} {vote.username === username && '(You)'}
+                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          </div>
+                        ))}
                     </div>
                   </div>
                   <div className="fighter-votes">
                     <h4>{fight.fighter2_name}'s Votes</h4>
                     <div className="votes-list">
-                      {fightVotes[fight.id].fighter2Votes.map((vote, index) => (
-                        <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                          {vote.username} {vote.username === username && '(You)'}
-                        </div>
-                      ))}
+                      {fightVotes[fight.id].fighter2Votes
+                        .filter(vote => showAIVotes || !vote.is_bot)
+                        .map((vote, index) => (
+                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                            {vote.username} {vote.username === username && '(You)'}
+                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 </div>
