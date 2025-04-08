@@ -120,17 +120,16 @@ function Fights({ eventId, username }) {
 
       // Mark this fight's vote as submitted
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
-      // Start fade out timer
-      handleMessageFadeOut(fightId);
-      // Clear any previous vote error for this fight
-      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
-      // Clear the selection since it's now submitted
+      // Disable further selection for this fight
       setSelectedFights(prev => {
         const newState = { ...prev };
         delete newState[fightId];
         return newState;
       });
-
+      // Start fade out timer
+      handleMessageFadeOut(fightId);
+      // Clear any previous vote error for this fight
+      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
         const fight = fights.find(f => f.id === fightId);
