@@ -386,6 +386,31 @@ function Fights({ eventId, username }) {
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
               <div className="votes-container">
+                {/* Add back the vote distribution bar */}
+                <div className="vote-distribution">
+                  {(() => {
+                    // Filter votes based on showAIVotes setting
+                    const fighter1FilteredVotes = fightVotes[fight.id].fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
+                    const fighter2FilteredVotes = fightVotes[fight.id].fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
+                    const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
+                    const fighter1Percentage = totalVotes ? Math.round((fighter1FilteredVotes.length / totalVotes) * 100) : 50;
+                    const fighter2Percentage = totalVotes ? Math.round((fighter2FilteredVotes.length / totalVotes) * 100) : 50;
+
+                    return (
+                      <>
+                        <div 
+                          className="vote-bar fighter1-bar" 
+                          style={{ width: `${fighter1Percentage}%` }}
+                        />
+                        <div 
+                          className="vote-bar fighter2-bar" 
+                          style={{ width: `${fighter2Percentage}%` }}
+                        />
+                      </>
+                    );
+                  })()}
+                </div>
+
                 <div className="votes-list-container">
                   <div className="fighter-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>
