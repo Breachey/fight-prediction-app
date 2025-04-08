@@ -12,7 +12,7 @@ function Fights({ eventId, username }) {
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
-  const [showAIVotes, setShowAIVotes] = useState(true);
+  const [showAIVotes, setShowAIVotes] = useState(false);
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
