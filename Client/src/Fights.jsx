@@ -161,6 +161,15 @@ function Fights({ eventId, username }) {
   };
 
   const toggleFightExpansion = async (fightId) => {
+    const fight = fights.find(f => f.id === fightId);
+    if (!fight) return;
+
+    // Only allow expansion if user has voted or fight is completed
+    if (!submittedFights[fightId] && !fight.is_completed) {
+      setError(`You must vote on this fight to see other predictions`);
+      return;
+    }
+
     setExpandedFights(prev => {
       const newState = { ...prev };
       if (newState[fightId]) {
@@ -174,9 +183,6 @@ function Fights({ eventId, username }) {
     // Fetch votes if expanding and we don't have them yet
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
-        const fight = fights.find(f => f.id === fightId);
-        if (!fight) return;
-
         console.log('Fetching votes for fight:', {
           fightId,
           fighter1: fight.fighter1_name,
@@ -378,10 +384,13 @@ function Fights({ eventId, username }) {
 
           <div className="fight-votes-section">
             <button 
-              className="expand-votes-button"
+              className={`expand-votes-button ${(!submittedFights[fight.id] && !fight.is_completed) ? 'disabled' : ''}`}
               onClick={() => toggleFightExpansion(fight.id)}
             >
-              {expandedFights[fight.id] ? '▲ Hide Votes' : '▼ Show Votes'}
+              {expandedFights[fight.id] ? '▲ Hide Votes' : 
+               (!submittedFights[fight.id] && !fight.is_completed) ? 
+               '🔒 Vote to See Predictions' : 
+               '▼ Show Votes'}
             </button>
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
