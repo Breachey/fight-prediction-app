@@ -187,7 +187,7 @@ app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
     const { data: events, error: eventError } = await supabase
-      .from('ufc_fight_card')
+      .from('ufc_full_fight_card')
       .select('Event, EventId')
       .order('EventId', { ascending: false })
       .limit(1);
@@ -201,10 +201,10 @@ app.get('/fights', async (req, res) => {
 
     // Get fights for the latest event
     const { data, error: fightsError } = await supabase
-      .from('ufc_fight_card')
+      .from('ufc_full_fight_card')
       .select('*')
       .eq('EventId', latestEventId)
-      .order('FightNumber');
+      .order('FightOrder');
 
     if (fightsError) {
       console.error('Error fetching fights:', fightsError);
@@ -230,55 +230,54 @@ app.get('/fights', async (req, res) => {
       });
     });
 
-    // Group fighters by FightNumber
+    // Group fighters by FightId
     const fightMap = new Map();
     data.forEach(fighter => {
-      if (!fightMap.has(fighter.FightNumber)) {
-        fightMap.set(fighter.FightNumber, {
+      if (!fightMap.has(fighter.FightId)) {
+        fightMap.set(fighter.FightId, {
           red: null,
           blue: null,
-          weightclass: fighter.WeightClass,
+          weightclass: fighter.FighterWeightClass,
           card_tier: fighter.CardSegment
         });
       }
       
       const corner = fighter.Corner?.toLowerCase();
       if (corner === 'red') {
-        fightMap.get(fighter.FightNumber).red = fighter;
+        fightMap.get(fighter.FightId).red = fighter;
       } else if (corner === 'blue') {
-        fightMap.get(fighter.FightNumber).blue = fighter;
+        fightMap.get(fighter.FightId).blue = fighter;
       }
     });
 
     // Transform the grouped data into the expected structure
     const transformedFights = Array.from(fightMap.entries())
       .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightNumber, fight]) => {
+      .map(([fightId, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
-        const fightId = `${latestEventId}-${fightNumber}`;
-        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
+        const result = resultsMap.get(`${latestEventId}-${fightId}`) || { winner: null, is_completed: false };
 
         return {
-          id: fightId,
+          id: `${latestEventId}-${fightId}`,
           event_id: latestEventId,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
+          fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
+          fighter1_rank: null, // Will be added later
+          fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}-${redFighter.Record_Draws}`,
+          fighter1_odds: null, // Will be added later
+          fighter1_style: redFighter.Stance,
+          fighter1_image: redFighter.ImageURL,
+          fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
+          fighter2_rank: null, // Will be added later
+          fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}-${blueFighter.Record_Draws}`,
+          fighter2_odds: null, // Will be added later
+          fighter2_style: blueFighter.Stance,
+          fighter2_image: blueFighter.ImageURL,
           winner: result.winner,
           is_completed: result.is_completed,
           card_tier: fight.card_tier,
           weightclass: fight.weightclass,
-          bout_order: fightNumber
+          bout_order: fightId
         };
       })
       .sort((a, b) => a.bout_order - b.bout_order);
@@ -726,8 +725,8 @@ app.get('/events', async (req, res) => {
     console.log('Attempting to fetch events from Supabase...');
 
     const { data, error } = await supabase
-      .from('ufc_fight_card')
-      .select('Event, EventId')
+      .from('ufc_full_fight_card')
+      .select('Event, EventId, StartTime')
       .order('EventId', { ascending: false });
 
     if (error) {
@@ -748,7 +747,11 @@ app.get('/events', async (req, res) => {
 
     // Remove duplicates using Set
     const uniqueEvents = Array.from(
-      new Set(data.map(event => JSON.stringify({ id: event.EventId, name: event.Event })))
+      new Set(data.map(event => JSON.stringify({ 
+        id: event.EventId, 
+        name: event.Event,
+        date: event.StartTime
+      })))
     ).map(str => JSON.parse(str));
 
     console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
@@ -757,7 +760,7 @@ app.get('/events', async (req, res) => {
     const transformedEvents = uniqueEvents.map(event => ({
       id: event.id,
       name: event.name,
-      date: null, // We don't have date information in the table
+      date: event.date,
       is_completed: false // We'll need to add this to the database if needed
     }));
 
@@ -780,10 +783,10 @@ app.get('/events/:id/fights', async (req, res) => {
     
     // Get fights for the event
     const { data, error } = await supabase
-      .from('ufc_fight_card')
+      .from('ufc_full_fight_card')
       .select('*')
       .eq('EventId', id)
-      .order('FightNumber');
+      .order('FightOrder');
 
     if (error) {
       console.error('Error fetching fights for event:', error);
@@ -809,55 +812,54 @@ app.get('/events/:id/fights', async (req, res) => {
       });
     });
 
-    // Group fighters by FightNumber
+    // Group fighters by FightId
     const fightMap = new Map();
     data.forEach(fighter => {
-      if (!fightMap.has(fighter.FightNumber)) {
-        fightMap.set(fighter.FightNumber, {
+      if (!fightMap.has(fighter.FightId)) {
+        fightMap.set(fighter.FightId, {
           red: null,
           blue: null,
-          weightclass: fighter.WeightClass,
+          weightclass: fighter.FighterWeightClass,
           card_tier: fighter.CardSegment
         });
       }
       
       const corner = fighter.Corner?.toLowerCase();
       if (corner === 'red') {
-        fightMap.get(fighter.FightNumber).red = fighter;
+        fightMap.get(fighter.FightId).red = fighter;
       } else if (corner === 'blue') {
-        fightMap.get(fighter.FightNumber).blue = fighter;
+        fightMap.get(fighter.FightId).blue = fighter;
       }
     });
 
     // Transform the grouped data into the expected structure
     const transformedFights = Array.from(fightMap.entries())
       .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightNumber, fight]) => {
+      .map(([fightId, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
-        const fightId = `${id}-${fightNumber}`;
-        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
+        const result = resultsMap.get(`${id}-${fightId}`) || { winner: null, is_completed: false };
 
         return {
-          id: fightId,
+          id: `${id}-${fightId}`,
           event_id: id,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
+          fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
+          fighter1_rank: null, // Will be added later
+          fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}-${redFighter.Record_Draws}`,
+          fighter1_odds: null, // Will be added later
+          fighter1_style: redFighter.Stance,
+          fighter1_image: redFighter.ImageURL,
+          fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
+          fighter2_rank: null, // Will be added later
+          fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}-${blueFighter.Record_Draws}`,
+          fighter2_odds: null, // Will be added later
+          fighter2_style: blueFighter.Stance,
+          fighter2_image: blueFighter.ImageURL,
           winner: result.winner,
           is_completed: result.is_completed,
           card_tier: fight.card_tier,
           weightclass: fight.weightclass,
-          bout_order: fightNumber
+          bout_order: fightId
         };
       })
       .sort((a, b) => a.bout_order - b.bout_order);
