@@ -480,6 +480,24 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
 
     console.log('Updating fight result:', { id, winner, idType: typeof id });
 
+    // First get the fight data to get the event_id
+    const { data: fightData, error: getFightError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('*')
+      .eq('FightId', id);
+
+    if (getFightError) {
+      console.error('Error fetching fight data:', getFightError);
+      return res.status(500).json({ error: 'Failed to fetch fight data' });
+    }
+
+    if (!fightData || fightData.length === 0) {
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+
+    // Get the event_id from the first fighter's data
+    const event_id = fightData[0].EventId;
+
     // Update fight_results table
     const { error: updateError } = await supabase
       .from('fight_results')
@@ -546,7 +564,6 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       // Update prediction_results for each prediction
       for (const prediction of predictions) {
         const predicted_correctly = prediction.selected_fighter === winner;
-        const event_id = fight.red.EventId; // Get event_id from the fight data
         console.log('Updating prediction result:', {
           user_id: prediction.username,
           fight_id: id,
@@ -580,22 +597,6 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       }
     }
 
-    // Get the updated fight data
-    const fightId = id;
-    console.log('Fight ID:', fightId);
-    
-    const { data: fightData, error: getFightError } = await supabase
-      .from('ufc_full_fight_card')
-      .select('*')
-      .eq('FightId', fightId);
-
-    if (getFightError) {
-      console.error('Error fetching updated fight:', getFightError);
-      return res.status(500).json({ error: 'Failed to fetch updated fight' });
-    }
-
-    console.log('Fetched fight data:', fightData);
-
     // Transform the fight data to match the expected structure
     const fightMap = new Map();
     fightData.forEach(fighter => {
@@ -616,9 +617,9 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       }
     });
 
-    const fight = fightMap.get(fightId);
+    const fight = fightMap.get(id);
     if (!fight || !fight.red || !fight.blue) {
-      console.error('Fight not found in transformed data:', { fightId, fight });
+      console.error('Fight not found in transformed data:', { id, fight });
       return res.status(404).json({ error: 'Fight not found' });
     }
 
@@ -626,8 +627,8 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
     const blueFighter = transformFighterData(fight.blue);
 
     const transformedFight = {
-      id: fightId,
-      event_id: fight.red.EventId,
+      id: id,
+      event_id: event_id,
       fighter1_name: redFighter.name,
       fighter1_rank: redFighter.rank,
       fighter1_record: redFighter.record,
