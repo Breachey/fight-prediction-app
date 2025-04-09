@@ -256,7 +256,7 @@ app.get('/fights', async (req, res) => {
       .map(([fightId, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
-        const result = resultsMap.get(`${latestEventId}-${fightId}`) || { winner: null, is_completed: false };
+        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
 
         // Map card segment names
         let displayCardTier = fight.card_tier;
@@ -845,7 +845,7 @@ app.get('/events/:id/fights', async (req, res) => {
       .map(([fightId, fight]) => {
         const redFighter = transformFighterData(fight.red);
         const blueFighter = transformFighterData(fight.blue);
-        const result = resultsMap.get(`${id}-${fightId}`) || { winner: null, is_completed: false };
+        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
 
         // Map card segment names
         let displayCardTier = fight.card_tier;
