@@ -258,6 +258,14 @@ app.get('/fights', async (req, res) => {
         const blueFighter = transformFighterData(fight.blue);
         const result = resultsMap.get(`${latestEventId}-${fightId}`) || { winner: null, is_completed: false };
 
+        // Map card segment names
+        let displayCardTier = fight.card_tier;
+        if (fight.card_tier === 'Prelims1') {
+          displayCardTier = 'Prelims';
+        } else if (fight.card_tier === 'Prelims2') {
+          displayCardTier = 'Early Prelims';
+        }
+
         return {
           id: `${latestEventId}-${fightId}`,
           event_id: latestEventId,
@@ -275,9 +283,9 @@ app.get('/fights', async (req, res) => {
           fighter2_image: blueFighter.image,
           winner: result.winner,
           is_completed: result.is_completed,
-          card_tier: fight.card_tier,
+          card_tier: displayCardTier,
           weightclass: fight.weightclass,
-          bout_order: fightId
+          bout_order: fight.red.FightOrder // Use FightOrder from the fighter data
         };
       })
       .sort((a, b) => a.bout_order - b.bout_order);
@@ -840,6 +848,14 @@ app.get('/events/:id/fights', async (req, res) => {
         const blueFighter = transformFighterData(fight.blue);
         const result = resultsMap.get(`${id}-${fightId}`) || { winner: null, is_completed: false };
 
+        // Map card segment names
+        let displayCardTier = fight.card_tier;
+        if (fight.card_tier === 'Prelims1') {
+          displayCardTier = 'Prelims';
+        } else if (fight.card_tier === 'Prelims2') {
+          displayCardTier = 'Early Prelims';
+        }
+
         return {
           id: `${id}-${fightId}`,
           event_id: id,
@@ -857,9 +873,9 @@ app.get('/events/:id/fights', async (req, res) => {
           fighter2_image: blueFighter.image,
           winner: result.winner,
           is_completed: result.is_completed,
-          card_tier: fight.card_tier,
+          card_tier: displayCardTier,
           weightclass: fight.weightclass,
-          bout_order: fightId
+          bout_order: fight.red.FightOrder // Use FightOrder from the fighter data
         };
       })
       .sort((a, b) => a.bout_order - b.bout_order);
