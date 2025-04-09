@@ -161,7 +161,7 @@ app.post('/login', async (req, res) => {
 
 // Helper function to transform fighter data
 function transformFighterData(fighter) {
-  const record = `${fighter.Wins}-${fighter.Losses}${fighter.Draws > 0 ? `-${fighter.Draws}` : ''}${fighter.NoContests > 0 ? ` (${fighter.NoContests}NC)` : ''}`;
+  const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
   const fullName = fighter.Nickname ? 
     `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
     `${fighter.FirstName} ${fighter.LastName}`;
@@ -178,7 +178,7 @@ function transformFighterData(fighter) {
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: fighter.Rank || null,
+    rank: null, // Will be added later
     odds: formattedOdds
   };
 }
@@ -261,18 +261,18 @@ app.get('/fights', async (req, res) => {
         return {
           id: `${latestEventId}-${fightId}`,
           event_id: latestEventId,
-          fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
-          fighter1_rank: null, // Will be added later
-          fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}-${redFighter.Record_Draws}`,
-          fighter1_odds: null, // Will be added later
-          fighter1_style: redFighter.Stance,
-          fighter1_image: redFighter.ImageURL,
-          fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
-          fighter2_rank: null, // Will be added later
-          fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}-${blueFighter.Record_Draws}`,
-          fighter2_odds: null, // Will be added later
-          fighter2_style: blueFighter.Stance,
-          fighter2_image: blueFighter.ImageURL,
+          fighter1_name: redFighter.name,
+          fighter1_rank: redFighter.rank,
+          fighter1_record: redFighter.record,
+          fighter1_odds: redFighter.odds,
+          fighter1_style: redFighter.style,
+          fighter1_image: redFighter.image,
+          fighter2_name: blueFighter.name,
+          fighter2_rank: blueFighter.rank,
+          fighter2_record: blueFighter.record,
+          fighter2_odds: blueFighter.odds,
+          fighter2_style: blueFighter.style,
+          fighter2_image: blueFighter.image,
           winner: result.winner,
           is_completed: result.is_completed,
           card_tier: fight.card_tier,
@@ -843,18 +843,18 @@ app.get('/events/:id/fights', async (req, res) => {
         return {
           id: `${id}-${fightId}`,
           event_id: id,
-          fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
-          fighter1_rank: null, // Will be added later
-          fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}-${redFighter.Record_Draws}`,
-          fighter1_odds: null, // Will be added later
-          fighter1_style: redFighter.Stance,
-          fighter1_image: redFighter.ImageURL,
-          fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
-          fighter2_rank: null, // Will be added later
-          fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}-${blueFighter.Record_Draws}`,
-          fighter2_odds: null, // Will be added later
-          fighter2_style: blueFighter.Stance,
-          fighter2_image: blueFighter.ImageURL,
+          fighter1_name: redFighter.name,
+          fighter1_rank: redFighter.rank,
+          fighter1_record: redFighter.record,
+          fighter1_odds: redFighter.odds,
+          fighter1_style: redFighter.style,
+          fighter1_image: redFighter.image,
+          fighter2_name: blueFighter.name,
+          fighter2_rank: blueFighter.rank,
+          fighter2_record: blueFighter.record,
+          fighter2_odds: blueFighter.odds,
+          fighter2_style: blueFighter.style,
+          fighter2_image: blueFighter.image,
           winner: result.winner,
           is_completed: result.is_completed,
           card_tier: fight.card_tier,
