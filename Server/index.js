@@ -32,7 +32,7 @@ async function testSupabaseConnection() {
     
     // First test basic connection
     const { data: countData, error: countError } = await supabase
-      .from('ufc_fight_card')
+      .from('ufc_full_fight_card')
       .select('count')
       .limit(1);
 
@@ -43,14 +43,14 @@ async function testSupabaseConnection() {
 
     // Get table structure
     const { data, error } = await supabase
-      .from('ufc_fight_card')
+      .from('ufc_full_fight_card')
       .select()
       .limit(1);
 
     if (error) {
       console.error('Failed to get table structure:', error);
     } else if (data && data.length > 0) {
-      console.log('Available columns in ufc_fight_card:', Object.keys(data[0]).join(', '));
+      console.log('Available columns in ufc_full_fight_card:', Object.keys(data[0]).join(', '));
     }
 
     console.log('Supabase connection test successful');
@@ -186,30 +186,36 @@ function transformFighterData(fighter) {
 app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
-    const { data: events, error: eventError } = await supabase
-      .from('ufc_full_fight_card')
-      .select('Event, EventId')
-      .order('EventId', { ascending: false })
+    const { data: latestEvent, error: eventError } = await supabase
+      .from('ufc_events')
+      .select('*')
+      .order('date', { ascending: false })
       .limit(1);
 
-    if (eventError || !events.length) {
+    if (eventError) {
       console.error('Error fetching latest event:', eventError);
       return res.status(500).json({ error: 'Failed to fetch latest event' });
     }
 
-    const latestEventId = events[0].EventId;
-
-    // Get fights for the latest event
-    const { data, error: fightsError } = await supabase
+    // Get all fights for the latest event
+    const { data: fights, error: fightsError } = await supabase
       .from('ufc_full_fight_card')
       .select('*')
-      .eq('EventId', latestEventId)
-      .order('FightOrder');
+      .eq('EventId', latestEvent[0].id);
 
     if (fightsError) {
       console.error('Error fetching fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
+
+    console.log('Fetched fights data:', {
+      count: fights.length,
+      sampleFightIds: fights.slice(0, 3).map(f => ({
+        FightId: f.FightId,
+        FightIdType: typeof f.FightId,
+        FightIdLength: f.FightId.length
+      }))
+    });
 
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
@@ -221,79 +227,121 @@ app.get('/fights', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fight results' });
     }
 
-    // Create a map of fight results
-    const resultsMap = new Map();
-    fightResults.forEach(result => {
-      resultsMap.set(result.fight_id, {
-        winner: result.winner,
-        is_completed: result.is_completed
-      });
+    console.log('Fetched fight results:', {
+      count: fightResults.length,
+      sampleResultIds: fightResults.slice(0, 3).map(r => ({
+        fight_id: r.fight_id,
+        fight_idType: typeof r.fight_id,
+        fight_idLength: r.fight_id.length
+      }))
     });
+
+    // Create a map of fight results
+    const fightResultsMap = new Map();
+    console.log(`Processing ${fightResults.length} fight results`);
+    
+    fightResults.forEach(result => {
+        const { fight_id, winner } = result;
+        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${winner}`);
+        if (fight_id === '11997') {
+            console.log('Found target fight 11997 in results');
+        }
+        fightResultsMap.set(fight_id, winner);
+    });
+
+    console.log(`Fight results map size: ${fightResultsMap.size}`);
+    console.log('Fight results map keys:', Array.from(fightResultsMap.keys()));
 
     // Group fighters by FightId
-    const fightMap = new Map();
-    data.forEach(fighter => {
-      if (!fightMap.has(fighter.FightId)) {
-        fightMap.set(fighter.FightId, {
-          red: null,
-          blue: null,
-          weightclass: fighter.FighterWeightClass,
-          card_tier: fighter.CardSegment
-        });
-      }
-      
-      const corner = fighter.Corner?.toLowerCase();
-      if (corner === 'red') {
-        fightMap.get(fighter.FightId).red = fighter;
-      } else if (corner === 'blue') {
-        fightMap.get(fighter.FightId).blue = fighter;
-      }
-    });
-
-    // Transform the grouped data into the expected structure
-    const transformedFights = Array.from(fightMap.entries())
-      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightId, fight]) => {
-        const redFighter = transformFighterData(fight.red);
-        const blueFighter = transformFighterData(fight.blue);
-        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
-
-        // Map card segment names
-        let displayCardTier = fight.card_tier;
-        if (fight.card_tier === 'Prelims1') {
-          displayCardTier = 'Prelims';
-        } else if (fight.card_tier === 'Prelims2') {
-          displayCardTier = 'Early Prelims';
+    const fightersByFight = new Map();
+    console.log(`Processing ${fights.length} fights from database`);
+    
+    fights.forEach(fighter => {
+        const { FightId, Corner, FirstName, LastName } = fighter;
+        console.log(`Processing fighter: ${FirstName} ${LastName}, Fight ID: ${FightId}, Corner: ${Corner}`);
+        
+        if (FightId === '11997') {
+            console.log(`Found fighter for target fight 11997: ${FirstName} ${LastName} (${Corner} corner)`);
         }
 
-        return {
-          id: fightId,
-          event_id: latestEventId,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
-          winner: result.winner,
-          is_completed: result.is_completed,
-          card_tier: displayCardTier,
-          weightclass: fight.weightclass,
-          bout_order: fight.red.FightOrder // Use FightOrder from the fighter data
-        };
-      })
-      .sort((a, b) => a.bout_order - b.bout_order);
+        if (!fightersByFight.has(FightId)) {
+            fightersByFight.set(FightId, { red: null, blue: null });
+        }
+        fightersByFight.get(FightId)[Corner.toLowerCase()] = fighter;
+    });
+
+    console.log(`Fighters by fight map size: ${fightersByFight.size}`);
+    console.log('Fight IDs in fightersByFight:', Array.from(fightersByFight.keys()));
+
+    // Transform fights
+    const transformedFights = [];
+    fightersByFight.forEach((fighters, fightId) => {
+        if (!fighters.red || !fighters.blue) {
+            console.log(`Skipping incomplete fight ${fightId}. Red: ${!!fighters.red}, Blue: ${!!fighters.blue}`);
+            return;
+        }
+
+        if (fightId === '11997') {
+            console.log('Processing target fight 11997:');
+            console.log('Red corner:', fighters.red.FirstName, fighters.red.LastName);
+            console.log('Blue corner:', fighters.blue.FirstName, fighters.blue.LastName);
+        }
+
+        const result = fightResultsMap.get(fightId);
+        const redFighter = transformFighterData(fighters.red);
+        const blueFighter = transformFighterData(fighters.blue);
+
+        // Map card segment names
+        let displayCardTier = fighters.card_tier;
+        if (fighters.card_tier === 'Prelims1') {
+            displayCardTier = 'Prelims';
+        } else if (fighters.card_tier === 'Prelims2') {
+            displayCardTier = 'Early Prelims';
+        }
+
+        transformedFights.push({
+            id: fightId,
+            event_id: latestEvent[0].id,
+            fighter1_id: redFighter.id,
+            fighter1_name: redFighter.name,
+            fighter1_record: redFighter.record,
+            fighter1_height: redFighter.height,
+            fighter1_weight: redFighter.weight,
+            fighter1_reach: redFighter.reach,
+            fighter1_stance: redFighter.stance,
+            fighter1_style: redFighter.style,
+            fighter1_image: redFighter.image,
+            fighter2_id: blueFighter.id,
+            fighter2_name: blueFighter.name,
+            fighter2_record: blueFighter.record,
+            fighter2_height: blueFighter.height,
+            fighter2_weight: blueFighter.weight,
+            fighter2_reach: blueFighter.reach,
+            fighter2_stance: blueFighter.stance,
+            fighter2_style: blueFighter.style,
+            fighter2_image: blueFighter.image,
+            winner: result || null,
+            is_completed: result ? true : false,
+            card_tier: displayCardTier,
+            weightclass: fighters.weightclass,
+            bout_order: fighters.red.FightOrder
+        });
+    });
+
+    console.log('Transformed fights:', {
+      count: transformedFights.length,
+      fights: transformedFights.map(f => ({
+        id: f.id,
+        idType: typeof f.id,
+        fighter1_name: f.fighter1_name,
+        fighter2_name: f.fighter2_name
+      }))
+    });
 
     res.json(transformedFights);
   } catch (error) {
-    console.error('Error in GET /fights:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching fights:', error);
+    res.status(500).json({ error: 'Failed to fetch fights' });
   }
 });
 
@@ -473,12 +521,18 @@ app.get('/', (req, res) => {
   res.json({ status: 'API is running' });
 });
 
-app.post('/ufc_fight_card/:id/result', async (req, res) => {
+app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
   try {
     const { id } = req.params;
     const { winner } = req.body;
 
-    console.log('Updating fight result:', { id, winner, idType: typeof id });
+    console.log('Received request to update fight result:', {
+      id,
+      idType: typeof id,
+      idLength: id.length,
+      winner,
+      winnerType: typeof winner
+    });
 
     // First get the fight data to get the event_id
     const { data: fightData, error: getFightError } = await supabase
@@ -488,21 +542,35 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
 
     if (getFightError) {
       console.error('Error fetching fight data:', getFightError);
+      console.error('Error details:', {
+        message: getFightError.message,
+        details: getFightError.details,
+        hint: getFightError.hint,
+        code: getFightError.code
+      });
       return res.status(500).json({ error: 'Failed to fetch fight data' });
     }
 
     if (!fightData || fightData.length === 0) {
-      console.error('No fight data found for ID:', id);
+      console.error('No fight data found for ID:', {
+        id,
+        idType: typeof id,
+        idLength: id.length,
+        searchQuery: { FightId: id },
+        searchQueryType: typeof { FightId: id }
+      });
       return res.status(404).json({ error: 'Fight not found' });
     }
 
-    console.log('Fetched fight data:', {
+    console.log('Found fight data:', {
       id,
+      idType: typeof id,
       fightCount: fightData.length,
       fighters: fightData.map(f => ({
         FightId: f.FightId,
+        FightIdType: typeof f.FightId,
         Corner: f.Corner,
-        Name: f.FirstName + ' ' + f.LastName
+        Name: `${f.FirstName} ${f.LastName}`
       }))
     });
 
@@ -622,6 +690,16 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
 
     // Transform the fight data to match the expected structure
     const fightMap = new Map();
+    console.log('Creating fight map with data:', {
+      fightCount: fightData.length,
+      fighters: fightData.map(f => ({
+        FightId: f.FightId,
+        FightIdType: typeof f.FightId,
+        Corner: f.Corner,
+        Name: `${f.FirstName} ${f.LastName}`
+      }))
+    });
+
     fightData.forEach(fighter => {
       if (!fightMap.has(fighter.FightId)) {
         fightMap.set(fighter.FightId, {
@@ -640,10 +718,15 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       }
     });
 
-    console.log('Fight map after transformation:', {
-      fightId: id,
-      fightMap: Array.from(fightMap.entries()).map(([id, fight]) => ({
+    console.log('Fight map after population:', {
+      fightCount: fightMap.size,
+      fightMapKeys: Array.from(fightMap.keys()).map(key => ({
+        key,
+        keyType: typeof key
+      })),
+      fightMapEntries: Array.from(fightMap.entries()).map(([id, fight]) => ({
         id,
+        idType: typeof id,
         hasRed: !!fight.red,
         hasBlue: !!fight.blue,
         redName: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
@@ -653,12 +736,22 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
 
     const fight = fightMap.get(id);
     if (!fight) {
-      console.error('Fight not found in transformed data:', { 
-        id, 
-        fightData: fightData.map(f => ({
-          FightId: f.FightId,
-          Corner: f.Corner,
-          Name: `${f.FirstName} ${f.LastName}`
+      console.error('Fight not found in transformed data:', {
+        id,
+        idType: typeof id,
+        searchId: id,
+        searchIdType: typeof id,
+        fightMapKeys: Array.from(fightMap.keys()).map(key => ({
+          key,
+          keyType: typeof key
+        })),
+        fightMapEntries: Array.from(fightMap.entries()).map(([id, fight]) => ({
+          id,
+          idType: typeof id,
+          hasRed: !!fight.red,
+          hasBlue: !!fight.blue,
+          redName: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
+          blueName: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
         }))
       });
       return res.status(404).json({ error: 'Fight not found in transformed data' });
@@ -667,6 +760,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
     if (!fight.red || !fight.blue) {
       console.error('Missing fighter data:', { 
         id, 
+        idType: typeof id,
         fight,
         red: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
         blue: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
@@ -868,73 +962,105 @@ app.get('/events/:id/fights', async (req, res) => {
     }
 
     // Create a map of fight results
-    const resultsMap = new Map();
+    const fightResultsMap = new Map();
     fightResults.forEach(result => {
-      resultsMap.set(result.fight_id, {
-        winner: result.winner,
-        is_completed: result.is_completed
+      console.log('Processing fight result:', {
+        fight_id: result.fight_id,
+        winner: result.winner
       });
+      
+      if (result.fight_id === '11997') {
+        console.log('Found target fight result:', result);
+      }
+      fightResultsMap.set(result.fight_id, result);
     });
+
+    console.log('Fight results map size:', fightResultsMap.size);
+    if (fightResultsMap.has('11997')) {
+      console.log('Target fight result found in map:', fightResultsMap.get('11997'));
+    } else {
+      console.log('Target fight result not found in map');
+    }
 
     // Group fighters by FightId
     const fightMap = new Map();
+    console.log('Creating fight map with data:', {
+      fightCount: data.length,
+      fighters: data.map(f => ({
+        FightId: f.FightId,
+        FightIdType: typeof f.FightId,
+        Corner: f.Corner,
+        Name: `${f.FirstName} ${f.LastName}`
+      }))
+    });
+
     data.forEach(fighter => {
       if (!fightMap.has(fighter.FightId)) {
         fightMap.set(fighter.FightId, {
           red: null,
-          blue: null,
-          weightclass: fighter.FighterWeightClass,
-          card_tier: fighter.CardSegment
+          blue: null
         });
       }
       
-      const corner = fighter.Corner?.toLowerCase();
-      if (corner === 'red') {
-        fightMap.get(fighter.FightId).red = fighter;
-      } else if (corner === 'blue') {
-        fightMap.get(fighter.FightId).blue = fighter;
+      const fightData = fightMap.get(fighter.FightId);
+      const fighterData = transformFighterData(fighter);
+      
+      if (fighter.Corner === 'Red') {
+        fightData.red = fighterData;
+      } else if (fighter.Corner === 'Blue') {
+        fightData.blue = fighterData;
       }
     });
 
-    // Transform the grouped data into the expected structure
-    const transformedFights = Array.from(fightMap.entries())
-      .filter(([_, fight]) => fight.red && fight.blue) // Only include complete fights
-      .map(([fightId, fight]) => {
-        const redFighter = transformFighterData(fight.red);
-        const blueFighter = transformFighterData(fight.blue);
-        const result = resultsMap.get(fightId) || { winner: null, is_completed: false };
+    console.log('Fight map info:', {
+      size: fightMap.size,
+      sampleEntries: Array.from(fightMap.entries()).slice(0, 3).map(([id, data]) => ({
+        id,
+        idType: typeof id,
+        hasRedFighter: !!data.red,
+        hasBlueFighter: !!data.blue
+      }))
+    });
 
-        // Map card segment names
-        let displayCardTier = fight.card_tier;
-        if (fight.card_tier === 'Prelims1') {
-          displayCardTier = 'Prelims';
-        } else if (fight.card_tier === 'Prelims2') {
-          displayCardTier = 'Early Prelims';
-        }
-
-        return {
+    // Transform fights into the required format
+    const transformedFights = [];
+    for (const [fightId, fighters] of fightMap) {
+      // Skip incomplete fights
+      if (!fighters.red || !fighters.blue) {
+        console.log('Skipping incomplete fight:', {
           id: fightId,
-          event_id: id,
-          fighter1_name: redFighter.name,
-          fighter1_rank: redFighter.rank,
-          fighter1_record: redFighter.record,
-          fighter1_odds: redFighter.odds,
-          fighter1_style: redFighter.style,
-          fighter1_image: redFighter.image,
-          fighter2_name: blueFighter.name,
-          fighter2_rank: blueFighter.rank,
-          fighter2_record: blueFighter.record,
-          fighter2_odds: blueFighter.odds,
-          fighter2_style: blueFighter.style,
-          fighter2_image: blueFighter.image,
-          winner: result.winner,
-          is_completed: result.is_completed,
-          card_tier: displayCardTier,
-          weightclass: fight.weightclass,
-          bout_order: fight.red.FightOrder // Use FightOrder from the fighter data
-        };
-      })
-      .sort((a, b) => a.bout_order - b.bout_order);
+          hasRedFighter: !!fighters.red,
+          hasBlueFighter: !!fighters.blue
+        });
+        continue;
+      }
+
+      const result = fightResultsMap.get(fightId);
+      const redFighter = transformFighterData(fighters.red);
+      const blueFighter = transformFighterData(fighters.blue);
+
+      transformedFights.push({
+        id: fightId,
+        event_id: id,
+        fighter1_name: redFighter.name,
+        fighter1_rank: redFighter.rank,
+        fighter1_record: redFighter.record,
+        fighter1_odds: redFighter.odds,
+        fighter1_style: redFighter.style,
+        fighter1_image: redFighter.image,
+        fighter2_name: blueFighter.name,
+        fighter2_rank: blueFighter.rank,
+        fighter2_record: blueFighter.record,
+        fighter2_odds: blueFighter.odds,
+        fighter2_style: blueFighter.style,
+        fighter2_image: blueFighter.image,
+        winner: result?.winner || null,
+        is_completed: result?.is_completed || false,
+        card_tier: fighters.card_tier,
+        weightclass: fighters.weightclass,
+        bout_order: fighters.red.FightOrder
+      });
+    }
 
     res.json(transformedFights);
   } catch (error) {

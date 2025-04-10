@@ -31,7 +31,7 @@ function FightAdmin({ eventId }) {
 
   const handleResultUpdate = async (fightId, winner) => {
     try {
-      const response = await fetch(`${API_URL}/ufc_fight_card/${fightId}/result`, {
+      const response = await fetch(`${API_URL}/ufc_full_fight_card/${fightId}/result`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
