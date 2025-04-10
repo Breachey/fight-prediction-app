@@ -179,23 +179,25 @@ function transformFighterData(fighter) {
   });
   
   const transformedFighter = {
-    name: `${fighter.FirstName} ${fighter.LastName}`, // Keep full name without nickname for tracking
+    id: fighter.FighterId,
+    name: `${fighter.FirstName} ${fighter.LastName}`,
     firstName: fighter.FirstName,
     lastName: fighter.LastName,
     nickname: fighter.Nickname || null,
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: null, // Will be added later
+    rank: null,
     odds: formattedOdds,
     country: fighter.FightingOutOf_Country || 'N/A',
-    age: fighter.Age !== undefined ? fighter.Age : null, // Handle age properly for integer type
+    age: fighter.Age !== undefined ? fighter.Age : null,
     weight: fighter.Weight_lbs || null,
     height: fighter.Height_in || null,
     reach: fighter.Reach_in || null
   };
 
-  console.log('Transformed fighter age:', {
+  console.log('Transformed fighter:', {
+    id: transformedFighter.id,
     name: transformedFighter.name,
     age: transformedFighter.age,
     ageType: typeof transformedFighter.age
@@ -394,16 +396,16 @@ app.get('/fights', async (req, res) => {
 });
 
 app.post('/predict', async (req, res) => {
-  const { fightId, selectedFighter, username } = req.body;
+  const { fightId, fighter_id, username } = req.body;
 
-  if (!fightId || !selectedFighter || !username) {
+  if (!fightId || !fighter_id || !username) {
     return res.status(400).json({ error: "Missing required data" });
   }
 
   try {
     console.log('Received prediction request:', {
       fightId,
-      selectedFighter,
+      fighter_id,
       username
     });
 
@@ -425,7 +427,7 @@ app.post('/predict', async (req, res) => {
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
-        .update({ selected_fighter: selectedFighter })
+        .update({ fighter_id: fighter_id })
         .eq('fight_id', fightId)
         .eq('username', username);
 
@@ -443,7 +445,7 @@ app.post('/predict', async (req, res) => {
       .from('predictions')
       .insert([{ 
         fight_id: fightId,
-        selected_fighter: selectedFighter,
+        fighter_id: fighter_id,
         username 
       }]);
 
@@ -474,94 +476,32 @@ app.get('/predictions', async (req, res) => {
 });
 
 app.get('/predictions/filter', async (req, res) => {
-  const { fight_id, selected_fighter } = req.query;
-  
-  if (!fight_id || !selected_fighter) {
-    console.log('Missing parameters:', { fight_id, selected_fighter });
-    return res.status(400).json({ message: "Missing query parameters" });
+  const { username, fightId } = req.query;
+
+  if (!username || !fightId) {
+    return res.status(400).json({ error: "Missing required parameters" });
   }
 
   try {
-    console.log('Fetching predictions with params:', {
-      fight_id,
-      selected_fighter,
-      fight_id_type: typeof fight_id,
-      selected_fighter_type: typeof selected_fighter
-    });
-    
-    // Get all users with their is_bot status
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('username, is_bot');
-
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      return res.status(500).json({ message: "Error fetching user data" });
-    }
-
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-    
-    // Get predictions for this fight with exact match
-    const { data: exactMatches, error: exactError } = await supabase
+    const { data: prediction, error } = await supabase
       .from('predictions')
-      .select('username, created_at')
-      .eq('fight_id', fight_id)
-      .eq('selected_fighter', selected_fighter);
-    
-    if (exactError) {
-      console.error('Error fetching predictions (exact match):', exactError);
-      return res.status(500).json({ message: "Error fetching predictions" });
+      .select('*')
+      .eq('username', username)
+      .eq('fight_id', fightId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: "No prediction found" });
+      }
+      console.error('Error fetching prediction:', error);
+      return res.status(500).json({ error: "Error fetching prediction" });
     }
 
-    // Add is_bot status to each prediction
-    const matchesWithBotStatus = (exactMatches || []).map(match => ({
-      ...match,
-      is_bot: userMap.get(match.username) || false
-    }));
-    
-    // Try alternative name formats if no exact matches
-    if (!matchesWithBotStatus.length) {
-      console.log('No exact matches found, checking alternative formats');
-      
-      // Parse the fighter name components
-      const nameParts = selected_fighter.match(/^([^\s"]+)\s+"([^"]+)"\s+([^\s"]+)$/);
-      if (nameParts) {
-        const [_, firstName, nickname, lastName] = nameParts;
-        console.log('Parsed name parts:', { firstName, nickname, lastName });
-        
-        // Try without nickname
-        const simpleName = `${firstName} ${lastName}`;
-        console.log('Trying simple name format:', simpleName);
-        
-        const { data: simpleMatches, error: simpleError } = await supabase
-          .from('predictions')
-          .select('username, created_at')
-          .eq('fight_id', fight_id)
-          .eq('selected_fighter', simpleName);
-          
-        if (simpleError) {
-          console.error('Error fetching predictions (simple name):', simpleError);
-        } else if (simpleMatches && simpleMatches.length > 0) {
-          console.log('Found matches with simple name format');
-          // Add is_bot status to simple matches
-          return res.json(simpleMatches.map(match => ({
-            ...match,
-            is_bot: userMap.get(match.username) || false
-          })));
-        }
-      }
-    }
-    
-    console.log('Successfully fetched predictions:', {
-      fight_id,
-      selected_fighter,
-      results: matchesWithBotStatus
-    });
-    res.json(matchesWithBotStatus);
-  } catch (error) {
-    console.error('Error in predictions/filter:', error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(200).json(prediction);
+  } catch (err) {
+    console.error('Server error:', err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
