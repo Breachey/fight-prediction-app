@@ -183,14 +183,14 @@ function FightAdmin({ eventId }) {
             <>
               <div style={buttonContainerStyle}>
                 <button
-                  style={buttonStyle(fight.winner === fight.fighter1_name)}
-                  onClick={() => handleResultUpdate(fight.id, fight.fighter1_name)}
+                  style={buttonStyle(fight.winner === fight.fighter1_id)}
+                  onClick={() => handleResultUpdate(fight.id, fight.fighter1_id)}
                 >
                   {fight.fighter1_name} Won
                 </button>
                 <button
-                  style={buttonStyle(fight.winner === fight.fighter2_name)}
-                  onClick={() => handleResultUpdate(fight.id, fight.fighter2_name)}
+                  style={buttonStyle(fight.winner === fight.fighter2_id)}
+                  onClick={() => handleResultUpdate(fight.id, fight.fighter2_id)}
                 >
                   {fight.fighter2_name} Won
                 </button>
@@ -208,7 +208,7 @@ function FightAdmin({ eventId }) {
           
           {fight.winner && editingFight !== fight.id && (
             <div style={{ marginTop: '10px', color: '#9ca3af' }}>
-              Winner: {fight.winner}
+              Winner: {fight.winner === fight.fighter1_id ? fight.fighter1_name : fight.fighter2_name}
             </div>
           )}
         </div>
