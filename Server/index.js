@@ -170,13 +170,11 @@ function transformFighterData(fighter) {
     formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
   }
 
-  // Log physical stats for debugging
-  console.log('Fighter physical stats:', {
+  // Log age specifically for debugging
+  console.log('Fighter age debug:', {
     name: `${fighter.FirstName} ${fighter.LastName}`,
     age: fighter.Age,
-    weight: fighter.Weight_lbs,
-    height: fighter.Height_in,
-    reach: fighter.Reach_in,
+    ageType: typeof fighter.Age,
     raw_fighter: fighter
   });
   
@@ -191,7 +189,7 @@ function transformFighterData(fighter) {
     rank: null, // Will be added later
     odds: formattedOdds,
     country: fighter.FightingOutOf_Country || 'N/A',
-    age: fighter.Age || null,
+    age: fighter.Age !== undefined ? fighter.Age : null, // Handle age properly for integer type
     weight: fighter.Weight_lbs || null,
     height: fighter.Height_in || null,
     reach: fighter.Reach_in || null
