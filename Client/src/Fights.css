@@ -577,12 +577,6 @@
 }
 
 @media (max-width: 768px) {
-  .fights-container {
-    padding: 10px;
-    padding-bottom: 40px;
-    min-height: unset;
-    width: 100%;
-  }
 
   .fights-header {
     margin-bottom: 16px;
