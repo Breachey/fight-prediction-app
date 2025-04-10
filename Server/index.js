@@ -162,9 +162,6 @@ app.post('/login', async (req, res) => {
 // Helper function to transform fighter data
 function transformFighterData(fighter) {
   const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
-  const fullName = fighter.Nickname ? 
-    `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
-    `${fighter.FirstName} ${fighter.LastName}`;
   
   // Format odds to include + sign for positive values
   let formattedOdds = null;
@@ -172,15 +169,41 @@ function transformFighterData(fighter) {
     const oddsNum = parseInt(fighter.Odds);
     formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
   }
+
+  // Log age specifically for debugging
+  console.log('Fighter age debug:', {
+    name: `${fighter.FirstName} ${fighter.LastName}`,
+    age: fighter.Age,
+    ageType: typeof fighter.Age,
+    raw_fighter: fighter
+  });
   
-  return {
-    name: fullName,
+  const transformedFighter = {
+    id: fighter.FighterId,
+    name: `${fighter.FirstName} ${fighter.LastName}`,
+    firstName: fighter.FirstName,
+    lastName: fighter.LastName,
+    nickname: fighter.Nickname || null,
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: null, // Will be added later
-    odds: formattedOdds
+    rank: null,
+    odds: formattedOdds,
+    country: fighter.FightingOutOf_Country || 'N/A',
+    age: fighter.Age !== undefined ? fighter.Age : null,
+    weight: fighter.Weight_lbs || null,
+    height: fighter.Height_in || null,
+    reach: fighter.Reach_in || null
   };
+
+  console.log('Transformed fighter:', {
+    id: transformedFighter.id,
+    name: transformedFighter.name,
+    age: transformedFighter.age,
+    ageType: typeof transformedFighter.age
+  });
+
+  return transformedFighter;
 }
 
 app.get('/fights', async (req, res) => {
@@ -241,12 +264,12 @@ app.get('/fights', async (req, res) => {
     console.log(`Processing ${fightResults.length} fight results`);
     
     fightResults.forEach(result => {
-        const { fight_id, winner } = result;
-        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${winner}`);
+        const { fight_id, fighter_id } = result;
+        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${fighter_id}`);
         if (fight_id === '11997') {
             console.log('Found target fight 11997 in results');
         }
-        fightResultsMap.set(fight_id, winner);
+        fightResultsMap.set(fight_id, fighter_id);
     });
 
     console.log(`Fight results map size: ${fightResultsMap.size}`);
@@ -299,32 +322,59 @@ app.get('/fights', async (req, res) => {
             displayCardTier = 'Early Prelims';
         }
 
-        transformedFights.push({
+        const transformedFight = {
             id: fightId,
             event_id: latestEvent[0].id,
             fighter1_id: redFighter.id,
             fighter1_name: redFighter.name,
+            fighter1_firstName: redFighter.firstName,
+            fighter1_lastName: redFighter.lastName,
+            fighter1_nickname: redFighter.nickname,
             fighter1_record: redFighter.record,
             fighter1_height: redFighter.height,
             fighter1_weight: redFighter.weight,
             fighter1_reach: redFighter.reach,
-            fighter1_stance: redFighter.stance,
+            fighter1_stance: redFighter.style,
             fighter1_style: redFighter.style,
             fighter1_image: redFighter.image,
+            fighter1_country: redFighter.country,
+            fighter1_age: redFighter.age,
             fighter2_id: blueFighter.id,
             fighter2_name: blueFighter.name,
+            fighter2_firstName: blueFighter.firstName,
+            fighter2_lastName: blueFighter.lastName,
+            fighter2_nickname: blueFighter.nickname,
             fighter2_record: blueFighter.record,
             fighter2_height: blueFighter.height,
             fighter2_weight: blueFighter.weight,
             fighter2_reach: blueFighter.reach,
-            fighter2_stance: blueFighter.stance,
+            fighter2_stance: blueFighter.style,
             fighter2_style: blueFighter.style,
             fighter2_image: blueFighter.image,
+            fighter2_country: blueFighter.country,
+            fighter2_age: blueFighter.age,
             winner: result || null,
             is_completed: result ? true : false,
             card_tier: displayCardTier,
             weightclass: fighters.weightclass,
             bout_order: fighters.red.FightOrder
+        };
+
+        transformedFights.push(transformedFight);
+
+        // Add logging for the transformed fight
+        console.log('Transformed fight ages:', {
+            fightId,
+            fighter1: {
+                name: redFighter.name,
+                age: redFighter.age,
+                ageType: typeof redFighter.age
+            },
+            fighter2: {
+                name: blueFighter.name,
+                age: blueFighter.age,
+                ageType: typeof blueFighter.age
+            }
         });
     });
 
@@ -346,16 +396,16 @@ app.get('/fights', async (req, res) => {
 });
 
 app.post('/predict', async (req, res) => {
-  const { fightId, selectedFighter, username } = req.body;
+  const { fightId, fighter_id, username } = req.body;
 
-  if (!fightId || !selectedFighter || !username) {
+  if (!fightId || !fighter_id || !username) {
     return res.status(400).json({ error: "Missing required data" });
   }
 
   try {
     console.log('Received prediction request:', {
       fightId,
-      selectedFighter,
+      fighter_id,
       username
     });
 
@@ -377,7 +427,7 @@ app.post('/predict', async (req, res) => {
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
-        .update({ selected_fighter: selectedFighter })
+        .update({ fighter_id: fighter_id })
         .eq('fight_id', fightId)
         .eq('username', username);
 
@@ -395,8 +445,9 @@ app.post('/predict', async (req, res) => {
       .from('predictions')
       .insert([{ 
         fight_id: fightId,
-        selected_fighter: selectedFighter,
-        username 
+        fighter_id: fighter_id,
+        username,
+        selected_fighter: fighter_id
       }]);
 
     if (insertError) {
@@ -426,94 +477,48 @@ app.get('/predictions', async (req, res) => {
 });
 
 app.get('/predictions/filter', async (req, res) => {
-  const { fight_id, selected_fighter } = req.query;
-  
-  if (!fight_id || !selected_fighter) {
-    console.log('Missing parameters:', { fight_id, selected_fighter });
-    return res.status(400).json({ message: "Missing query parameters" });
+  const { fight_id, fighter_id } = req.query;
+
+  if (!fight_id || !fighter_id) {
+    return res.status(400).json({ error: "Missing required parameters" });
   }
 
   try {
-    console.log('Fetching predictions with params:', {
-      fight_id,
-      selected_fighter,
-      fight_id_type: typeof fight_id,
-      selected_fighter_type: typeof selected_fighter
-    });
-    
-    // Get all users with their is_bot status
+    // Get predictions
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('fight_id', fight_id)
+      .eq('fighter_id', fighter_id);
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ error: "Error fetching predictions" });
+    }
+
+    // Get user information including is_bot status
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('username, is_bot');
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ message: "Error fetching user data" });
+      return res.status(500).json({ error: "Error fetching user data" });
     }
 
     // Create a map of username to is_bot status
     const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-    
-    // Get predictions for this fight with exact match
-    const { data: exactMatches, error: exactError } = await supabase
-      .from('predictions')
-      .select('username, created_at')
-      .eq('fight_id', fight_id)
-      .eq('selected_fighter', selected_fighter);
-    
-    if (exactError) {
-      console.error('Error fetching predictions (exact match):', exactError);
-      return res.status(500).json({ message: "Error fetching predictions" });
-    }
 
     // Add is_bot status to each prediction
-    const matchesWithBotStatus = (exactMatches || []).map(match => ({
-      ...match,
-      is_bot: userMap.get(match.username) || false
+    const predictionsWithBotStatus = predictions.map(prediction => ({
+      ...prediction,
+      is_bot: userMap.get(prediction.username) || false
     }));
-    
-    // Try alternative name formats if no exact matches
-    if (!matchesWithBotStatus.length) {
-      console.log('No exact matches found, checking alternative formats');
-      
-      // Parse the fighter name components
-      const nameParts = selected_fighter.match(/^([^\s"]+)\s+"([^"]+)"\s+([^\s"]+)$/);
-      if (nameParts) {
-        const [_, firstName, nickname, lastName] = nameParts;
-        console.log('Parsed name parts:', { firstName, nickname, lastName });
-        
-        // Try without nickname
-        const simpleName = `${firstName} ${lastName}`;
-        console.log('Trying simple name format:', simpleName);
-        
-        const { data: simpleMatches, error: simpleError } = await supabase
-          .from('predictions')
-          .select('username, created_at')
-          .eq('fight_id', fight_id)
-          .eq('selected_fighter', simpleName);
-          
-        if (simpleError) {
-          console.error('Error fetching predictions (simple name):', simpleError);
-        } else if (simpleMatches && simpleMatches.length > 0) {
-          console.log('Found matches with simple name format');
-          // Add is_bot status to simple matches
-          return res.json(simpleMatches.map(match => ({
-            ...match,
-            is_bot: userMap.get(match.username) || false
-          })));
-        }
-      }
-    }
-    
-    console.log('Successfully fetched predictions:', {
-      fight_id,
-      selected_fighter,
-      results: matchesWithBotStatus
-    });
-    res.json(matchesWithBotStatus);
-  } catch (error) {
-    console.error('Error in predictions/filter:', error);
-    res.status(500).json({ message: "Internal server error" });
+
+    res.status(200).json(predictionsWithBotStatus);
+  } catch (err) {
+    console.error('Server error:', err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -534,7 +539,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       winnerType: typeof winner
     });
 
-    // First get the fight data to get the event_id
+    // First get the fight data to get the event_id and fighter IDs
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
       .select('*')
@@ -542,49 +547,33 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 
     if (getFightError) {
       console.error('Error fetching fight data:', getFightError);
-      console.error('Error details:', {
-        message: getFightError.message,
-        details: getFightError.details,
-        hint: getFightError.hint,
-        code: getFightError.code
-      });
       return res.status(500).json({ error: 'Failed to fetch fight data' });
     }
 
     if (!fightData || fightData.length === 0) {
-      console.error('No fight data found for ID:', {
-        id,
-        idType: typeof id,
-        idLength: id.length,
-        searchQuery: { FightId: id },
-        searchQueryType: typeof { FightId: id }
-      });
       return res.status(404).json({ error: 'Fight not found' });
     }
 
-    console.log('Found fight data:', {
-      id,
-      idType: typeof id,
-      fightCount: fightData.length,
-      fighters: fightData.map(f => ({
-        FightId: f.FightId,
-        FightIdType: typeof f.FightId,
-        Corner: f.Corner,
-        Name: `${f.FirstName} ${f.LastName}`
-      }))
-    });
-
-    // Get the event_id from the first fighter's data
+    // Get the event_id and fighter IDs
     const event_id = fightData[0].EventId;
+    const redFighter = fightData.find(f => f.Corner === 'Red');
+    const blueFighter = fightData.find(f => f.Corner === 'Blue');
 
-    // Update fight_results table
+    if (!redFighter || !blueFighter) {
+      return res.status(404).json({ error: 'Missing fighter data' });
+    }
+
+    // Determine the winner's fighter_id
+    let winner_id = winner;  // Use the winner ID directly since that's what we're receiving
+
+    // Update fight_results table with fighter_id
     const { error: updateError } = await supabase
       .from('fight_results')
       .upsert([
         {
           fight_id: id,
-          winner: winner,
-          is_completed: true  // Always set to true when updating a result
+          fighter_id: winner_id,
+          is_completed: winner_id !== null
         }
       ], {
         onConflict: ['fight_id']
@@ -592,16 +581,56 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 
     if (updateError) {
       console.error('Error updating fight result:', updateError);
-      console.error('Error details:', {
-        message: updateError.message,
-        details: updateError.details,
-        hint: updateError.hint,
-        code: updateError.code
-      });
       return res.status(500).json({ error: 'Failed to update fight result' });
     }
 
-    // Get the updated fight result to ensure we have the correct is_completed value
+    // If winner is null, also clear prediction results for this fight
+    if (winner_id === null) {
+      const { error: deleteError } = await supabase
+        .from('prediction_results')
+        .delete()
+        .eq('fight_id', id);
+
+      if (deleteError) {
+        console.error('Error clearing prediction results:', deleteError);
+        return res.status(500).json({ error: 'Failed to clear prediction results' });
+      }
+    }
+
+    // Get all predictions for this fight
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('fight_id', id);
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+
+    // Update prediction_results for each prediction
+    if (predictions && predictions.length > 0) {
+      const predictionResults = predictions.map(prediction => ({
+        user_id: prediction.username,
+        fight_id: id,
+        event_id: event_id,
+        predicted_correctly: prediction.fighter_id === winner_id,
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: resultsError } = await supabase
+        .from('prediction_results')
+        .upsert(predictionResults, {
+          onConflict: ['user_id', 'fight_id']
+        });
+
+      if (resultsError) {
+        console.error('Error updating prediction results:', resultsError);
+        return res.status(500).json({ error: 'Failed to update prediction results' });
+      }
+    }
+
+    // Get the updated fight result
     const { data: updatedResult, error: getResultError } = await supabase
       .from('fight_results')
       .select('*')
@@ -613,196 +642,48 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch updated fight result' });
     }
 
-    // If we're unsetting the result, delete any existing prediction results
-    if (winner === null) {
-      console.log('Deleting prediction results for fight:', id);
-      const { error: deleteError } = await supabase
-        .from('prediction_results')
-        .delete()
-        .eq('fight_id', id);
-
-      if (deleteError) {
-        console.error('Error deleting prediction results:', deleteError);
-        console.error('Error details:', {
-          message: deleteError.message,
-          details: deleteError.details,
-          hint: deleteError.hint,
-          code: deleteError.code
-        });
-        return res.status(500).json({ error: 'Failed to delete prediction results' });
-      }
-    } else {
-      // Get all predictions for this fight
-      console.log('Fetching predictions for fight:', id);
-      const { data: predictions, error: predictionsError } = await supabase
-        .from('predictions')
-        .select('username, selected_fighter')
-        .eq('fight_id', id);
-
-      if (predictionsError) {
-        console.error('Error fetching predictions:', predictionsError);
-        console.error('Error details:', {
-          message: predictionsError.message,
-          details: predictionsError.details,
-          hint: predictionsError.hint,
-          code: predictionsError.code
-        });
-        return res.status(500).json({ error: 'Failed to fetch predictions' });
-      }
-
-      console.log('Found predictions for this fight:', predictions);
-
-      // Update prediction_results for each prediction
-      for (const prediction of predictions) {
-        const predicted_correctly = prediction.selected_fighter === winner;
-        console.log('Updating prediction result:', {
-          user_id: prediction.username,
-          fight_id: id,
-          event_id,
-          predicted_correctly
-        });
-        
-        const { error: resultError } = await supabase
-          .from('prediction_results')
-          .upsert([
-            {
-              user_id: prediction.username,
-              fight_id: id,
-              event_id: event_id,
-              predicted_correctly: predicted_correctly
-            }
-          ], {
-            onConflict: ['user_id', 'fight_id']
-          });
-
-        if (resultError) {
-          console.error('Error updating prediction result:', resultError);
-          console.error('Error details:', {
-            message: resultError.message,
-            details: resultError.details,
-            hint: resultError.hint,
-            code: resultError.code
-          });
-          return res.status(500).json({ error: 'Failed to update prediction result' });
-        }
-      }
-    }
-
-    // Transform the fight data to match the expected structure
-    const fightMap = new Map();
-    console.log('Creating fight map with data:', {
-      fightCount: fightData.length,
-      fighters: fightData.map(f => ({
-        FightId: f.FightId,
-        FightIdType: typeof f.FightId,
-        Corner: f.Corner,
-        Name: `${f.FirstName} ${f.LastName}`
-      }))
-    });
-
-    fightData.forEach(fighter => {
-      if (!fightMap.has(fighter.FightId)) {
-        fightMap.set(fighter.FightId, {
-          red: null,
-          blue: null,
-          weightclass: fighter.FighterWeightClass,
-          card_tier: fighter.CardSegment
-        });
-      }
-      
-      const corner = fighter.Corner?.toLowerCase();
-      if (corner === 'red') {
-        fightMap.get(fighter.FightId).red = fighter;
-      } else if (corner === 'blue') {
-        fightMap.get(fighter.FightId).blue = fighter;
-      }
-    });
-
-    console.log('Fight map after population:', {
-      fightCount: fightMap.size,
-      fightMapKeys: Array.from(fightMap.keys()).map(key => ({
-        key,
-        keyType: typeof key
-      })),
-      fightMapEntries: Array.from(fightMap.entries()).map(([id, fight]) => ({
-        id,
-        idType: typeof id,
-        hasRed: !!fight.red,
-        hasBlue: !!fight.blue,
-        redName: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
-        blueName: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
-      }))
-    });
-
-    const fight = fightMap.get(id);
-    if (!fight) {
-      console.error('Fight not found in transformed data:', {
-        id,
-        idType: typeof id,
-        searchId: id,
-        searchIdType: typeof id,
-        fightMapKeys: Array.from(fightMap.keys()).map(key => ({
-          key,
-          keyType: typeof key
-        })),
-        fightMapEntries: Array.from(fightMap.entries()).map(([id, fight]) => ({
-          id,
-          idType: typeof id,
-          hasRed: !!fight.red,
-          hasBlue: !!fight.blue,
-          redName: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
-          blueName: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
-        }))
-      });
-      return res.status(404).json({ error: 'Fight not found in transformed data' });
-    }
-
-    if (!fight.red || !fight.blue) {
-      console.error('Missing fighter data:', { 
-        id, 
-        idType: typeof id,
-        fight,
-        red: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
-        blue: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
-      });
-      return res.status(404).json({ error: 'Missing fighter data' });
-    }
-
-    const redFighter = transformFighterData(fight.red);
-    const blueFighter = transformFighterData(fight.blue);
-
-    if (!redFighter || !blueFighter) {
-      console.error('Failed to transform fighter data:', { id, redFighter, blueFighter });
-      return res.status(500).json({ error: 'Failed to transform fighter data' });
-    }
-
+    // Transform the fight data
     const transformedFight = {
       id: id,
       event_id: event_id,
-      fighter1_name: redFighter.name,
-      fighter1_rank: redFighter.rank,
-      fighter1_record: redFighter.record,
-      fighter1_odds: redFighter.odds,
-      fighter1_style: redFighter.style,
-      fighter1_image: redFighter.image,
-      fighter2_name: blueFighter.name,
-      fighter2_rank: blueFighter.rank,
-      fighter2_record: blueFighter.record,
-      fighter2_odds: blueFighter.odds,
-      fighter2_style: blueFighter.style,
-      fighter2_image: blueFighter.image,
-      winner: winner,
+      fighter1_id: redFighter.FighterId,
+      fighter1_name: redFighter.FirstName + ' ' + redFighter.LastName,
+      fighter1_firstName: redFighter.FirstName,
+      fighter1_lastName: redFighter.LastName,
+      fighter1_nickname: redFighter.Nickname,
+      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
+      fighter1_height: redFighter.Height_in,
+      fighter1_weight: redFighter.Weight_lbs,
+      fighter1_reach: redFighter.Reach_in,
+      fighter1_stance: redFighter.Stance,
+      fighter1_style: redFighter.Style,
+      fighter1_image: redFighter.ImageURL,
+      fighter1_country: redFighter.FightingOutOf_Country,
+      fighter1_age: redFighter.Age,
+      fighter2_id: blueFighter.FighterId,
+      fighter2_name: blueFighter.FirstName + ' ' + blueFighter.LastName,
+      fighter2_firstName: blueFighter.FirstName,
+      fighter2_lastName: blueFighter.LastName,
+      fighter2_nickname: blueFighter.Nickname,
+      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
+      fighter2_height: blueFighter.Height_in,
+      fighter2_weight: blueFighter.Weight_lbs,
+      fighter2_reach: blueFighter.Reach_in,
+      fighter2_stance: blueFighter.Stance,
+      fighter2_style: blueFighter.Style,
+      fighter2_image: blueFighter.ImageURL,
+      fighter2_country: blueFighter.FightingOutOf_Country,
+      fighter2_age: blueFighter.Age,
+      winner: updatedResult.fighter_id,
       is_completed: updatedResult.is_completed,
-      card_tier: fight.card_tier,
-      weightclass: fight.weightclass,
-      bout_order: fight.red.FightOrder
+      card_tier: redFighter.CardSegment,
+      weightclass: redFighter.FighterWeightClass,
+      bout_order: redFighter.FightOrder
     };
 
-    console.log('Returning transformed fight:', transformedFight);
     res.json(transformedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
-    console.error('Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to update fight result' });
   }
 });
@@ -968,7 +849,7 @@ app.get('/events/:id/fights', async (req, res) => {
     fightResults.forEach(result => {
       console.log('Processing fight result:', {
         fight_id: result.fight_id,
-        winner: result.winner,
+        winner: result.fighter_id,
         is_completed: result.is_completed
       });
       
@@ -978,7 +859,7 @@ app.get('/events/:id/fights', async (req, res) => {
       // Convert fight_id to number to match the fight map
       const numericFightId = Number(result.fight_id);
       fightResultsMap.set(numericFightId, {
-        winner: result.winner,
+        winner: result.fighter_id,
         is_completed: result.is_completed
       });
     });
@@ -1055,26 +936,53 @@ app.get('/events/:id/fights', async (req, res) => {
           displayCardTier = 'Early Prelims';
       }
 
-      transformedFights.push({
+      const transformedFight = {
         id: fightId,
         event_id: id,
+        fighter1_id: redFighter.id,
         fighter1_name: redFighter.name,
-        fighter1_rank: redFighter.rank,
+        fighter1_firstName: redFighter.firstName,
+        fighter1_lastName: redFighter.lastName,
+        fighter1_nickname: redFighter.nickname,
         fighter1_record: redFighter.record,
-        fighter1_odds: redFighter.odds,
+        fighter1_height: redFighter.height,
+        fighter1_weight: redFighter.weight,
+        fighter1_reach: redFighter.reach,
+        fighter1_stance: redFighter.style,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
+        fighter1_country: redFighter.country,
+        fighter1_age: redFighter.age,
+        fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
-        fighter2_rank: blueFighter.rank,
+        fighter2_firstName: blueFighter.firstName,
+        fighter2_lastName: blueFighter.lastName,
+        fighter2_nickname: blueFighter.nickname,
         fighter2_record: blueFighter.record,
-        fighter2_odds: blueFighter.odds,
+        fighter2_height: blueFighter.height,
+        fighter2_weight: blueFighter.weight,
+        fighter2_reach: blueFighter.reach,
+        fighter2_stance: blueFighter.style,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
+        fighter2_country: blueFighter.country,
+        fighter2_age: blueFighter.age,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         card_tier: displayCardTier,
         weightclass: fighters.weightclass,
         bout_order: fighters.red.FightOrder
+      };
+
+      transformedFights.push(transformedFight);
+
+      // Add logging for the transformed fight
+      console.log('Transformed fight:', {
+        fightId,
+        rawWinner: result?.winner,
+        transformedWinner: transformedFight.winner,
+        fighter1_id: redFighter.id,
+        fighter2_id: blueFighter.id
       });
     }
 
@@ -1155,6 +1063,227 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       error: 'Failed to process event leaderboard',
       details: error.message 
     });
+  }
+});
+
+app.get('/ufc_full_fight_card/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Fetching fight data for ID:', id);
+
+    // First get the fight data
+    const { data: fightData, error: getFightError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('*')
+      .eq('FightId', id);
+
+    if (getFightError) {
+      console.error('Error fetching fight data:', getFightError);
+      return res.status(500).json({ error: 'Failed to fetch fight data' });
+    }
+
+    if (!fightData || fightData.length === 0) {
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+
+    // Get the event_id and fighter IDs
+    const event_id = fightData[0].EventId;
+    const redFighter = fightData.find(f => f.Corner === 'Red');
+    const blueFighter = fightData.find(f => f.Corner === 'Blue');
+
+    if (!redFighter || !blueFighter) {
+      return res.status(404).json({ error: 'Missing fighter data' });
+    }
+
+    // Get the fight result
+    const { data: fightResult, error: getResultError } = await supabase
+      .from('fight_results')
+      .select('*')
+      .eq('fight_id', id)
+      .single();
+
+    if (getResultError && getResultError.code !== 'PGRST116') {
+      console.error('Error fetching fight result:', getResultError);
+      return res.status(500).json({ error: 'Failed to fetch fight result' });
+    }
+
+    // Transform the fight data
+    const transformedFight = {
+      id: id,
+      event_id: event_id,
+      fighter1_id: redFighter.FighterId,
+      fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
+      fighter1_firstName: redFighter.FirstName,
+      fighter1_lastName: redFighter.LastName,
+      fighter1_nickname: redFighter.Nickname,
+      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
+      fighter1_height: redFighter.Height_in,
+      fighter1_weight: redFighter.Weight_lbs,
+      fighter1_reach: redFighter.Reach_in,
+      fighter1_stance: redFighter.Stance,
+      fighter1_style: redFighter.Style,
+      fighter1_image: redFighter.ImageURL,
+      fighter1_country: redFighter.FightingOutOf_Country,
+      fighter1_age: redFighter.Age,
+      fighter2_id: blueFighter.FighterId,
+      fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
+      fighter2_firstName: blueFighter.FirstName,
+      fighter2_lastName: blueFighter.LastName,
+      fighter2_nickname: blueFighter.Nickname,
+      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
+      fighter2_height: blueFighter.Height_in,
+      fighter2_weight: blueFighter.Weight_lbs,
+      fighter2_reach: blueFighter.Reach_in,
+      fighter2_stance: blueFighter.Stance,
+      fighter2_style: blueFighter.Style,
+      fighter2_image: blueFighter.ImageURL,
+      fighter2_country: blueFighter.FightingOutOf_Country,
+      fighter2_age: blueFighter.Age,
+      winner: fightResult?.fighter_id || null,
+      is_completed: fightResult?.is_completed || false,
+      card_tier: redFighter.CardSegment,
+      weightclass: redFighter.FighterWeightClass,
+      bout_order: redFighter.FightOrder
+    };
+
+    res.json(transformedFight);
+  } catch (error) {
+    console.error('Error fetching fight data:', error);
+    res.status(500).json({ error: 'Failed to fetch fight data' });
+  }
+});
+
+// Migration endpoint to fix fight results
+app.post('/migrate/fight-results', async (req, res) => {
+  try {
+    // Get all fight results
+    const { data: fightResults, error: resultsError } = await supabase
+      .from('fight_results')
+      .select('*');
+
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
+      return res.status(500).json({ error: 'Failed to fetch fight results' });
+    }
+
+    // Get all fights
+    const { data: fights, error: fightsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('*');
+
+    if (fightsError) {
+      console.error('Error fetching fights:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    // Create a map of fight IDs to their fighters
+    const fightMap = new Map();
+    fights.forEach(fighter => {
+      if (!fightMap.has(fighter.FightId)) {
+        fightMap.set(fighter.FightId, {
+          red: null,
+          blue: null
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightId).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightId).blue = fighter;
+      }
+    });
+
+    // Update each fight result
+    const updates = [];
+    for (const result of fightResults) {
+      console.log('Processing fight result:', {
+        fight_id: result.fight_id,
+        current_winner: result.winner,
+        winner_type: typeof result.winner
+      });
+
+      const fighters = fightMap.get(result.fight_id);
+      if (!fighters || !fighters.red || !fighters.blue) {
+        console.log('Skipping fight - missing fighter data:', result.fight_id);
+        continue;
+      }
+
+      // If winner is already a number (fighter_id), keep it as is
+      if (typeof result.winner === 'number') {
+        console.log('Winner is already a fighter_id:', result.winner);
+        continue;
+      }
+
+      // Create all possible name formats for each fighter
+      const redFighterFormats = [
+        fighters.red.FirstName + ' ' + fighters.red.LastName,
+        fighters.red.FirstName + ' "' + fighters.red.Nickname + '" ' + fighters.red.LastName,
+        fighters.red.FirstName + ' ' + fighters.red.Nickname + ' ' + fighters.red.LastName
+      ].filter(Boolean);
+
+      const blueFighterFormats = [
+        fighters.blue.FirstName + ' ' + fighters.blue.LastName,
+        fighters.blue.FirstName + ' "' + fighters.blue.Nickname + '" ' + fighters.blue.LastName,
+        fighters.blue.FirstName + ' ' + fighters.blue.Nickname + ' ' + fighters.blue.LastName
+      ].filter(Boolean);
+
+      console.log('Fighter name formats:', {
+        fight_id: result.fight_id,
+        red: redFighterFormats,
+        blue: blueFighterFormats,
+        winner: result.winner
+      });
+
+      let winner_id = null;
+      if (redFighterFormats.includes(result.winner)) {
+        winner_id = fighters.red.FighterId;
+        console.log('Matched red fighter:', {
+          fight_id: result.fight_id,
+          winner_name: result.winner,
+          winner_id: winner_id
+        });
+      } else if (blueFighterFormats.includes(result.winner)) {
+        winner_id = fighters.blue.FighterId;
+        console.log('Matched blue fighter:', {
+          fight_id: result.fight_id,
+          winner_name: result.winner,
+          winner_id: winner_id
+        });
+      } else {
+        console.log('No match found for winner:', {
+          fight_id: result.fight_id,
+          winner: result.winner
+        });
+      }
+
+      if (winner_id !== null) {
+        updates.push({
+          fight_id: result.fight_id,
+          fighter_id: winner_id,
+          is_completed: result.is_completed
+        });
+      }
+    }
+
+    // Batch update the fight results
+    if (updates.length > 0) {
+      const { error: updateError } = await supabase
+        .from('fight_results')
+        .upsert(updates, {
+          onConflict: ['fight_id']
+        });
+
+      if (updateError) {
+        console.error('Error updating fight results:', updateError);
+        return res.status(500).json({ error: 'Failed to update fight results' });
+      }
+    }
+
+    res.json({ message: `Successfully updated ${updates.length} fight results` });
+  } catch (error) {
+    console.error('Error in migration:', error);
+    res.status(500).json({ error: 'Migration failed' });
   }
 });
 

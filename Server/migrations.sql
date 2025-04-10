@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.predictions (
     id SERIAL PRIMARY KEY,
     username TEXT NOT NULL,
     fight_id TEXT NOT NULL,
-    selected_fighter TEXT NOT NULL,
+    fighter_id TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 

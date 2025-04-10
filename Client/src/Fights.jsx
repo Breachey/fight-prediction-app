@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
+import ReactCountryFlag from 'react-country-flag';
+import { getCountryCode } from './utils/countryUtils';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -13,6 +15,8 @@ function Fights({ eventId, username }) {
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
+  const [expandedFightStats, setExpandedFightStats] = useState({});
+  const [editingFight, setEditingFight] = useState(null);
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -32,13 +36,22 @@ function Fights({ eventId, username }) {
             predictionsResponse.json()
           ]);
 
+          // Add debug logging
+          console.log('Fights data:', fightsData.map(fight => ({
+            id: fight.id,
+            is_completed: fight.is_completed,
+            winner: fight.winner,
+            fighter1_id: fight.fighter1_id,
+            fighter2_id: fight.fighter2_id
+          })));
+
           // Filter predictions for current user
           const userPredictions = predictionsData.filter(pred => pred.username === username);
           
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
           userPredictions.forEach(pred => {
-            submittedVotes[pred.fight_id] = pred.selected_fighter;
+            submittedVotes[pred.fight_id] = pred.fighter_id;
           });
 
           setFights(fightsData);
@@ -71,11 +84,6 @@ function Fights({ eventId, username }) {
       setFadeOutMessages(prev => ({ ...prev, [fightId]: true }));
       // Remove the message completely after animation
       setTimeout(() => {
-        setSubmittedFights(prev => {
-          const newState = { ...prev };
-          delete newState[fightId];
-          return newState;
-        });
         setFadeOutMessages(prev => {
           const newState = { ...prev };
           delete newState[fightId];
@@ -107,7 +115,7 @@ function Fights({ eventId, username }) {
         body: JSON.stringify({
           username,
           fightId,
-          selectedFighter,
+          fighter_id: selectedFighter,
         }),
       });
 
@@ -135,8 +143,8 @@ function Fights({ eventId, username }) {
         const fight = fights.find(f => f.id === fightId);
         if (fight) {
           const [fighter1Response, fighter2Response] = await Promise.all([
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
           ]);
 
           const [fighter1Votes, fighter2Votes] = await Promise.all([
@@ -191,8 +199,8 @@ function Fights({ eventId, username }) {
         });
 
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
         ]);
 
         if (!fighter1Response.ok) {
@@ -232,6 +240,16 @@ function Fights({ eventId, username }) {
         setError('Failed to load votes');
       }
     }
+  };
+
+  const toggleFightStats = (fightId, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedFightStats(prev => ({
+      ...prev,
+      [fightId]: !prev[fightId]
+    }));
   };
 
   const aiBadge = {
@@ -300,16 +318,48 @@ function Fights({ eventId, username }) {
           )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
+            {console.log('Fight data:', {
+              id: fight.id,
+              winner: fight.winner,
+              fighter1_id: fight.fighter1_id,
+              fighter2_id: fight.fighter2_id,
+              is_completed: fight.is_completed
+            })}
             <div
               className={`fighter-card ${
-                (selectedFights[fight.id] === fight.fighter1_name || submittedFights[fight.id] === fight.fighter1_name) ? 'selected' : ''
+                (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
               } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter1_name && submittedFights[fight.id] !== fight.fighter1_name) ? 'unselected' : ''
-              } ${fight.is_completed ? (fight.winner === fight.fighter1_name ? 'winner' : 'loser') : ''}`}
-              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
+                  (selectedFights[fight.id] !== fight.fighter1_id && submittedFights[fight.id] !== fight.fighter1_id) ? 'unselected' : ''
+              } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
+              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
-              <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
-              <h3 className="fighter-name">{fight.fighter1_name}</h3>
+              <div className="fighter-image-container">
+                <div className="fighter-image-background">
+                  <ReactCountryFlag 
+                    countryCode={getCountryCode(fight.fighter1_country)} 
+                    svg 
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0.15,
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      borderRadius: '8px',
+                      filter: 'blur(1px) brightness(1.2)',
+                      transform: 'scale(1.1)'
+                    }}
+                  />
+                </div>
+                <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
+              </div>
+              <h3 className="fighter-name">
+                <span className="fighter-name-text">{fight.fighter1_firstName}</span>
+                {fight.fighter1_nickname && (
+                  <span className="fighter-nickname">{fight.fighter1_nickname}</span>
+                )}
+                <span className="fighter-name-text">{fight.fighter1_lastName}</span>
+              </h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
@@ -323,12 +373,28 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Odds</span>
                   <span>{fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
-                  <span className="stat-label">Style</span>
-                  <span>{fight.fighter1_style ? fight.fighter1_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
-                </div>
               </div>
-              {submittedFights[fight.id] === fight.fighter1_name && (
+              {expandedFightStats[fight.id] && (
+                <div className="expanded-stats">
+                  <div className="stat-row">
+                    <span className="stat-label">Age</span>
+                    <span>{fight.fighter1_age || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Weight</span>
+                    <span>{fight.fighter1_weight || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Height</span>
+                    <span>{fight.fighter1_height || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Reach</span>
+                    <span>{fight.fighter1_reach || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
+              {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
                 <div className="vote-badge">Your Pick</div>
               )}
             </div>
@@ -338,14 +404,39 @@ function Fights({ eventId, username }) {
             {/* Fighter 2 Card */}
             <div
               className={`fighter-card ${
-                (selectedFights[fight.id] === fight.fighter2_name || submittedFights[fight.id] === fight.fighter2_name) ? 'selected' : ''
+                (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id) ? 'selected' : ''
               } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter2_name && submittedFights[fight.id] !== fight.fighter2_name) ? 'unselected' : ''
-              } ${fight.is_completed ? (fight.winner === fight.fighter2_name ? 'winner' : 'loser') : ''}`}
-              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
+                  (selectedFights[fight.id] !== fight.fighter2_id && submittedFights[fight.id] !== fight.fighter2_id) ? 'unselected' : ''
+              } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
+              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
-              <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
-              <h3 className="fighter-name">{fight.fighter2_name}</h3>
+              <div className="fighter-image-container">
+                <div className="fighter-image-background">
+                  <ReactCountryFlag 
+                    countryCode={getCountryCode(fight.fighter2_country)} 
+                    svg 
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0.15,
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      borderRadius: '8px',
+                      filter: 'blur(1px) brightness(1.2)',
+                      transform: 'scale(1.1)'
+                    }}
+                  />
+                </div>
+                <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
+              </div>
+              <h3 className="fighter-name">
+                <span className="fighter-name-text">{fight.fighter2_firstName}</span>
+                {fight.fighter2_nickname && (
+                  <span className="fighter-nickname">{fight.fighter2_nickname}</span>
+                )}
+                <span className="fighter-name-text">{fight.fighter2_lastName}</span>
+              </h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
@@ -359,16 +450,40 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Odds</span>
                   <span>{fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
-                  <span className="stat-label">Style</span>
-                  <span>{fight.fighter2_style ? fight.fighter2_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
-                </div>
               </div>
-              {submittedFights[fight.id] === fight.fighter2_name && (
+              {expandedFightStats[fight.id] && (
+                <div className="expanded-stats">
+                  <div className="stat-row">
+                    <span className="stat-label">Age</span>
+                    <span>{fight.fighter2_age || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Weight</span>
+                    <span>{fight.fighter2_weight || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Height</span>
+                    <span>{fight.fighter2_height || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Reach</span>
+                    <span>{fight.fighter2_reach || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
+              {String(submittedFights[fight.id]) === String(fight.fighter2_id) && (
                 <div className="vote-badge">Your Pick</div>
               )}
             </div>
           </div>
+
+          {/* Add the single expand button after the fighters container */}
+          <button 
+            className="expand-stats-button"
+            onClick={(e) => toggleFightStats(fight.id, e)}
+          >
+            {expandedFightStats[fight.id] ? '▲' : '▼'}
+          </button>
 
           {/* Display vote error for this fight if it exists */}
           {voteErrors[fight.id] && (
