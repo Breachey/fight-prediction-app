@@ -138,8 +138,8 @@ function Fights({ eventId, username }) {
         const fight = fights.find(f => f.id === fightId);
         if (fight) {
           const [fighter1Response, fighter2Response] = await Promise.all([
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
           ]);
 
           const [fighter1Votes, fighter2Votes] = await Promise.all([
@@ -194,8 +194,8 @@ function Fights({ eventId, username }) {
         });
 
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter1_name)}`),
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&selected_fighter=${encodeURIComponent(fight.fighter2_name)}`)
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
         ]);
 
         if (!fighter1Response.ok) {

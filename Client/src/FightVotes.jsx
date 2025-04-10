@@ -19,7 +19,7 @@ function FightVotes({ fight }) {
     setIsLoading(true);
     Promise.all([
       // Fetch votes for fighter 1
-      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter1_name)}`)
+      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&fighter_id=${encodeURIComponent(fightDetails.fighter1_id)}`)
         .then(response => {
           if (!response.ok) {
             throw new Error('Failed to fetch votes');
@@ -27,7 +27,7 @@ function FightVotes({ fight }) {
           return response.json();
         }),
       // Fetch votes for fighter 2
-      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&selected_fighter=${encodeURIComponent(fightDetails.fighter2_name)}`)
+      fetch(`${API_URL}/predictions/filter?fight_id=${fight.fight_id}&fighter_id=${encodeURIComponent(fightDetails.fighter2_id)}`)
         .then(response => {
           if (!response.ok) {
             throw new Error('Failed to fetch votes');
