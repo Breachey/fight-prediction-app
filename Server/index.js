@@ -492,8 +492,19 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
     }
 
     if (!fightData || fightData.length === 0) {
+      console.error('No fight data found for ID:', id);
       return res.status(404).json({ error: 'Fight not found' });
     }
+
+    console.log('Fetched fight data:', {
+      id,
+      fightCount: fightData.length,
+      fighters: fightData.map(f => ({
+        FightId: f.FightId,
+        Corner: f.Corner,
+        Name: f.FirstName + ' ' + f.LastName
+      }))
+    });
 
     // Get the event_id from the first fighter's data
     const event_id = fightData[0].EventId;
@@ -630,13 +641,23 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
     });
 
     const fight = fightMap.get(id);
-    if (!fight || !fight.red || !fight.blue) {
-      console.error('Fight not found in transformed data:', { id, fight });
-      return res.status(404).json({ error: 'Fight not found' });
+    if (!fight) {
+      console.error('Fight not found in transformed data:', { id, fightData });
+      return res.status(404).json({ error: 'Fight not found in transformed data' });
+    }
+
+    if (!fight.red || !fight.blue) {
+      console.error('Missing fighter data:', { id, fight });
+      return res.status(404).json({ error: 'Missing fighter data' });
     }
 
     const redFighter = transformFighterData(fight.red);
     const blueFighter = transformFighterData(fight.blue);
+
+    if (!redFighter || !blueFighter) {
+      console.error('Failed to transform fighter data:', { id, redFighter, blueFighter });
+      return res.status(500).json({ error: 'Failed to transform fighter data' });
+    }
 
     const transformedFight = {
       id: id,
