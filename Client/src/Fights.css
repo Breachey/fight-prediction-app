@@ -600,11 +600,12 @@
     padding: 16px;
     margin-bottom: 24px;
     border-radius: 12px;
+    max-width: 100%;
   }
 
   .fighters-container {
     flex-direction: row;
-    gap: 12px;
+    gap: 8px;
     flex-wrap: nowrap;
     margin: 0;
     width: 100%;
@@ -612,9 +613,8 @@
 
   .fighter-card {
     flex: 1;
-    width: 50%;
     min-width: 0;
-    padding: 16px;
+    padding: 12px;
     margin: 0;
     display: flex;
     flex-direction: column;
@@ -658,11 +658,10 @@
     padding: 4px 0;
     font-size: 0.9rem;
     line-height: 1.4;
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px;
+    display: flex;
+    justify-content: space-between;
     width: 100%;
-    align-items: flex-start;
+    align-items: center;
     overflow: visible;
   }
 
@@ -672,15 +671,13 @@
     font-size: 0.85rem;
     margin-right: 0;
     white-space: nowrap;
+    min-width: 50px;
   }
 
   .stat-row > span:last-child {
     text-align: right;
-    white-space: normal;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    hyphens: auto;
-    min-width: 0;
+    white-space: nowrap;
+    overflow: visible;
   }
 
   .fight-meta {
@@ -762,7 +759,8 @@
   }
 
   .fighter-card {
-    padding: 12px;
+    padding: 10px;
+    width: 50%;
   }
 
   .fighter-image {
@@ -790,13 +788,12 @@
   .stat-row {
     padding: 3px 0;
     font-size: 0.8rem;
-    grid-template-columns: minmax(45px, auto) 1fr;
-    gap: 6px;
-    align-items: flex-start;
+    white-space: nowrap;
   }
 
   .stat-label {
     font-size: 0.8rem;
+    min-width: 40px;
   }
 
   .vs-text {
