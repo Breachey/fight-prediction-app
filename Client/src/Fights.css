@@ -169,33 +169,38 @@
 .fighter-image-container {
   position: relative;
   width: 100%;
+  max-width: 200px;
   margin: 0 auto 15px;
   display: block;
+  aspect-ratio: 1;
+}
+
+.fighter-image-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #2d1f47;
 }
 
 .fighter-image {
   width: 100%;
-  height: auto;
-  max-width: 200px;
+  height: 100%;
   display: block;
   border-radius: 8px;
-  aspect-ratio: 1;
   object-fit: cover;
-  background-color: #2d1f47;
+  position: relative;
+  z-index: 1;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(76, 29, 149, 0.3);
+  mix-blend-mode: multiply;
 }
 
 .country-flag {
-  position: absolute;
-  bottom: -10px;
-  right: -10px;
-  z-index: 2;
-  background: #1a1a1a;
-  border-radius: 50%;
-  padding: 2px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(76, 29, 149, 0.3);
+  display: none;
 }
 
 .stat-row {
@@ -647,11 +652,18 @@
     box-sizing: border-box;
   }
 
-  .fighter-image {
+  .fighter-image-container {
     max-width: 120px;
     width: 120px;
     height: 120px;
     margin-bottom: 12px;
+  }
+
+  .fighter-image {
+    border-radius: 10px;
+  }
+
+  .fighter-image-background {
     border-radius: 10px;
   }
 
@@ -780,11 +792,6 @@
     margin: 2px 0;
     min-height: 20px;
   }
-
-  .country-flag {
-    bottom: -8px;
-    right: -8px;
-  }
 }
 
 @media (max-width: 480px) {
@@ -806,11 +813,19 @@
     width: calc(50% - 3px);
   }
 
-  .fighter-image {
+  .fighter-image-container {
     max-width: 100px;
     width: 100px;
     height: 100px;
     margin-bottom: 10px;
+  }
+
+  .fighter-image {
+    border-radius: 10px;
+  }
+
+  .fighter-image-background {
+    border-radius: 10px;
   }
 
   .fighter-name {
@@ -881,10 +896,5 @@
     right: -6px;
     padding: 2px 5px;
     font-size: 0.7rem;
-  }
-
-  .country-flag {
-    bottom: -6px;
-    right: -6px;
   }
 }
