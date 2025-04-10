@@ -1047,6 +1047,14 @@ app.get('/events/:id/fights', async (req, res) => {
       const redFighter = transformFighterData(fighters.red);
       const blueFighter = transformFighterData(fighters.blue);
 
+      // Map card segment names
+      let displayCardTier = fighters.card_tier;
+      if (fighters.card_tier === 'Prelims1') {
+          displayCardTier = 'Prelims';
+      } else if (fighters.card_tier === 'Prelims2') {
+          displayCardTier = 'Early Prelims';
+      }
+
       transformedFights.push({
         id: fightId,
         event_id: id,
@@ -1064,7 +1072,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_image: blueFighter.image,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
-        card_tier: fighters.card_tier,
+        card_tier: displayCardTier,
         weightclass: fighters.weightclass,
         bout_order: fighters.red.FightOrder
       });
