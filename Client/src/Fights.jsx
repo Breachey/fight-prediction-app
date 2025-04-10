@@ -323,6 +323,13 @@ function Fights({ eventId, username }) {
           )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
+            {console.log('Fight data:', {
+              id: fight.id,
+              winner: fight.winner,
+              fighter1_id: fight.fighter1_id,
+              fighter2_id: fight.fighter2_id,
+              is_completed: fight.is_completed
+            })}
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
