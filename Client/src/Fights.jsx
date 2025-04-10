@@ -15,6 +15,7 @@ function Fights({ eventId, username }) {
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
+  const [expandedFighterStats, setExpandedFighterStats] = useState({});
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -236,6 +237,14 @@ function Fights({ eventId, username }) {
     }
   };
 
+  const toggleFighterStats = (fightId, fighterNumber) => {
+    const key = `${fightId}-${fighterNumber}`;
+    setExpandedFighterStats(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
   const aiBadge = {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
@@ -350,11 +359,36 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Odds</span>
                   <span>{fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
-                  <span className="stat-label">Style</span>
-                  <span>{fight.fighter1_style ? fight.fighter1_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
-                </div>
               </div>
+              <button 
+                className="expand-stats-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFighterStats(fight.id, 1);
+                }}
+              >
+                {expandedFighterStats[`${fight.id}-1`] ? '▲ Less Stats' : '▼ More Stats'}
+              </button>
+              {expandedFighterStats[`${fight.id}-1`] && (
+                <div className="expanded-stats">
+                  <div className="stat-row">
+                    <span className="stat-label">Age</span>
+                    <span>{fight.fighter1_age || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Weight</span>
+                    <span>{fight.fighter1_weight || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Height</span>
+                    <span>{fight.fighter1_height || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Reach</span>
+                    <span>{fight.fighter1_reach || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
               {submittedFights[fight.id] === fight.fighter1_name && (
                 <div className="vote-badge">Your Pick</div>
               )}
@@ -411,11 +445,36 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Odds</span>
                   <span>{fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
-                  <span className="stat-label">Style</span>
-                  <span>{fight.fighter2_style ? fight.fighter2_style.split(/(?=[A-Z])/).join(' ') : 'N/A'}</span>
-                </div>
               </div>
+              <button 
+                className="expand-stats-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFighterStats(fight.id, 2);
+                }}
+              >
+                {expandedFighterStats[`${fight.id}-2`] ? '▲ Less Stats' : '▼ More Stats'}
+              </button>
+              {expandedFighterStats[`${fight.id}-2`] && (
+                <div className="expanded-stats">
+                  <div className="stat-row">
+                    <span className="stat-label">Age</span>
+                    <span>{fight.fighter2_age || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Weight</span>
+                    <span>{fight.fighter2_weight || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Height</span>
+                    <span>{fight.fighter2_height || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Reach</span>
+                    <span>{fight.fighter2_reach || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
               {submittedFights[fight.id] === fight.fighter2_name && (
                 <div className="vote-badge">Your Pick</div>
               )}
