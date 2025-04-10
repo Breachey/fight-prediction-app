@@ -15,7 +15,7 @@ function Fights({ eventId, username }) {
   const [fightVotes, setFightVotes] = useState({});
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
-  const [expandedFighterStats, setExpandedFighterStats] = useState({});
+  const [expandedFightStats, setExpandedFightStats] = useState({});
 
   // Fetch both fights and predictions when component mounts or eventId/username changes
   useEffect(() => {
@@ -237,11 +237,13 @@ function Fights({ eventId, username }) {
     }
   };
 
-  const toggleFighterStats = (fightId, fighterNumber) => {
-    const key = `${fightId}-${fighterNumber}`;
-    setExpandedFighterStats(prev => ({
+  const toggleFightStats = (fightId, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedFightStats(prev => ({
       ...prev,
-      [key]: !prev[key]
+      [fightId]: !prev[fightId]
     }));
   };
 
@@ -360,16 +362,7 @@ function Fights({ eventId, username }) {
                   <span>{fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}</span>
                 </div>
               </div>
-              <button 
-                className="expand-stats-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleFighterStats(fight.id, 1);
-                }}
-              >
-                {expandedFighterStats[`${fight.id}-1`] ? '▲ Less Stats' : '▼ More Stats'}
-              </button>
-              {expandedFighterStats[`${fight.id}-1`] && (
+              {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
@@ -446,16 +439,7 @@ function Fights({ eventId, username }) {
                   <span>{fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}</span>
                 </div>
               </div>
-              <button 
-                className="expand-stats-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleFighterStats(fight.id, 2);
-                }}
-              >
-                {expandedFighterStats[`${fight.id}-2`] ? '▲ Less Stats' : '▼ More Stats'}
-              </button>
-              {expandedFighterStats[`${fight.id}-2`] && (
+              {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
@@ -480,6 +464,14 @@ function Fights({ eventId, username }) {
               )}
             </div>
           </div>
+
+          {/* Add the single expand button after the fighters container */}
+          <button 
+            className="expand-stats-button"
+            onClick={(e) => toggleFightStats(fight.id, e)}
+          >
+            {expandedFightStats[fight.id] ? '▲' : '▼'}
+          </button>
 
           {/* Display vote error for this fight if it exists */}
           {voteErrors[fight.id] && (

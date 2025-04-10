@@ -899,21 +899,25 @@
 }
 
 .expand-stats-button {
-  width: 100%;
-  padding: 8px;
-  background: linear-gradient(145deg, rgba(26, 26, 26, 0.8), rgba(45, 31, 71, 0.8));
-  border: 1px solid rgba(76, 29, 149, 0.2);
-  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
   color: #e9d5ff;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1.2rem;
   transition: all 0.3s ease;
-  margin: 8px 0;
+  margin: 8px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
 }
 
 .expand-stats-button:hover {
-  background: linear-gradient(145deg, rgba(45, 31, 71, 0.8), rgba(26, 26, 26, 0.8));
-  border-color: rgba(76, 29, 149, 0.4);
+  opacity: 1;
+  transform: translateY(2px);
 }
 
 .expanded-stats {
@@ -950,24 +954,16 @@
 /* Mobile responsiveness updates */
 @media (max-width: 768px) {
   .expand-stats-button {
-    padding: 6px;
-    font-size: 0.8rem;
-    margin: 6px 0;
-  }
-
-  .expanded-stats {
-    padding: 6px;
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
   }
 }
 
 @media (max-width: 480px) {
   .expand-stats-button {
-    padding: 4px;
-    font-size: 0.75rem;
-    margin: 4px 0;
-  }
-
-  .expanded-stats {
-    padding: 4px;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
   }
 }
