@@ -547,6 +547,8 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-height: 90px;
+  justify-content: center;
 }
 
 .fighter-nickname {
@@ -563,6 +565,7 @@
   margin: 4px 0;
   display: inline-block;
   animation: nicknameGlow 2s ease-in-out infinite alternate;
+  min-height: 24px;
 }
 
 @keyframes nicknameGlow {
@@ -742,6 +745,19 @@
     padding: 3px 6px;
     font-size: 0.75rem;
   }
+
+  .fighter-name {
+    font-size: 1.1rem;
+    line-height: 1.3;
+    min-height: 80px;
+  }
+
+  .fighter-nickname {
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    margin: 2px 0;
+    min-height: 20px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -773,12 +789,14 @@
   .fighter-name {
     font-size: 1.1rem;
     line-height: 1.3;
+    min-height: 70px;
   }
 
   .fighter-nickname {
     font-size: 0.8rem;
     padding: 2px 6px;
     margin: 2px 0;
+    min-height: 18px;
   }
 
   .stat-container {
