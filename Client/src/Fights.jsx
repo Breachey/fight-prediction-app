@@ -84,11 +84,6 @@ function Fights({ eventId, username }) {
       setFadeOutMessages(prev => ({ ...prev, [fightId]: true }));
       // Remove the message completely after animation
       setTimeout(() => {
-        setSubmittedFights(prev => {
-          const newState = { ...prev };
-          delete newState[fightId];
-          return newState;
-        });
         setFadeOutMessages(prev => {
           const newState = { ...prev };
           delete newState[fightId];
