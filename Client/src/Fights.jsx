@@ -36,6 +36,15 @@ function Fights({ eventId, username }) {
             predictionsResponse.json()
           ]);
 
+          // Add debug logging
+          console.log('Fights data:', fightsData.map(fight => ({
+            id: fight.id,
+            is_completed: fight.is_completed,
+            winner: fight.winner,
+            fighter1_id: fight.fighter1_id,
+            fighter2_id: fight.fighter2_id
+          })));
+
           // Filter predictions for current user
           const userPredictions = predictionsData.filter(pred => pred.username === username);
           
