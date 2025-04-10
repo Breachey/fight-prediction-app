@@ -605,7 +605,7 @@
 
   .fighters-container {
     flex-direction: row;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: nowrap;
     margin: 0;
     width: 100%;
@@ -614,7 +614,7 @@
   .fighter-card {
     flex: 1;
     min-width: 0;
-    padding: 12px;
+    padding: 10px;
     margin: 0;
     display: flex;
     flex-direction: column;
@@ -622,7 +622,7 @@
     justify-content: flex-start;
     gap: 12px;
     border-radius: 10px;
-    width: calc(50% - 4px);
+    width: calc(50% - 5px);
     box-sizing: border-box;
   }
 
@@ -653,36 +653,31 @@
     border-radius: 8px;
     border: 1px solid rgba(76, 29, 149, 0.2);
     box-sizing: border-box;
-    overflow: hidden;
   }
 
   .stat-row {
-    padding: 4px 0;
-    font-size: 0.9rem;
+    padding: 4px 2px;
+    font-size: 0.85rem;
     line-height: 1.4;
     display: flex;
     justify-content: space-between;
     width: 100%;
     align-items: center;
-    overflow: hidden;
   }
 
   .stat-label {
     color: #a78bfa;
     font-weight: 500;
-    font-size: 0.85rem;
-    margin-right: 0;
+    font-size: 0.8rem;
+    margin-right: 4px;
     white-space: nowrap;
-    min-width: 45px;
     flex-shrink: 0;
   }
 
   .stat-row > span:last-child {
     text-align: right;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 55%;
+    font-size: 0.8rem;
   }
 
   .fight-meta {
@@ -760,12 +755,12 @@
   }
 
   .fighters-container {
-    gap: 4px;
+    gap: 6px;
   }
 
   .fighter-card {
     padding: 8px;
-    width: calc(50% - 2px);
+    width: calc(50% - 3px);
   }
 
   .fighter-image {
@@ -792,16 +787,16 @@
 
   .stat-row {
     padding: 2px 0;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
 
   .stat-label {
-    font-size: 0.75rem;
-    min-width: 40px;
+    font-size: 0.7rem;
+    min-width: 34px;
   }
 
   .stat-row > span:last-child {
-    max-width: 50%;
+    font-size: 0.7rem;
   }
 
   .vs-text {
