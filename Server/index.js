@@ -640,14 +640,37 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       }
     });
 
+    console.log('Fight map after transformation:', {
+      fightId: id,
+      fightMap: Array.from(fightMap.entries()).map(([id, fight]) => ({
+        id,
+        hasRed: !!fight.red,
+        hasBlue: !!fight.blue,
+        redName: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
+        blueName: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
+      }))
+    });
+
     const fight = fightMap.get(id);
     if (!fight) {
-      console.error('Fight not found in transformed data:', { id, fightData });
+      console.error('Fight not found in transformed data:', { 
+        id, 
+        fightData: fightData.map(f => ({
+          FightId: f.FightId,
+          Corner: f.Corner,
+          Name: `${f.FirstName} ${f.LastName}`
+        }))
+      });
       return res.status(404).json({ error: 'Fight not found in transformed data' });
     }
 
     if (!fight.red || !fight.blue) {
-      console.error('Missing fighter data:', { id, fight });
+      console.error('Missing fighter data:', { 
+        id, 
+        fight,
+        red: fight.red ? `${fight.red.FirstName} ${fight.red.LastName}` : null,
+        blue: fight.blue ? `${fight.blue.FirstName} ${fight.blue.LastName}` : null
+      });
       return res.status(404).json({ error: 'Missing fighter data' });
     }
 
