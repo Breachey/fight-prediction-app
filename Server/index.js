@@ -476,29 +476,25 @@ app.get('/predictions', async (req, res) => {
 });
 
 app.get('/predictions/filter', async (req, res) => {
-  const { username, fightId } = req.query;
+  const { fight_id, fighter_id } = req.query;
 
-  if (!username || !fightId) {
+  if (!fight_id || !fighter_id) {
     return res.status(400).json({ error: "Missing required parameters" });
   }
 
   try {
-    const { data: prediction, error } = await supabase
+    const { data: predictions, error } = await supabase
       .from('predictions')
       .select('*')
-      .eq('username', username)
-      .eq('fight_id', fightId)
-      .single();
+      .eq('fight_id', fight_id)
+      .eq('fighter_id', fighter_id);
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: "No prediction found" });
-      }
-      console.error('Error fetching prediction:', error);
-      return res.status(500).json({ error: "Error fetching prediction" });
+      console.error('Error fetching predictions:', error);
+      return res.status(500).json({ error: "Error fetching predictions" });
     }
 
-    res.status(200).json(prediction);
+    res.status(200).json(predictions);
   } catch (err) {
     console.error('Server error:', err);
     res.status(500).json({ error: "Internal server error" });
