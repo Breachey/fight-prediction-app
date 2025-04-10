@@ -572,7 +572,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
         {
           fight_id: id,
           fighter_id: winner_id,
-          is_completed: true
+          is_completed: winner_id !== null
         }
       ], {
         onConflict: ['fight_id']
