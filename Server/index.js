@@ -884,7 +884,7 @@ app.get('/events', async (req, res) => {
 
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
-      .select('Event, EventId, StartTime')
+      .select('Event, EventId, StartTime, EventStatus')
       .order('EventId', { ascending: false });
 
     if (error) {
@@ -908,7 +908,8 @@ app.get('/events', async (req, res) => {
       new Set(data.map(event => JSON.stringify({ 
         id: event.EventId, 
         name: event.Event,
-        date: event.StartTime
+        date: event.StartTime,
+        status: event.EventStatus
       })))
     ).map(str => JSON.parse(str));
 
@@ -919,7 +920,8 @@ app.get('/events', async (req, res) => {
       id: event.id,
       name: event.name,
       date: event.date,
-      is_completed: false // We'll need to add this to the database if needed
+      is_completed: event.status === 'Final',
+      status: event.status === 'Final' ? 'Complete' : 'Upcoming'
     }));
 
     res.json(transformedEvents);

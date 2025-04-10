@@ -62,8 +62,8 @@ function EventSelector({ onEventSelect, selectedEventId }) {
           {selectedEvent ? (
             <>
               {selectedEvent.name}
-              <span className={`status-badge ${selectedEvent.is_completed ? 'completed' : 'active'}`}>
-                {selectedEvent.is_completed ? 'Completed' : 'Active'}
+              <span className={`status-badge ${selectedEvent.status === 'Complete' ? 'completed' : 'active'}`}>
+                {selectedEvent.status}
               </span>
             </>
           ) : 'Select Event'}
@@ -86,8 +86,8 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             <span>
               {event.name}
             </span>
-            <span className={`status-badge ${event.is_completed ? 'completed' : 'active'}`}>
-              {event.is_completed ? 'Completed' : 'Active'}
+            <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>
+              {event.status}
             </span>
           </div>
         ))}
