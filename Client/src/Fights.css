@@ -581,7 +581,6 @@
 }
 
 @media (max-width: 768px) {
-
   .fights-header {
     margin-bottom: 16px;
   }
@@ -652,6 +651,7 @@
     border-radius: 8px;
     border: 1px solid rgba(76, 29, 149, 0.2);
     box-sizing: border-box;
+    overflow: visible;
   }
 
   .stat-row {
@@ -659,10 +659,11 @@
     font-size: 0.9rem;
     line-height: 1.4;
     display: grid;
-    grid-template-columns: minmax(50px, auto) 1fr;
+    grid-template-columns: auto 1fr;
     gap: 8px;
     width: 100%;
     align-items: flex-start;
+    overflow: visible;
   }
 
   .stat-label {
@@ -670,13 +671,16 @@
     font-weight: 500;
     font-size: 0.85rem;
     margin-right: 0;
+    white-space: nowrap;
   }
 
   .stat-row > span:last-child {
     text-align: right;
     white-space: normal;
-    word-break: normal;
-    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    min-width: 0;
   }
 
   .fight-meta {
