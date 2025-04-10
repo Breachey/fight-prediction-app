@@ -169,6 +169,16 @@ function transformFighterData(fighter) {
     const oddsNum = parseInt(fighter.Odds);
     formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
   }
+
+  // Log physical stats for debugging
+  console.log('Fighter physical stats:', {
+    name: `${fighter.FirstName} ${fighter.LastName}`,
+    age: fighter.Age,
+    weight: fighter.Weight_lbs,
+    height: fighter.Height_in,
+    reach: fighter.Reach_in,
+    raw_fighter: fighter
+  });
   
   return {
     name: `${fighter.FirstName} ${fighter.LastName}`, // Keep full name without nickname for tracking
@@ -183,8 +193,8 @@ function transformFighterData(fighter) {
     country: fighter.FightingOutOf_Country || 'N/A',
     age: fighter.Age || null,
     weight: fighter.Weight_lbs || null,
-    height: fighter.Height_inches || null,
-    reach: fighter.Reach_inches || null
+    height: fighter.Height_in || null,
+    reach: fighter.Reach_in || null
   };
 }
 
