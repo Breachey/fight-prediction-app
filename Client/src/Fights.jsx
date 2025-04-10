@@ -554,12 +554,6 @@ function Fights({ eventId, username }) {
               </div>
             )}
           </div>
-
-          {fight.winner && editingFight !== fight.id && (
-            <div style={{ marginTop: '10px', color: '#9ca3af' }}>
-              Winner: {fight.winner === fight.fighter1_id ? fight.fighter1_name : fight.fighter2_name}
-            </div>
-          )}
         </div>
       ))}
 
