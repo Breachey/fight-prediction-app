@@ -318,11 +318,13 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.5,
+                      opacity: 0.15,
                       position: 'absolute',
                       top: 0,
                       left: 0,
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      filter: 'blur(1px) brightness(1.2)',
+                      transform: 'scale(1.1)'
                     }}
                   />
                 </div>
@@ -377,11 +379,13 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.5,
+                      opacity: 0.15,
                       position: 'absolute',
                       top: 0,
                       left: 0,
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      filter: 'blur(1px) brightness(1.2)',
+                      transform: 'scale(1.1)'
                     }}
                   />
                 </div>

@@ -193,10 +193,9 @@
   border-radius: 8px;
   object-fit: cover;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(76, 29, 149, 0.3);
-  mix-blend-mode: multiply;
 }
 
 .country-flag {
