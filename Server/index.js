@@ -226,7 +226,7 @@ app.get('/fights', async (req, res) => {
     fightResults.forEach(result => {
       resultsMap.set(result.fight_id, {
         winner: result.winner,
-        is_completed: result.winner !== null
+        is_completed: result.is_completed
       });
     });
 
@@ -816,7 +816,7 @@ app.get('/events/:id/fights', async (req, res) => {
     fightResults.forEach(result => {
       resultsMap.set(result.fight_id, {
         winner: result.winner,
-        is_completed: result.winner !== null
+        is_completed: result.is_completed
       });
     });
 
