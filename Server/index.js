@@ -334,7 +334,7 @@ app.get('/fights', async (req, res) => {
             fighter1_height: redFighter.height,
             fighter1_weight: redFighter.weight,
             fighter1_reach: redFighter.reach,
-            fighter1_stance: redFighter.stance,
+            fighter1_stance: redFighter.style,
             fighter1_style: redFighter.style,
             fighter1_image: redFighter.image,
             fighter1_country: redFighter.country,
@@ -348,7 +348,7 @@ app.get('/fights', async (req, res) => {
             fighter2_height: blueFighter.height,
             fighter2_weight: blueFighter.weight,
             fighter2_reach: blueFighter.reach,
-            fighter2_stance: blueFighter.stance,
+            fighter2_stance: blueFighter.style,
             fighter2_style: blueFighter.style,
             fighter2_image: blueFighter.image,
             fighter2_country: blueFighter.country,
@@ -564,9 +564,12 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 
     // Determine the winner's fighter_id
     let winner_id = null;
-    if (winner === redFighter.FirstName + ' ' + redFighter.LastName) {
+    const redFighterName = redFighter.FirstName + ' ' + redFighter.LastName;
+    const blueFighterName = blueFighter.FirstName + ' ' + blueFighter.LastName;
+
+    if (winner === redFighterName) {
       winner_id = redFighter.FighterId;
-    } else if (winner === blueFighter.FirstName + ' ' + blueFighter.LastName) {
+    } else if (winner === blueFighterName) {
       winner_id = blueFighter.FighterId;
     }
 
@@ -605,7 +608,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       id: id,
       event_id: event_id,
       fighter1_id: redFighter.FighterId,
-      fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
+      fighter1_name: redFighterName,
       fighter1_firstName: redFighter.FirstName,
       fighter1_lastName: redFighter.LastName,
       fighter1_nickname: redFighter.Nickname,
@@ -619,7 +622,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
       fighter2_id: blueFighter.FighterId,
-      fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
+      fighter2_name: blueFighterName,
       fighter2_firstName: blueFighter.FirstName,
       fighter2_lastName: blueFighter.LastName,
       fighter2_nickname: blueFighter.Nickname,
@@ -632,7 +635,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       fighter2_image: blueFighter.ImageURL,
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
-      winner: winner_id,
+      winner: updatedResult.winner,
       is_completed: updatedResult.is_completed,
       card_tier: redFighter.CardSegment,
       weightclass: redFighter.FighterWeightClass,
@@ -906,7 +909,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_height: redFighter.height,
         fighter1_weight: redFighter.weight,
         fighter1_reach: redFighter.reach,
-        fighter1_stance: redFighter.stance,
+        fighter1_stance: redFighter.style,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
         fighter1_country: redFighter.country,
@@ -920,7 +923,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_height: blueFighter.height,
         fighter2_weight: blueFighter.weight,
         fighter2_reach: blueFighter.reach,
-        fighter2_stance: blueFighter.stance,
+        fighter2_stance: blueFighter.style,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
         fighter2_country: blueFighter.country,
@@ -935,18 +938,12 @@ app.get('/events/:id/fights', async (req, res) => {
       transformedFights.push(transformedFight);
 
       // Add logging for the transformed fight
-      console.log('Transformed fight ages:', {
+      console.log('Transformed fight:', {
         fightId,
-        fighter1: {
-          name: redFighter.name,
-          age: redFighter.age,
-          ageType: typeof redFighter.age
-        },
-        fighter2: {
-          name: blueFighter.name,
-          age: blueFighter.age,
-          ageType: typeof blueFighter.age
-        }
+        winner: result?.winner,
+        is_completed: result?.is_completed,
+        fighter1_id: redFighter.id,
+        fighter2_id: blueFighter.id
       });
     }
 
@@ -1114,6 +1111,93 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching fight data:', error);
     res.status(500).json({ error: 'Failed to fetch fight data' });
+  }
+});
+
+// Migration endpoint to fix fight results
+app.post('/migrate/fight-results', async (req, res) => {
+  try {
+    // Get all fight results
+    const { data: fightResults, error: resultsError } = await supabase
+      .from('fight_results')
+      .select('*');
+
+    if (resultsError) {
+      console.error('Error fetching fight results:', resultsError);
+      return res.status(500).json({ error: 'Failed to fetch fight results' });
+    }
+
+    // Get all fights
+    const { data: fights, error: fightsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('*');
+
+    if (fightsError) {
+      console.error('Error fetching fights:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    // Create a map of fight IDs to their fighters
+    const fightMap = new Map();
+    fights.forEach(fighter => {
+      if (!fightMap.has(fighter.FightId)) {
+        fightMap.set(fighter.FightId, {
+          red: null,
+          blue: null
+        });
+      }
+      
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightId).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightId).blue = fighter;
+      }
+    });
+
+    // Update each fight result
+    const updates = [];
+    for (const result of fightResults) {
+      const fighters = fightMap.get(result.fight_id);
+      if (!fighters || !fighters.red || !fighters.blue) continue;
+
+      const redFighterName = fighters.red.FirstName + ' ' + fighters.red.LastName;
+      const blueFighterName = fighters.blue.FirstName + ' ' + fighters.blue.LastName;
+
+      let winner_id = null;
+      if (result.winner === redFighterName) {
+        winner_id = fighters.red.FighterId;
+      } else if (result.winner === blueFighterName) {
+        winner_id = fighters.blue.FighterId;
+      }
+
+      if (winner_id !== null) {
+        updates.push({
+          fight_id: result.fight_id,
+          winner: winner_id,
+          is_completed: result.is_completed
+        });
+      }
+    }
+
+    // Batch update the fight results
+    if (updates.length > 0) {
+      const { error: updateError } = await supabase
+        .from('fight_results')
+        .upsert(updates, {
+          onConflict: ['fight_id']
+        });
+
+      if (updateError) {
+        console.error('Error updating fight results:', updateError);
+        return res.status(500).json({ error: 'Failed to update fight results' });
+      }
+    }
+
+    res.json({ message: `Successfully updated ${updates.length} fight results` });
+  } catch (error) {
+    console.error('Error in migration:', error);
+    res.status(500).json({ error: 'Migration failed' });
   }
 });
 
