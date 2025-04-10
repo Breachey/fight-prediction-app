@@ -584,6 +584,19 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update fight result' });
     }
 
+    // If winner is null, also clear prediction results for this fight
+    if (winner_id === null) {
+      const { error: deleteError } = await supabase
+        .from('prediction_results')
+        .delete()
+        .eq('fight_id', id);
+
+      if (deleteError) {
+        console.error('Error clearing prediction results:', deleteError);
+        return res.status(500).json({ error: 'Failed to clear prediction results' });
+      }
+    }
+
     // Get all predictions for this fight
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
