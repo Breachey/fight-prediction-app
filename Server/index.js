@@ -163,13 +163,6 @@ app.post('/login', async (req, res) => {
 function transformFighterData(fighter) {
   const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
   
-  // Return name components separately
-  const name = {
-    firstName: fighter.FirstName,
-    lastName: fighter.LastName,
-    nickname: fighter.Nickname || null
-  };
-  
   // Format odds to include + sign for positive values
   let formattedOdds = null;
   if (fighter.Odds) {
@@ -181,7 +174,7 @@ function transformFighterData(fighter) {
     name: `${fighter.FirstName} ${fighter.LastName}`, // Keep full name without nickname for tracking
     firstName: fighter.FirstName,
     lastName: fighter.LastName,
-    nickname: fighter.Nickname,
+    nickname: fighter.Nickname || null,
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
@@ -311,6 +304,9 @@ app.get('/fights', async (req, res) => {
             event_id: latestEvent[0].id,
             fighter1_id: redFighter.id,
             fighter1_name: redFighter.name,
+            fighter1_firstName: redFighter.firstName,
+            fighter1_lastName: redFighter.lastName,
+            fighter1_nickname: redFighter.nickname,
             fighter1_record: redFighter.record,
             fighter1_height: redFighter.height,
             fighter1_weight: redFighter.weight,
@@ -320,6 +316,9 @@ app.get('/fights', async (req, res) => {
             fighter1_image: redFighter.image,
             fighter2_id: blueFighter.id,
             fighter2_name: blueFighter.name,
+            fighter2_firstName: blueFighter.firstName,
+            fighter2_lastName: blueFighter.lastName,
+            fighter2_nickname: blueFighter.nickname,
             fighter2_record: blueFighter.record,
             fighter2_height: blueFighter.height,
             fighter2_weight: blueFighter.weight,
@@ -1065,16 +1064,28 @@ app.get('/events/:id/fights', async (req, res) => {
       transformedFights.push({
         id: fightId,
         event_id: id,
+        fighter1_id: redFighter.id,
         fighter1_name: redFighter.name,
-        fighter1_rank: redFighter.rank,
+        fighter1_firstName: redFighter.firstName,
+        fighter1_lastName: redFighter.lastName,
+        fighter1_nickname: redFighter.nickname,
         fighter1_record: redFighter.record,
-        fighter1_odds: redFighter.odds,
+        fighter1_height: redFighter.height,
+        fighter1_weight: redFighter.weight,
+        fighter1_reach: redFighter.reach,
+        fighter1_stance: redFighter.stance,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
+        fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
-        fighter2_rank: blueFighter.rank,
+        fighter2_firstName: blueFighter.firstName,
+        fighter2_lastName: blueFighter.lastName,
+        fighter2_nickname: blueFighter.nickname,
         fighter2_record: blueFighter.record,
-        fighter2_odds: blueFighter.odds,
+        fighter2_height: blueFighter.height,
+        fighter2_weight: blueFighter.weight,
+        fighter2_reach: blueFighter.reach,
+        fighter2_stance: blueFighter.stance,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
         winner: result?.winner || null,
