@@ -446,7 +446,8 @@ app.post('/predict', async (req, res) => {
       .insert([{ 
         fight_id: fightId,
         fighter_id: fighter_id,
-        username 
+        username,
+        selected_fighter: fighter_id
       }]);
 
     if (insertError) {
