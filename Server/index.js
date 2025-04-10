@@ -162,9 +162,13 @@ app.post('/login', async (req, res) => {
 // Helper function to transform fighter data
 function transformFighterData(fighter) {
   const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
-  const fullName = fighter.Nickname ? 
-    `${fighter.FirstName} "${fighter.Nickname}" ${fighter.LastName}` : 
-    `${fighter.FirstName} ${fighter.LastName}`;
+  
+  // Return name components separately
+  const name = {
+    firstName: fighter.FirstName,
+    lastName: fighter.LastName,
+    nickname: fighter.Nickname || null
+  };
   
   // Format odds to include + sign for positive values
   let formattedOdds = null;
@@ -174,7 +178,10 @@ function transformFighterData(fighter) {
   }
   
   return {
-    name: fullName,
+    name: `${fighter.FirstName} ${fighter.LastName}`, // Keep full name without nickname for tracking
+    firstName: fighter.FirstName,
+    lastName: fighter.LastName,
+    nickname: fighter.Nickname,
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,

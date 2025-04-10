@@ -528,6 +528,49 @@
   margin-right: 4px;
 }
 
+.fighter-name {
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-align: center;
+  margin: 0 0 8px 0;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fighter-nickname {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1));
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  margin: 4px 0;
+  display: inline-block;
+  animation: nicknameGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes nicknameGlow {
+  from {
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.4);
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.2);
+  }
+  to {
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+  }
+}
+
+.fighter-name-text {
+  display: block;
+}
+
 @media (max-width: 768px) {
   .fights-container {
     padding: 10px;
@@ -593,6 +636,12 @@
   .fighter-name {
     font-size: 1.2rem;
     margin: 4px 0;
+  }
+
+  .fighter-nickname {
+    font-size: 0.9rem;
+    padding: 1px 6px;
+    margin: 2px 0;
   }
 
   .vs-text {
@@ -719,5 +768,14 @@
     right: -6px;
     padding: 2px 5px;
     font-size: 0.7rem;
+  }
+
+  .fighter-name {
+    font-size: 1.1rem;
+  }
+
+  .fighter-nickname {
+    font-size: 0.8rem;
+    padding: 1px 4px;
   }
 }

@@ -309,7 +309,13 @@ function Fights({ eventId, username }) {
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
               <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
-              <h3 className="fighter-name">{fight.fighter1_name}</h3>
+              <h3 className="fighter-name">
+                <span className="fighter-name-text">{fight.fighter1_firstName}</span>
+                {fight.fighter1_nickname && (
+                  <span className="fighter-nickname">{fight.fighter1_nickname}</span>
+                )}
+                <span className="fighter-name-text">{fight.fighter1_lastName}</span>
+              </h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
@@ -345,7 +351,13 @@ function Fights({ eventId, username }) {
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
               <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
-              <h3 className="fighter-name">{fight.fighter2_name}</h3>
+              <h3 className="fighter-name">
+                <span className="fighter-name-text">{fight.fighter2_firstName}</span>
+                {fight.fighter2_nickname && (
+                  <span className="fighter-nickname">{fight.fighter2_nickname}</span>
+                )}
+                <span className="fighter-name-text">{fight.fighter2_lastName}</span>
+              </h3>
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
