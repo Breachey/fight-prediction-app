@@ -483,18 +483,38 @@ app.get('/predictions/filter', async (req, res) => {
   }
 
   try {
-    const { data: predictions, error } = await supabase
+    // Get predictions
+    const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
       .select('*')
       .eq('fight_id', fight_id)
       .eq('fighter_id', fighter_id);
 
-    if (error) {
-      console.error('Error fetching predictions:', error);
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
       return res.status(500).json({ error: "Error fetching predictions" });
     }
 
-    res.status(200).json(predictions);
+    // Get user information including is_bot status
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('username, is_bot');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ error: "Error fetching user data" });
+    }
+
+    // Create a map of username to is_bot status
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+
+    // Add is_bot status to each prediction
+    const predictionsWithBotStatus = predictions.map(prediction => ({
+      ...prediction,
+      is_bot: userMap.get(prediction.username) || false
+    }));
+
+    res.status(200).json(predictionsWithBotStatus);
   } catch (err) {
     console.error('Server error:', err);
     res.status(500).json({ error: "Internal server error" });
