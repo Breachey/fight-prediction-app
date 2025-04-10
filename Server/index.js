@@ -966,18 +966,22 @@ app.get('/events/:id/fights', async (req, res) => {
     fightResults.forEach(result => {
       console.log('Processing fight result:', {
         fight_id: result.fight_id,
-        winner: result.winner
+        winner: result.winner,
+        is_completed: result.is_completed
       });
       
-      if (result.fight_id === '11997') {
+      if (result.fight_id === '11944') {
         console.log('Found target fight result:', result);
       }
-      fightResultsMap.set(result.fight_id, result);
+      fightResultsMap.set(result.fight_id, {
+        winner: result.winner,
+        is_completed: result.is_completed
+      });
     });
 
     console.log('Fight results map size:', fightResultsMap.size);
-    if (fightResultsMap.has('11997')) {
-      console.log('Target fight result found in map:', fightResultsMap.get('11997'));
+    if (fightResultsMap.has('11944')) {
+      console.log('Target fight result found in map:', fightResultsMap.get('11944'));
     } else {
       console.log('Target fight result not found in map');
     }
@@ -998,17 +1002,17 @@ app.get('/events/:id/fights', async (req, res) => {
       if (!fightMap.has(fighter.FightId)) {
         fightMap.set(fighter.FightId, {
           red: null,
-          blue: null
+          blue: null,
+          weightclass: fighter.FighterWeightClass,
+          card_tier: fighter.CardSegment
         });
       }
       
-      const fightData = fightMap.get(fighter.FightId);
-      const fighterData = transformFighterData(fighter);
-      
-      if (fighter.Corner === 'Red') {
-        fightData.red = fighterData;
-      } else if (fighter.Corner === 'Blue') {
-        fightData.blue = fighterData;
+      const corner = fighter.Corner?.toLowerCase();
+      if (corner === 'red') {
+        fightMap.get(fighter.FightId).red = fighter;
+      } else if (corner === 'blue') {
+        fightMap.get(fighter.FightId).blue = fighter;
       }
     });
 
