@@ -41,7 +41,7 @@ function Fights({ eventId, username }) {
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
           userPredictions.forEach(pred => {
-            submittedVotes[pred.fight_id] = pred.selected_fighter;
+            submittedVotes[pred.fight_id] = pred.fighter_id;
           });
 
           setFights(fightsData);
@@ -110,7 +110,7 @@ function Fights({ eventId, username }) {
         body: JSON.stringify({
           username,
           fightId,
-          selectedFighter,
+          fighter_id: selectedFighter,
         }),
       });
 

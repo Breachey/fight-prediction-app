@@ -7,6 +7,7 @@ function FightVotes({ fight }) {
   const [fighter2Votes, setFighter2Votes] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [userPredictions, setUserPredictions] = useState([]);
 
   useEffect(() => {
     const fightDetails = fight.fight_details;
@@ -33,11 +34,20 @@ function FightVotes({ fight }) {
             throw new Error('Failed to fetch votes');
           }
           return response.json();
+        }),
+      // Fetch user predictions
+      fetch(`${API_URL}/predictions/user/${fight.username}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch user predictions');
+          }
+          return response.json();
         })
     ])
-      .then(([fighter1Data, fighter2Data]) => {
+      .then(([fighter1Data, fighter2Data, userData]) => {
         setFighter1Votes(fighter1Data);
         setFighter2Votes(fighter2Data);
+        setUserPredictions(userData);
         setIsLoading(false);
       })
       .catch(err => {
@@ -55,6 +65,9 @@ function FightVotes({ fight }) {
   const totalVotes = fighter1Votes.length + fighter2Votes.length;
   const fighter1Percentage = totalVotes ? Math.round((fighter1Votes.length / totalVotes) * 100) : 0;
   const fighter2Percentage = totalVotes ? Math.round((fighter2Votes.length / totalVotes) * 100) : 0;
+
+  const userVote = userPredictions.find(pred => pred.fight_id === fight.fight_id);
+  const selectedFighter = userVote ? userVote.fighter_id : null;
 
   return (
     <div className="fight-votes-container">
