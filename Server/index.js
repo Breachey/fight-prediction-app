@@ -180,7 +180,11 @@ function transformFighterData(fighter) {
     image: fighter.ImageURL,
     rank: null, // Will be added later
     odds: formattedOdds,
-    country: fighter.FightingOutOf_Country || 'N/A' // Add country information
+    country: fighter.FightingOutOf_Country || 'N/A',
+    age: fighter.Age || null,
+    weight: fighter.Weight_lbs || null,
+    height: fighter.Height_inches || null,
+    reach: fighter.Reach_inches || null
   };
 }
 
