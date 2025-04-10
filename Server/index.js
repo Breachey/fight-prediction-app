@@ -563,15 +563,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
     }
 
     // Determine the winner's fighter_id
-    let winner_id = null;
-    const redFighterName = redFighter.FirstName + ' ' + redFighter.LastName;
-    const blueFighterName = blueFighter.FirstName + ' ' + blueFighter.LastName;
-
-    if (winner === redFighterName) {
-      winner_id = redFighter.FighterId;
-    } else if (winner === blueFighterName) {
-      winner_id = blueFighter.FighterId;
-    }
+    let winner_id = winner;  // Use the winner ID directly since that's what we're receiving
 
     // Update fight_results table with fighter_id
     const { error: updateError } = await supabase
@@ -608,7 +600,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       id: id,
       event_id: event_id,
       fighter1_id: redFighter.FighterId,
-      fighter1_name: redFighterName,
+      fighter1_name: redFighter.FirstName + ' ' + redFighter.LastName,
       fighter1_firstName: redFighter.FirstName,
       fighter1_lastName: redFighter.LastName,
       fighter1_nickname: redFighter.Nickname,
@@ -622,7 +614,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
       fighter2_id: blueFighter.FighterId,
-      fighter2_name: blueFighterName,
+      fighter2_name: blueFighter.FirstName + ' ' + blueFighter.LastName,
       fighter2_firstName: blueFighter.FirstName,
       fighter2_lastName: blueFighter.LastName,
       fighter2_nickname: blueFighter.Nickname,
