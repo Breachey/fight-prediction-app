@@ -183,7 +183,7 @@
 .stat-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 4px 0;
   gap: 8px;
   width: 100%;
@@ -195,6 +195,7 @@
   font-size: 0.9rem;
   margin-right: 8px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .vote-distribution {
@@ -658,9 +659,10 @@
     font-size: 0.9rem;
     line-height: 1.4;
     display: grid;
-    grid-template-columns: minmax(60px, auto) 1fr;
+    grid-template-columns: minmax(50px, auto) 1fr;
     gap: 8px;
     width: 100%;
+    align-items: flex-start;
   }
 
   .stat-label {
@@ -672,9 +674,9 @@
 
   .stat-row > span:last-child {
     text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: normal;
+    word-wrap: break-word;
   }
 
   .fight-meta {
@@ -784,8 +786,9 @@
   .stat-row {
     padding: 3px 0;
     font-size: 0.8rem;
-    grid-template-columns: minmax(50px, auto) 1fr;
+    grid-template-columns: minmax(45px, auto) 1fr;
     gap: 6px;
+    align-items: flex-start;
   }
 
   .stat-label {
