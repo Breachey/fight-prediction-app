@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
+import ReactCountryFlag from 'react-country-flag';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -308,7 +309,22 @@ function Fights({ eventId, username }) {
               } ${fight.is_completed ? (fight.winner === fight.fighter1_name ? 'winner' : 'loser') : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_name)}
             >
-              <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
+              <div className="fighter-image-container">
+                <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
+                <div className="country-flag">
+                  <ReactCountryFlag 
+                    countryCode={fight.fighter1_country} 
+                    svg 
+                    style={{
+                      width: '2em',
+                      height: '2em',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 8px rgba(0, 0, 0, 0.3)'
+                    }}
+                    title={fight.fighter1_country}
+                  />
+                </div>
+              </div>
               <h3 className="fighter-name">
                 <span className="fighter-name-text">{fight.fighter1_firstName}</span>
                 {fight.fighter1_nickname && (
@@ -350,7 +366,22 @@ function Fights({ eventId, username }) {
               } ${fight.is_completed ? (fight.winner === fight.fighter2_name ? 'winner' : 'loser') : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_name)}
             >
-              <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
+              <div className="fighter-image-container">
+                <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
+                <div className="country-flag">
+                  <ReactCountryFlag 
+                    countryCode={fight.fighter2_country} 
+                    svg 
+                    style={{
+                      width: '2em',
+                      height: '2em',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 8px rgba(0, 0, 0, 0.3)'
+                    }}
+                    title={fight.fighter2_country}
+                  />
+                </div>
+              </div>
               <h3 className="fighter-name">
                 <span className="fighter-name-text">{fight.fighter2_firstName}</span>
                 {fight.fighter2_nickname && (

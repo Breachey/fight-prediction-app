@@ -179,7 +179,8 @@ function transformFighterData(fighter) {
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
     rank: null, // Will be added later
-    odds: formattedOdds
+    odds: formattedOdds,
+    country: fighter.FightingOutOf_Country || 'N/A' // Add country information
   };
 }
 
@@ -314,6 +315,7 @@ app.get('/fights', async (req, res) => {
             fighter1_stance: redFighter.stance,
             fighter1_style: redFighter.style,
             fighter1_image: redFighter.image,
+            fighter1_country: redFighter.country,
             fighter2_id: blueFighter.id,
             fighter2_name: blueFighter.name,
             fighter2_firstName: blueFighter.firstName,
@@ -326,6 +328,7 @@ app.get('/fights', async (req, res) => {
             fighter2_stance: blueFighter.stance,
             fighter2_style: blueFighter.style,
             fighter2_image: blueFighter.image,
+            fighter2_country: blueFighter.country,
             winner: result || null,
             is_completed: result ? true : false,
             card_tier: displayCardTier,
@@ -1076,6 +1079,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_stance: redFighter.stance,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
+        fighter1_country: redFighter.country,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -1088,6 +1092,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_stance: blueFighter.stance,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
+        fighter2_country: blueFighter.country,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         card_tier: displayCardTier,
