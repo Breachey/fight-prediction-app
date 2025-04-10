@@ -505,7 +505,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
         {
           fight_id: id,
           winner: winner,
-          is_completed: winner !== null
+          is_completed: true  // Always set to true when updating a result
         }
       ], {
         onConflict: ['fight_id']
@@ -520,6 +520,18 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
         code: updateError.code
       });
       return res.status(500).json({ error: 'Failed to update fight result' });
+    }
+
+    // Get the updated fight result to ensure we have the correct is_completed value
+    const { data: updatedResult, error: getResultError } = await supabase
+      .from('fight_results')
+      .select('*')
+      .eq('fight_id', id)
+      .single();
+
+    if (getResultError) {
+      console.error('Error fetching updated fight result:', getResultError);
+      return res.status(500).json({ error: 'Failed to fetch updated fight result' });
     }
 
     // If we're unsetting the result, delete any existing prediction results
@@ -642,7 +654,7 @@ app.post('/ufc_fight_card/:id/result', async (req, res) => {
       fighter2_style: blueFighter.style,
       fighter2_image: blueFighter.image,
       winner: winner,
-      is_completed: winner !== null,
+      is_completed: updatedResult.is_completed,
       card_tier: fight.card_tier,
       weightclass: fight.weightclass,
       bout_order: fight.red.FightOrder
