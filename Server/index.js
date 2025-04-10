@@ -178,7 +178,7 @@ function transformFighterData(fighter) {
     raw_fighter: fighter
   });
   
-  return {
+  const transformedFighter = {
     name: `${fighter.FirstName} ${fighter.LastName}`, // Keep full name without nickname for tracking
     firstName: fighter.FirstName,
     lastName: fighter.LastName,
@@ -194,6 +194,14 @@ function transformFighterData(fighter) {
     height: fighter.Height_in || null,
     reach: fighter.Reach_in || null
   };
+
+  console.log('Transformed fighter age:', {
+    name: transformedFighter.name,
+    age: transformedFighter.age,
+    ageType: typeof transformedFighter.age
+  });
+
+  return transformedFighter;
 }
 
 app.get('/fights', async (req, res) => {
@@ -312,7 +320,7 @@ app.get('/fights', async (req, res) => {
             displayCardTier = 'Early Prelims';
         }
 
-        transformedFights.push({
+        const transformedFight = {
             id: fightId,
             event_id: latestEvent[0].id,
             fighter1_id: redFighter.id,
@@ -328,6 +336,7 @@ app.get('/fights', async (req, res) => {
             fighter1_style: redFighter.style,
             fighter1_image: redFighter.image,
             fighter1_country: redFighter.country,
+            fighter1_age: redFighter.age,
             fighter2_id: blueFighter.id,
             fighter2_name: blueFighter.name,
             fighter2_firstName: blueFighter.firstName,
@@ -341,11 +350,29 @@ app.get('/fights', async (req, res) => {
             fighter2_style: blueFighter.style,
             fighter2_image: blueFighter.image,
             fighter2_country: blueFighter.country,
+            fighter2_age: blueFighter.age,
             winner: result || null,
             is_completed: result ? true : false,
             card_tier: displayCardTier,
             weightclass: fighters.weightclass,
             bout_order: fighters.red.FightOrder
+        };
+
+        transformedFights.push(transformedFight);
+
+        // Add logging for the transformed fight
+        console.log('Transformed fight ages:', {
+            fightId,
+            fighter1: {
+                name: redFighter.name,
+                age: redFighter.age,
+                ageType: typeof redFighter.age
+            },
+            fighter2: {
+                name: blueFighter.name,
+                age: blueFighter.age,
+                ageType: typeof blueFighter.age
+            }
         });
     });
 
@@ -1076,7 +1103,7 @@ app.get('/events/:id/fights', async (req, res) => {
           displayCardTier = 'Early Prelims';
       }
 
-      transformedFights.push({
+      const transformedFight = {
         id: fightId,
         event_id: id,
         fighter1_id: redFighter.id,
@@ -1092,6 +1119,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
         fighter1_country: redFighter.country,
+        fighter1_age: redFighter.age,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -1105,11 +1133,29 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
         fighter2_country: blueFighter.country,
+        fighter2_age: blueFighter.age,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         card_tier: displayCardTier,
         weightclass: fighters.weightclass,
         bout_order: fighters.red.FightOrder
+      };
+
+      transformedFights.push(transformedFight);
+
+      // Add logging for the transformed fight
+      console.log('Transformed fight ages:', {
+        fightId,
+        fighter1: {
+          name: redFighter.name,
+          age: redFighter.age,
+          ageType: typeof redFighter.age
+        },
+        fighter2: {
+          name: blueFighter.name,
+          age: blueFighter.age,
+          ageType: typeof blueFighter.age
+        }
       });
     }
 
