@@ -973,15 +973,17 @@ app.get('/events/:id/fights', async (req, res) => {
       if (result.fight_id === '11944') {
         console.log('Found target fight result:', result);
       }
-      fightResultsMap.set(result.fight_id, {
+      // Convert fight_id to number to match the fight map
+      const numericFightId = Number(result.fight_id);
+      fightResultsMap.set(numericFightId, {
         winner: result.winner,
         is_completed: result.is_completed
       });
     });
 
     console.log('Fight results map size:', fightResultsMap.size);
-    if (fightResultsMap.has('11944')) {
-      console.log('Target fight result found in map:', fightResultsMap.get('11944'));
+    if (fightResultsMap.has(11944)) {
+      console.log('Target fight result found in map:', fightResultsMap.get(11944));
     } else {
       console.log('Target fight result not found in map');
     }
