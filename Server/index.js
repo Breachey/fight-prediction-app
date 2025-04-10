@@ -584,6 +584,39 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update fight result' });
     }
 
+    // Get all predictions for this fight
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('fight_id', id);
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+
+    // Update prediction_results for each prediction
+    if (predictions && predictions.length > 0) {
+      const predictionResults = predictions.map(prediction => ({
+        user_id: prediction.username,
+        fight_id: id,
+        event_id: event_id,
+        predicted_correctly: prediction.fighter_id === winner_id,
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: resultsError } = await supabase
+        .from('prediction_results')
+        .upsert(predictionResults, {
+          onConflict: ['user_id', 'fight_id']
+        });
+
+      if (resultsError) {
+        console.error('Error updating prediction results:', resultsError);
+        return res.status(500).json({ error: 'Failed to update prediction results' });
+      }
+    }
+
     // Get the updated fight result
     const { data: updatedResult, error: getResultError } = await supabase
       .from('fight_results')
