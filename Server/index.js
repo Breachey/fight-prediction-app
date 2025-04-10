@@ -264,12 +264,12 @@ app.get('/fights', async (req, res) => {
     console.log(`Processing ${fightResults.length} fight results`);
     
     fightResults.forEach(result => {
-        const { fight_id, winner } = result;
-        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${winner}`);
+        const { fight_id, fighter_id } = result;
+        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${fighter_id}`);
         if (fight_id === '11997') {
             console.log('Found target fight 11997 in results');
         }
-        fightResultsMap.set(fight_id, winner);
+        fightResultsMap.set(fight_id, fighter_id);
     });
 
     console.log(`Fight results map size: ${fightResultsMap.size}`);
@@ -579,7 +579,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       .upsert([
         {
           fight_id: id,
-          winner: winner_id,
+          fighter_id: winner_id,
           is_completed: true
         }
       ], {
@@ -810,7 +810,7 @@ app.get('/events/:id/fights', async (req, res) => {
     fightResults.forEach(result => {
       console.log('Processing fight result:', {
         fight_id: result.fight_id,
-        winner: result.winner,
+        winner: result.fighter_id,
         is_completed: result.is_completed
       });
       
@@ -820,7 +820,7 @@ app.get('/events/:id/fights', async (req, res) => {
       // Convert fight_id to number to match the fight map
       const numericFightId = Number(result.fight_id);
       fightResultsMap.set(numericFightId, {
-        winner: result.winner,
+        winner: result.fighter_id,
         is_completed: result.is_completed
       });
     });
@@ -940,8 +940,8 @@ app.get('/events/:id/fights', async (req, res) => {
       // Add logging for the transformed fight
       console.log('Transformed fight:', {
         fightId,
-        winner: result?.winner,
-        is_completed: result?.is_completed,
+        rawWinner: result?.winner,
+        transformedWinner: transformedFight.winner,
         fighter1_id: redFighter.id,
         fighter2_id: blueFighter.id
       });
@@ -1158,23 +1158,70 @@ app.post('/migrate/fight-results', async (req, res) => {
     // Update each fight result
     const updates = [];
     for (const result of fightResults) {
-      const fighters = fightMap.get(result.fight_id);
-      if (!fighters || !fighters.red || !fighters.blue) continue;
+      console.log('Processing fight result:', {
+        fight_id: result.fight_id,
+        current_winner: result.winner,
+        winner_type: typeof result.winner
+      });
 
-      const redFighterName = fighters.red.FirstName + ' ' + fighters.red.LastName;
-      const blueFighterName = fighters.blue.FirstName + ' ' + fighters.blue.LastName;
+      const fighters = fightMap.get(result.fight_id);
+      if (!fighters || !fighters.red || !fighters.blue) {
+        console.log('Skipping fight - missing fighter data:', result.fight_id);
+        continue;
+      }
+
+      // If winner is already a number (fighter_id), keep it as is
+      if (typeof result.winner === 'number') {
+        console.log('Winner is already a fighter_id:', result.winner);
+        continue;
+      }
+
+      // Create all possible name formats for each fighter
+      const redFighterFormats = [
+        fighters.red.FirstName + ' ' + fighters.red.LastName,
+        fighters.red.FirstName + ' "' + fighters.red.Nickname + '" ' + fighters.red.LastName,
+        fighters.red.FirstName + ' ' + fighters.red.Nickname + ' ' + fighters.red.LastName
+      ].filter(Boolean);
+
+      const blueFighterFormats = [
+        fighters.blue.FirstName + ' ' + fighters.blue.LastName,
+        fighters.blue.FirstName + ' "' + fighters.blue.Nickname + '" ' + fighters.blue.LastName,
+        fighters.blue.FirstName + ' ' + fighters.blue.Nickname + ' ' + fighters.blue.LastName
+      ].filter(Boolean);
+
+      console.log('Fighter name formats:', {
+        fight_id: result.fight_id,
+        red: redFighterFormats,
+        blue: blueFighterFormats,
+        winner: result.winner
+      });
 
       let winner_id = null;
-      if (result.winner === redFighterName) {
+      if (redFighterFormats.includes(result.winner)) {
         winner_id = fighters.red.FighterId;
-      } else if (result.winner === blueFighterName) {
+        console.log('Matched red fighter:', {
+          fight_id: result.fight_id,
+          winner_name: result.winner,
+          winner_id: winner_id
+        });
+      } else if (blueFighterFormats.includes(result.winner)) {
         winner_id = fighters.blue.FighterId;
+        console.log('Matched blue fighter:', {
+          fight_id: result.fight_id,
+          winner_name: result.winner,
+          winner_id: winner_id
+        });
+      } else {
+        console.log('No match found for winner:', {
+          fight_id: result.fight_id,
+          winner: result.winner
+        });
       }
 
       if (winner_id !== null) {
         updates.push({
           fight_id: result.fight_id,
-          winner: winner_id,
+          fighter_id: winner_id,
           is_completed: result.is_completed
         });
       }
