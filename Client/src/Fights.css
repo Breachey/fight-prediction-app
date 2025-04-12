@@ -95,7 +95,7 @@
   width: 100%;
   height: 4px;
 }
-
+/*first-child = red corner, last-child = blue corner*/
 .fighter-card:first-child::before {
   background: linear-gradient(90deg, #ef4444, #b91c1c);
 }
@@ -123,24 +123,32 @@
   border: 2px solid #ef4444;
   box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
   background: linear-gradient(145deg, #1a1a1a 0%, #2d1f1f 100%);
+  opacity: 1;
+  filter: none;
 }
 
 .fighter-card.selected:last-child {
   border: 2px solid #3b82f6;
   box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
   background: linear-gradient(145deg, #1a1a1a 0%, #1f2d3d 100%);
+  opacity: 1;
+  filter: none;
 }
 
 .fighter-card.unselected {
   opacity: 0.5;
   filter: grayscale(0.8);
   cursor: not-allowed;
+  transition: all 0.3s ease;
+}
+
+.fighter-card.unselected .vote-badge {
+  opacity: 1;
+  filter: none;
 }
 
 .fighter-card.completed {
   cursor: not-allowed;
-  opacity: 0.7;
-  filter: grayscale(0.5);
 }
 
 /* Winner styles */
@@ -441,11 +449,11 @@
   color: #e9d5ff;
 }
 
-.fade-out {
+/* .fade-out {
   animation: fadeOut 0.5s ease-in-out forwards;
   animation-delay: 3s;
-}
-
+} */
+/* this is a test to see if the fade out is fucking up the selected fighter styling*/
 @keyframes fadeOut {
   from {
     opacity: 1;
@@ -526,6 +534,8 @@
   font-weight: bold;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 2;
+  opacity: 1;
+  transition: none;
 }
 
 .vote-badge::before {

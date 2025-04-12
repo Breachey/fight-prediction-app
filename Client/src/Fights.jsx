@@ -8,8 +8,16 @@ function Fights({ eventId, username }) {
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedFights, setSelectedFights] = useState({});
-  const [submittedFights, setSubmittedFights] = useState({});
+  const [selectedFights, setSelectedFights] = useState(() => {
+    // Initialize from localStorage if available
+    const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [submittedFights, setSubmittedFights] = useState(() => {
+    // Initialize from localStorage if available, will be updated with API data
+    const saved = localStorage.getItem(`submittedFights_${eventId}_${username}`);
+    return saved ? JSON.parse(saved) : {};
+  });
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
@@ -25,7 +33,7 @@ function Fights({ eventId, username }) {
         // Fetch fights
         fetch(`${API_URL}/events/${eventId}/fights`),
         // Fetch all predictions for the user
-        fetch(`${API_URL}/predictions`)
+        fetch(`${API_URL}/predictions?username=${encodeURIComponent(username)}`)
       ])
         .then(async ([fightsResponse, predictionsResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
@@ -37,24 +45,33 @@ function Fights({ eventId, username }) {
           ]);
 
           // Add debug logging
-          console.log('Fights data:', fightsData.map(fight => ({
-            id: fight.id,
-            is_completed: fight.is_completed,
-            winner: fight.winner,
-            fighter1_id: fight.fighter1_id,
-            fighter2_id: fight.fighter2_id
-          })));
-
-          // Filter predictions for current user
-          const userPredictions = predictionsData.filter(pred => pred.username === username);
-          
-          // Create a map of fight ID to selected fighter
-          const submittedVotes = {};
-          userPredictions.forEach(pred => {
-            submittedVotes[pred.fight_id] = pred.fighter_id;
+          console.log('API Response:', {
+            fights: fightsData.map(fight => ({
+              id: fight.id,
+              fighter1_id: fight.fighter1_id,
+              fighter2_id: fight.fighter2_id
+            })),
+            predictions: predictionsData
           });
 
-          setFights(fightsData);
+          // Create a map of fight ID to selected fighter
+          const submittedVotes = {};
+          predictionsData.forEach(pred => {
+            console.log('Processing prediction:', {
+              fight_id: pred.fight_id,
+              fighter_id: pred.fighter_id,
+              stringified_fighter_id: String(pred.fighter_id)
+            });
+            submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
+          });
+
+          console.log('Final submitted votes:', submittedVotes);
+
+          setFights(fightsData.map(fight => ({
+            ...fight,
+            fighter1_id: String(fight.fighter1_id), // Ensure fighter IDs are strings
+            fighter2_id: String(fight.fighter2_id)
+          })));
           setSubmittedFights(submittedVotes);
           setLoading(false);
         })
@@ -66,15 +83,32 @@ function Fights({ eventId, username }) {
     }
   }, [eventId, username]);
 
-  // Clear selected fights when username changes
+  // Save selectedFights to localStorage whenever it changes
+  useEffect(() => {
+    if (eventId && username) {
+      localStorage.setItem(`selectedFights_${eventId}_${username}`, JSON.stringify(selectedFights));
+    }
+  }, [selectedFights, eventId, username]);
+
+  // Save submittedFights to localStorage whenever it changes
+  useEffect(() => {
+    if (eventId && username) {
+      localStorage.setItem(`submittedFights_${eventId}_${username}`, JSON.stringify(submittedFights));
+    }
+  }, [submittedFights, eventId, username]);
+
+  // Clear both selected and submitted fights when username or eventId changes
   useEffect(() => {
     setSelectedFights({});
-  }, [username]);
+    setSubmittedFights({});
+    localStorage.removeItem(`selectedFights_${eventId}_${username}`);
+    localStorage.removeItem(`submittedFights_${eventId}_${username}`);
+  }, [username, eventId]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
-    // Only allow selection if vote hasn't been submitted
-    if (submittedFights[fightId]) return;
+    // Only allow selection if vote hasn't been submitted and fight isn't completed
+    if (submittedFights[fightId] || fights.find(f => f.id === fightId)?.is_completed) return;
     setSelectedFights(prev => ({ ...prev, [fightId]: fighterName }));
   };
 
@@ -128,16 +162,20 @@ function Fights({ eventId, username }) {
 
       // Mark this fight's vote as submitted
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
-      // Disable further selection for this fight
+      
+      // Clear any previous vote error for this fight
+      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+      
+      // Start fade out timer for the submission message
+      handleMessageFadeOut(fightId);
+      
+      // Clear the selection state for this fight
       setSelectedFights(prev => {
         const newState = { ...prev };
         delete newState[fightId];
         return newState;
       });
-      // Start fade out timer
-      handleMessageFadeOut(fightId);
-      // Clear any previous vote error for this fight
-      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
         const fight = fights.find(f => f.id === fightId);
@@ -328,11 +366,18 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
-              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter1_id && submittedFights[fight.id] !== fight.fighter1_id) ? 'unselected' : ''
+              } ${(submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id) || 
+                   (fight.is_completed && String(fight.winner) !== String(fight.fighter1_id)) ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
+              {console.log('Fighter 1 class data:', {
+                fightId: fight.id,
+                fighter1Id: fight.fighter1_id,
+                submittedVote: submittedFights[fight.id],
+                isSelected: submittedFights[fight.id] === fight.fighter1_id,
+                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id
+              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
@@ -405,11 +450,18 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id) ? 'selected' : ''
-              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter2_id && submittedFights[fight.id] !== fight.fighter2_id) ? 'unselected' : ''
+              } ${(submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id) || 
+                   (fight.is_completed && String(fight.winner) !== String(fight.fighter2_id)) ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
+              {console.log('Fighter 2 class data:', {
+                fightId: fight.id,
+                fighter2Id: fight.fighter2_id,
+                submittedVote: submittedFights[fight.id],
+                isSelected: submittedFights[fight.id] === fight.fighter2_id,
+                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id
+              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
@@ -418,7 +470,7 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.15,
+                      opacity: 0.25,
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -509,10 +561,8 @@ function Fights({ eventId, username }) {
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
               <div className="votes-container">
-                {/* Add back the vote distribution bar */}
                 <div className="vote-distribution">
                   {(() => {
-                    // Filter votes based on showAIVotes setting
                     const fighter1FilteredVotes = fightVotes[fight.id].fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
                     const fighter2FilteredVotes = fightVotes[fight.id].fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
                     const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
