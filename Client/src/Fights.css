@@ -245,6 +245,19 @@
   flex-shrink: 0;
 }
 
+/* Add styles for odds */
+.stat-row.odds-row .stat-label {
+  color: #9ca3af;
+}
+
+.stat-row.odds-row .favorite-odds {
+  color: #34d399; /* green for favorite */
+}
+
+.stat-row.odds-row .underdog-odds {
+  color: #f87171; /* red for underdog */
+}
+
 .vote-distribution {
   display: flex;
   height: 32px;
