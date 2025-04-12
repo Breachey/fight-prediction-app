@@ -166,18 +166,18 @@ function transformFighterData(fighter) {
   // Debug log for raw fighter data
   console.log('Raw fighter data:', {
     name: `${fighter.FirstName} ${fighter.LastName}`,
-    odds: fighter.Odds,
-    oddsType: typeof fighter.Odds
+    odds: fighter.odds,
+    oddsType: typeof fighter.odds
   });
   
   // Format odds to include + sign for positive values
   let formattedOdds = null;
-  if (fighter.Odds !== null && fighter.Odds !== undefined) {
-    const oddsNum = parseInt(fighter.Odds);
-    formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
+  if (fighter.odds !== null && fighter.odds !== undefined) {
+    const oddsNum = parseInt(fighter.odds);
+    formattedOdds = oddsNum > 0 ? `+${fighter.odds}` : fighter.odds;
     console.log('Formatted odds:', {
       name: `${fighter.FirstName} ${fighter.LastName}`,
-      rawOdds: fighter.Odds,
+      rawOdds: fighter.odds,
       parsedOdds: oddsNum,
       formattedOdds: formattedOdds
     });
@@ -238,8 +238,8 @@ app.get('/fights', async (req, res) => {
     // Debug log for raw fight data
     console.log('Sample fight data from database:', fights.slice(0, 1).map(f => ({
       name: `${f.FirstName} ${f.LastName}`,
-      odds: f.Odds,
-      oddsType: typeof f.Odds
+      odds: f.odds,
+      oddsType: typeof f.odds
     })));
 
     // Get fight results
@@ -1036,7 +1036,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
       fighter1_rank: redFighter.Rank,
-      fighter1_odds: redFighter.Odds,
+      fighter1_odds: redFighter.odds,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -1052,7 +1052,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
       fighter2_rank: blueFighter.Rank,
-      fighter2_odds: blueFighter.Odds,
+      fighter2_odds: blueFighter.odds,
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,
