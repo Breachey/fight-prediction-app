@@ -187,7 +187,7 @@ function transformFighterData(fighter) {
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: null,
+    rank: fighter.Rank || null,
     odds: formattedOdds,
     country: fighter.FightingOutOf_Country || 'N/A',
     age: fighter.Age !== undefined ? fighter.Age : null,
@@ -200,7 +200,9 @@ function transformFighterData(fighter) {
     id: transformedFighter.id,
     name: transformedFighter.name,
     age: transformedFighter.age,
-    ageType: typeof transformedFighter.age
+    ageType: typeof transformedFighter.age,
+    rank: transformedFighter.rank,
+    odds: transformedFighter.odds
   });
 
   return transformedFighter;
@@ -339,6 +341,8 @@ app.get('/fights', async (req, res) => {
             fighter1_image: redFighter.image,
             fighter1_country: redFighter.country,
             fighter1_age: redFighter.age,
+            fighter1_rank: redFighter.rank,
+            fighter1_odds: redFighter.odds,
             fighter2_id: blueFighter.id,
             fighter2_name: blueFighter.name,
             fighter2_firstName: blueFighter.firstName,
@@ -353,6 +357,8 @@ app.get('/fights', async (req, res) => {
             fighter2_image: blueFighter.image,
             fighter2_country: blueFighter.country,
             fighter2_age: blueFighter.age,
+            fighter2_rank: blueFighter.rank,
+            fighter2_odds: blueFighter.odds,
             winner: result || null,
             is_completed: result ? true : false,
             card_tier: displayCardTier,
@@ -610,13 +616,25 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 
     // Update prediction_results for each prediction
     if (predictions && predictions.length > 0) {
-      const predictionResults = predictions.map(prediction => ({
-        user_id: prediction.username,
-        fight_id: id,
-        event_id: event_id,
-        predicted_correctly: prediction.fighter_id === winner_id,
-        created_at: new Date().toISOString()
-      }));
+      const predictionResults = predictions.map(prediction => {
+        // Log the comparison values for debugging
+        console.log('Prediction comparison:', {
+          fight_id: id,
+          prediction_fighter_id: prediction.fighter_id,
+          prediction_fighter_id_type: typeof prediction.fighter_id,
+          winner_id: winner_id,
+          winner_id_type: typeof winner_id,
+          isMatch: String(prediction.fighter_id) === String(winner_id)
+        });
+
+        return {
+          user_id: prediction.username,
+          fight_id: id,
+          event_id: event_id,
+          predicted_correctly: String(prediction.fighter_id) === String(winner_id),
+          created_at: new Date().toISOString()
+        };
+      });
 
       const { error: resultsError } = await supabase
         .from('prediction_results')
@@ -953,6 +971,8 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_image: redFighter.image,
         fighter1_country: redFighter.country,
         fighter1_age: redFighter.age,
+        fighter1_rank: redFighter.rank,
+        fighter1_odds: redFighter.odds,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -967,6 +987,8 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_image: blueFighter.image,
         fighter2_country: blueFighter.country,
         fighter2_age: blueFighter.age,
+        fighter2_rank: blueFighter.rank,
+        fighter2_odds: blueFighter.odds,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         card_tier: displayCardTier,
@@ -1125,6 +1147,8 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_image: redFighter.ImageURL,
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
+      fighter1_rank: redFighter.Rank,
+      fighter1_odds: redFighter.Odds,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -1139,6 +1163,8 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_image: blueFighter.ImageURL,
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
+      fighter2_rank: blueFighter.Rank,
+      fighter2_odds: blueFighter.Odds,
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,
