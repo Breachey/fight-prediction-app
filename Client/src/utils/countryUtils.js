@@ -103,4 +103,16 @@ export const convertInchesToHeightString = (inches) => {
   const remainingInches = inches % 12;
   
   return `${feet}'${remainingInches}"`;
+};
+
+export const formatStreak = (streak) => {
+  if (!streak && streak !== 0) return 'N/A';
+  
+  const absStreak = Math.abs(streak);
+  if (streak > 0) {
+    return `${absStreak} Win${absStreak !== 1 ? 's' : ''}`;
+  } else if (streak < 0) {
+    return `${absStreak} Loss${absStreak !== 1 ? 'es' : ''}`;
+  }
+  return 'No Streak';
 }; 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
 import ReactCountryFlag from 'react-country-flag';
-import { getCountryCode, convertInchesToHeightString } from './utils/countryUtils';
+import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -443,6 +443,10 @@ function Fights({ eventId, username }) {
                     <span className="stat-label">Stance</span>
                     <span>{fight.fighter1_stance || 'N/A'}</span>
                   </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Streak</span>
+                    <span>{formatStreak(fight.fighter1_streak)}</span>
+                  </div>
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
@@ -532,6 +536,10 @@ function Fights({ eventId, username }) {
                   <div className="stat-row">
                     <span className="stat-label">Stance</span>
                     <span>{fight.fighter2_stance || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Streak</span>
+                    <span>{formatStreak(fight.fighter2_streak)}</span>
                   </div>
                 </div>
               )}
