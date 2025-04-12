@@ -439,6 +439,10 @@ function Fights({ eventId, username }) {
                     <span className="stat-label">Reach</span>
                     <span>{fight.fighter1_reach ? `${fight.fighter1_reach}"` : 'N/A'}</span>
                   </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Stance</span>
+                    <span>{fight.fighter1_stance || 'N/A'}</span>
+                  </div>
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
@@ -524,6 +528,10 @@ function Fights({ eventId, username }) {
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
                     <span>{fight.fighter2_reach ? `${fight.fighter2_reach}"` : 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Stance</span>
+                    <span>{fight.fighter2_stance || 'N/A'}</span>
                   </div>
                 </div>
               )}
