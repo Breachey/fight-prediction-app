@@ -409,9 +409,18 @@ app.post('/predict', async (req, res) => {
 });
 
 app.get('/predictions', async (req, res) => {
-  const { data, error } = await supabase
+  const { username } = req.query;
+
+  // If username is provided, filter predictions for that user
+  const query = supabase
     .from('predictions')
     .select('*');
+
+  if (username) {
+    query.eq('username', username);
+  }
+
+  const { data, error } = await query;
   
   if (error) {
     console.error(error);

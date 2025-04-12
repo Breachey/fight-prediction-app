@@ -25,7 +25,7 @@ function Fights({ eventId, username }) {
         // Fetch fights
         fetch(`${API_URL}/events/${eventId}/fights`),
         // Fetch all predictions for the user
-        fetch(`${API_URL}/predictions`)
+        fetch(`${API_URL}/predictions?username=${encodeURIComponent(username)}`)
       ])
         .then(async ([fightsResponse, predictionsResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
@@ -45,12 +45,9 @@ function Fights({ eventId, username }) {
             fighter2_id: fight.fighter2_id
           })));
 
-          // Filter predictions for current user
-          const userPredictions = predictionsData.filter(pred => pred.username === username);
-          
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
-          userPredictions.forEach(pred => {
+          predictionsData.forEach(pred => {
             submittedVotes[pred.fight_id] = pred.fighter_id;
           });
 
