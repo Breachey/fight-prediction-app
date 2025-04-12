@@ -329,8 +329,8 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
-              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter1_id && submittedFights[fight.id] !== fight.fighter1_id) ? 'unselected' : ''
+              } ${((selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter1_id) || 
+                   (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id)) ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
@@ -406,8 +406,8 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id) ? 'selected' : ''
-              } ${(selectedFights[fight.id] || submittedFights[fight.id]) && 
-                  (selectedFights[fight.id] !== fight.fighter2_id && submittedFights[fight.id] !== fight.fighter2_id) ? 'unselected' : ''
+              } ${((selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter2_id) || 
+                   (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id)) ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
