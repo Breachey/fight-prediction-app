@@ -8,7 +8,11 @@ function Fights({ eventId, username }) {
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedFights, setSelectedFights] = useState({});
+  const [selectedFights, setSelectedFights] = useState(() => {
+    // Initialize from localStorage if available
+    const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
+    return saved ? JSON.parse(saved) : {};
+  });
   const [submittedFights, setSubmittedFights] = useState({});
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
@@ -63,10 +67,18 @@ function Fights({ eventId, username }) {
     }
   }, [eventId, username]);
 
-  // Clear selected fights when username changes
+  // Save selectedFights to localStorage whenever it changes
+  useEffect(() => {
+    if (eventId && username) {
+      localStorage.setItem(`selectedFights_${eventId}_${username}`, JSON.stringify(selectedFights));
+    }
+  }, [selectedFights, eventId, username]);
+
+  // Clear selected fights when username or eventId changes
   useEffect(() => {
     setSelectedFights({});
-  }, [username]);
+    localStorage.removeItem(`selectedFights_${eventId}_${username}`);
+  }, [username, eventId]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
