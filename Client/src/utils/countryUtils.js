@@ -94,4 +94,25 @@ export const getCountryCode = (countryName) => {
   
   // Try to find the country code
   return countryCodeMap[cleanName] || 'US';
+};
+
+export const convertInchesToHeightString = (inches) => {
+  if (!inches || isNaN(inches)) return 'N/A';
+  
+  const feet = Math.floor(inches / 12);
+  const remainingInches = inches % 12;
+  
+  return `${feet}'${remainingInches}"`;
+};
+
+export const formatStreak = (streak) => {
+  if (!streak && streak !== 0) return 'N/A';
+  
+  const absStreak = Math.abs(streak);
+  if (streak > 0) {
+    return `${absStreak} Win${absStreak !== 1 ? 's' : ''}`;
+  } else if (streak < 0) {
+    return `${absStreak} Loss${absStreak !== 1 ? 'es' : ''}`;
+  }
+  return 'No Streak';
 }; 

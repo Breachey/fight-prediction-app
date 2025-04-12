@@ -167,7 +167,8 @@ function transformFighterData(fighter) {
   console.log('Raw fighter data:', {
     name: `${fighter.FirstName} ${fighter.LastName}`,
     odds: fighter.odds,
-    oddsType: typeof fighter.odds
+    oddsType: typeof fighter.odds,
+    streak: fighter.Streak
   });
   
   // Format odds to include + sign for positive values
@@ -175,12 +176,6 @@ function transformFighterData(fighter) {
   if (fighter.odds !== null && fighter.odds !== undefined) {
     const oddsNum = parseInt(fighter.odds);
     formattedOdds = oddsNum > 0 ? `+${fighter.odds}` : fighter.odds;
-    console.log('Formatted odds:', {
-      name: `${fighter.FirstName} ${fighter.LastName}`,
-      rawOdds: fighter.odds,
-      parsedOdds: oddsNum,
-      formattedOdds: formattedOdds
-    });
   }
   
   const transformedFighter = {
@@ -198,7 +193,8 @@ function transformFighterData(fighter) {
     age: fighter.Age !== undefined ? fighter.Age : null,
     weight: fighter.Weight_lbs || null,
     height: fighter.Height_in || null,
-    reach: fighter.Reach_in || null
+    reach: fighter.Reach_in || null,
+    streak: fighter.Streak
   };
 
   // Debug log for transformed fighter data
@@ -307,6 +303,7 @@ app.get('/fights', async (req, res) => {
         fighter1_age: redFighter.age,
         fighter1_rank: redFighter.rank,
         fighter1_odds: redFighter.odds,
+        fighter1_streak: redFighter.streak,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -323,6 +320,7 @@ app.get('/fights', async (req, res) => {
         fighter2_age: blueFighter.age,
         fighter2_rank: blueFighter.rank,
         fighter2_odds: blueFighter.odds,
+        fighter2_streak: blueFighter.streak,
         winner: result || null,
         is_completed: result ? true : false,
         card_tier: displayCardTier,
@@ -879,6 +877,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_age: redFighter.age,
         fighter1_rank: redFighter.rank,
         fighter1_odds: redFighter.odds,
+        fighter1_streak: redFighter.streak,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -895,6 +894,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_age: blueFighter.age,
         fighter2_rank: blueFighter.rank,
         fighter2_odds: blueFighter.odds,
+        fighter2_streak: blueFighter.streak,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         card_tier: displayCardTier,
@@ -1046,6 +1046,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_age: redFighter.Age,
       fighter1_rank: redFighter.Rank,
       fighter1_odds: redFighter.odds,
+      fighter1_streak: redFighter.Streak,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -1062,6 +1063,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_age: blueFighter.Age,
       fighter2_rank: blueFighter.Rank,
       fighter2_odds: blueFighter.odds,
+      fighter2_streak: blueFighter.Streak,
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,

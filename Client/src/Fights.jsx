@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
 import ReactCountryFlag from 'react-country-flag';
-import { getCountryCode } from './utils/countryUtils';
+import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -49,7 +49,10 @@ function Fights({ eventId, username }) {
             fights: fightsData.map(fight => ({
               id: fight.id,
               fighter1_id: fight.fighter1_id,
-              fighter2_id: fight.fighter2_id
+              fighter2_id: fight.fighter2_id,
+              fighter1_streak: fight.fighter1_streak,
+              fighter2_streak: fight.fighter2_streak,
+              is_completed: fight.is_completed
             })),
             predictions: predictionsData
           });
@@ -423,21 +426,34 @@ function Fights({ eventId, username }) {
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
+                  {console.log('Fighter 1 Streak Debug:', {
+                    raw: fight.fighter1_streak,
+                    type: typeof fight.fighter1_streak,
+                    formatted: formatStreak(fight.fighter1_streak)
+                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter1_age || 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Weight</span>
-                    <span>{fight.fighter1_weight || 'N/A'}</span>
+                    <span>{fight.fighter1_weight ? `${fight.fighter1_weight} lb` : 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
-                    <span>{fight.fighter1_height || 'N/A'}</span>
+                    <span>{convertInchesToHeightString(fight.fighter1_height)}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
-                    <span>{fight.fighter1_reach || 'N/A'}</span>
+                    <span>{fight.fighter1_reach ? `${fight.fighter1_reach}"` : 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Stance</span>
+                    <span>{fight.fighter1_stance || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Streak</span>
+                    <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
                   </div>
                 </div>
               )}
@@ -509,21 +525,34 @@ function Fights({ eventId, username }) {
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
+                  {console.log('Fighter 2 Streak Debug:', {
+                    raw: fight.fighter2_streak,
+                    type: typeof fight.fighter2_streak,
+                    formatted: formatStreak(fight.fighter2_streak)
+                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter2_age || 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Weight</span>
-                    <span>{fight.fighter2_weight || 'N/A'}</span>
+                    <span>{fight.fighter2_weight ? `${fight.fighter2_weight} lb` : 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
-                    <span>{fight.fighter2_height || 'N/A'}</span>
+                    <span>{convertInchesToHeightString(fight.fighter2_height)}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
-                    <span>{fight.fighter2_reach || 'N/A'}</span>
+                    <span>{fight.fighter2_reach ? `${fight.fighter2_reach}"` : 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Stance</span>
+                    <span>{fight.fighter2_stance || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Streak</span>
+                    <span>{fight.fighter2_streak !== null ? formatStreak(fight.fighter2_streak) : 'N/A'}</span>
                   </div>
                 </div>
               )}
