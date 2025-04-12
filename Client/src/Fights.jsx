@@ -70,8 +70,8 @@ function Fights({ eventId, username }) {
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
-    // Only allow selection if vote hasn't been submitted
-    if (submittedFights[fightId]) return;
+    // Only allow selection if vote hasn't been submitted and fight isn't completed
+    if (submittedFights[fightId] || fights.find(f => f.id === fightId)?.is_completed) return;
     setSelectedFights(prev => ({ ...prev, [fightId]: fighterName }));
   };
 
@@ -125,16 +125,20 @@ function Fights({ eventId, username }) {
 
       // Mark this fight's vote as submitted
       setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
-      // Disable further selection for this fight
+      
+      // Clear any previous vote error for this fight
+      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+      
+      // Start fade out timer for the submission message
+      handleMessageFadeOut(fightId);
+      
+      // Clear the selection state for this fight
       setSelectedFights(prev => {
         const newState = { ...prev };
         delete newState[fightId];
         return newState;
       });
-      // Start fade out timer
-      handleMessageFadeOut(fightId);
-      // Clear any previous vote error for this fight
-      setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
         const fight = fights.find(f => f.id === fightId);
