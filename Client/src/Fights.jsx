@@ -386,7 +386,7 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.15,
+                      opacity: 0.5,
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -470,7 +470,7 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.25,
+                      opacity: 0.5,
                       position: 'absolute',
                       top: 0,
                       left: 0,
