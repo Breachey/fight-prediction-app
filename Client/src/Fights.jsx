@@ -49,7 +49,10 @@ function Fights({ eventId, username }) {
             fights: fightsData.map(fight => ({
               id: fight.id,
               fighter1_id: fight.fighter1_id,
-              fighter2_id: fight.fighter2_id
+              fighter2_id: fight.fighter2_id,
+              fighter1_streak: fight.fighter1_streak,
+              fighter2_streak: fight.fighter2_streak,
+              is_completed: fight.is_completed
             })),
             predictions: predictionsData
           });
