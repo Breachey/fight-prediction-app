@@ -423,6 +423,11 @@ function Fights({ eventId, username }) {
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
+                  {console.log('Fighter 1 Streak Debug:', {
+                    raw: fight.fighter1_streak,
+                    type: typeof fight.fighter1_streak,
+                    formatted: formatStreak(fight.fighter1_streak)
+                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter1_age || 'N/A'}</span>
@@ -445,7 +450,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Streak</span>
-                    <span>{formatStreak(fight.fighter1_streak)}</span>
+                    <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
                   </div>
                 </div>
               )}
@@ -517,6 +522,11 @@ function Fights({ eventId, username }) {
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
+                  {console.log('Fighter 2 Streak Debug:', {
+                    raw: fight.fighter2_streak,
+                    type: typeof fight.fighter2_streak,
+                    formatted: formatStreak(fight.fighter2_streak)
+                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter2_age || 'N/A'}</span>
@@ -539,7 +549,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Streak</span>
-                    <span>{formatStreak(fight.fighter2_streak)}</span>
+                    <span>{fight.fighter2_streak !== null ? formatStreak(fight.fighter2_streak) : 'N/A'}</span>
                   </div>
                 </div>
               )}
