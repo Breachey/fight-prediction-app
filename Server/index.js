@@ -163,20 +163,25 @@ app.post('/login', async (req, res) => {
 function transformFighterData(fighter) {
   const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
   
+  // Debug log for raw fighter data
+  console.log('Raw fighter data:', {
+    name: `${fighter.FirstName} ${fighter.LastName}`,
+    odds: fighter.odds,
+    oddsType: typeof fighter.odds
+  });
+  
   // Format odds to include + sign for positive values
   let formattedOdds = null;
-  if (fighter.Odds) {
-    const oddsNum = parseInt(fighter.Odds);
-    formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
+  if (fighter.odds !== null && fighter.odds !== undefined) {
+    const oddsNum = parseInt(fighter.odds);
+    formattedOdds = oddsNum > 0 ? `+${fighter.odds}` : fighter.odds;
+    console.log('Formatted odds:', {
+      name: `${fighter.FirstName} ${fighter.LastName}`,
+      rawOdds: fighter.odds,
+      parsedOdds: oddsNum,
+      formattedOdds: formattedOdds
+    });
   }
-
-  // Log age specifically for debugging
-  console.log('Fighter age debug:', {
-    name: `${fighter.FirstName} ${fighter.LastName}`,
-    age: fighter.Age,
-    ageType: typeof fighter.Age,
-    raw_fighter: fighter
-  });
   
   const transformedFighter = {
     id: fighter.FighterId,
@@ -196,12 +201,9 @@ function transformFighterData(fighter) {
     reach: fighter.Reach_in || null
   };
 
+  // Debug log for transformed fighter data
   console.log('Transformed fighter:', {
-    id: transformedFighter.id,
     name: transformedFighter.name,
-    age: transformedFighter.age,
-    ageType: typeof transformedFighter.age,
-    rank: transformedFighter.rank,
     odds: transformedFighter.odds
   });
 
@@ -233,14 +235,12 @@ app.get('/fights', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
 
-    console.log('Fetched fights data:', {
-      count: fights.length,
-      sampleFightIds: fights.slice(0, 3).map(f => ({
-        FightId: f.FightId,
-        FightIdType: typeof f.FightId,
-        FightIdLength: f.FightId.length
-      }))
-    });
+    // Debug log for raw fight data
+    console.log('Sample fight data from database:', fights.slice(0, 1).map(f => ({
+      name: `${f.FirstName} ${f.LastName}`,
+      odds: f.odds,
+      oddsType: typeof f.odds
+    })));
 
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
@@ -252,146 +252,85 @@ app.get('/fights', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fight results' });
     }
 
-    console.log('Fetched fight results:', {
-      count: fightResults.length,
-      sampleResultIds: fightResults.slice(0, 3).map(r => ({
-        fight_id: r.fight_id,
-        fight_idType: typeof r.fight_id,
-        fight_idLength: r.fight_id.length
-      }))
-    });
-
     // Create a map of fight results
     const fightResultsMap = new Map();
-    console.log(`Processing ${fightResults.length} fight results`);
-    
     fightResults.forEach(result => {
-        const { fight_id, fighter_id } = result;
-        console.log(`Processing fight result - ID: ${fight_id}, Winner: ${fighter_id}`);
-        if (fight_id === '11997') {
-            console.log('Found target fight 11997 in results');
-        }
-        fightResultsMap.set(fight_id, fighter_id);
+      const { fight_id, fighter_id } = result;
+      fightResultsMap.set(fight_id, fighter_id);
     });
-
-    console.log(`Fight results map size: ${fightResultsMap.size}`);
-    console.log('Fight results map keys:', Array.from(fightResultsMap.keys()));
 
     // Group fighters by FightId
     const fightersByFight = new Map();
-    console.log(`Processing ${fights.length} fights from database`);
-    
     fights.forEach(fighter => {
-        const { FightId, Corner, FirstName, LastName } = fighter;
-        console.log(`Processing fighter: ${FirstName} ${LastName}, Fight ID: ${FightId}, Corner: ${Corner}`);
-        
-        if (FightId === '11997') {
-            console.log(`Found fighter for target fight 11997: ${FirstName} ${LastName} (${Corner} corner)`);
-        }
-
-        if (!fightersByFight.has(FightId)) {
-            fightersByFight.set(FightId, { red: null, blue: null });
-        }
-        fightersByFight.get(FightId)[Corner.toLowerCase()] = fighter;
+      const { FightId, Corner } = fighter;
+      if (!fightersByFight.has(FightId)) {
+        fightersByFight.set(FightId, { red: null, blue: null });
+      }
+      fightersByFight.get(FightId)[Corner.toLowerCase()] = fighter;
     });
-
-    console.log(`Fighters by fight map size: ${fightersByFight.size}`);
-    console.log('Fight IDs in fightersByFight:', Array.from(fightersByFight.keys()));
 
     // Transform fights
     const transformedFights = [];
     fightersByFight.forEach((fighters, fightId) => {
-        if (!fighters.red || !fighters.blue) {
-            console.log(`Skipping incomplete fight ${fightId}. Red: ${!!fighters.red}, Blue: ${!!fighters.blue}`);
-            return;
-        }
+      if (!fighters.red || !fighters.blue) {
+        return;
+      }
 
-        if (fightId === '11997') {
-            console.log('Processing target fight 11997:');
-            console.log('Red corner:', fighters.red.FirstName, fighters.red.LastName);
-            console.log('Blue corner:', fighters.blue.FirstName, fighters.blue.LastName);
-        }
+      const result = fightResultsMap.get(fightId);
+      const redFighter = transformFighterData(fighters.red);
+      const blueFighter = transformFighterData(fighters.blue);
 
-        const result = fightResultsMap.get(fightId);
-        const redFighter = transformFighterData(fighters.red);
-        const blueFighter = transformFighterData(fighters.blue);
+      // Map card segment names
+      let displayCardTier = fighters.card_tier;
+      if (fighters.card_tier === 'Prelims1') {
+        displayCardTier = 'Prelims';
+      } else if (fighters.card_tier === 'Prelims2') {
+        displayCardTier = 'Early Prelims';
+      }
 
-        // Map card segment names
-        let displayCardTier = fighters.card_tier;
-        if (fighters.card_tier === 'Prelims1') {
-            displayCardTier = 'Prelims';
-        } else if (fighters.card_tier === 'Prelims2') {
-            displayCardTier = 'Early Prelims';
-        }
+      const transformedFight = {
+        id: fightId,
+        event_id: latestEvent[0].id,
+        fighter1_id: redFighter.id,
+        fighter1_name: redFighter.name,
+        fighter1_firstName: redFighter.firstName,
+        fighter1_lastName: redFighter.lastName,
+        fighter1_nickname: redFighter.nickname,
+        fighter1_record: redFighter.record,
+        fighter1_height: redFighter.height,
+        fighter1_weight: redFighter.weight,
+        fighter1_reach: redFighter.reach,
+        fighter1_stance: redFighter.style,
+        fighter1_style: redFighter.style,
+        fighter1_image: redFighter.image,
+        fighter1_country: redFighter.country,
+        fighter1_age: redFighter.age,
+        fighter1_rank: redFighter.rank,
+        fighter1_odds: redFighter.odds,
+        fighter2_id: blueFighter.id,
+        fighter2_name: blueFighter.name,
+        fighter2_firstName: blueFighter.firstName,
+        fighter2_lastName: blueFighter.lastName,
+        fighter2_nickname: blueFighter.nickname,
+        fighter2_record: blueFighter.record,
+        fighter2_height: blueFighter.height,
+        fighter2_weight: blueFighter.weight,
+        fighter2_reach: blueFighter.reach,
+        fighter2_stance: blueFighter.style,
+        fighter2_style: blueFighter.style,
+        fighter2_image: blueFighter.image,
+        fighter2_country: blueFighter.country,
+        fighter2_age: blueFighter.age,
+        fighter2_rank: blueFighter.rank,
+        fighter2_odds: blueFighter.odds,
+        winner: result || null,
+        is_completed: result ? true : false,
+        card_tier: displayCardTier,
+        weightclass: fighters.weightclass,
+        bout_order: fighters.red.FightOrder
+      };
 
-        const transformedFight = {
-            id: fightId,
-            event_id: latestEvent[0].id,
-            fighter1_id: redFighter.id,
-            fighter1_name: redFighter.name,
-            fighter1_firstName: redFighter.firstName,
-            fighter1_lastName: redFighter.lastName,
-            fighter1_nickname: redFighter.nickname,
-            fighter1_record: redFighter.record,
-            fighter1_height: redFighter.height,
-            fighter1_weight: redFighter.weight,
-            fighter1_reach: redFighter.reach,
-            fighter1_stance: redFighter.style,
-            fighter1_style: redFighter.style,
-            fighter1_image: redFighter.image,
-            fighter1_country: redFighter.country,
-            fighter1_age: redFighter.age,
-            fighter1_rank: redFighter.rank,
-            fighter1_odds: redFighter.odds,
-            fighter2_id: blueFighter.id,
-            fighter2_name: blueFighter.name,
-            fighter2_firstName: blueFighter.firstName,
-            fighter2_lastName: blueFighter.lastName,
-            fighter2_nickname: blueFighter.nickname,
-            fighter2_record: blueFighter.record,
-            fighter2_height: blueFighter.height,
-            fighter2_weight: blueFighter.weight,
-            fighter2_reach: blueFighter.reach,
-            fighter2_stance: blueFighter.style,
-            fighter2_style: blueFighter.style,
-            fighter2_image: blueFighter.image,
-            fighter2_country: blueFighter.country,
-            fighter2_age: blueFighter.age,
-            fighter2_rank: blueFighter.rank,
-            fighter2_odds: blueFighter.odds,
-            winner: result || null,
-            is_completed: result ? true : false,
-            card_tier: displayCardTier,
-            weightclass: fighters.weightclass,
-            bout_order: fighters.red.FightOrder
-        };
-
-        transformedFights.push(transformedFight);
-
-        // Add logging for the transformed fight
-        console.log('Transformed fight ages:', {
-            fightId,
-            fighter1: {
-                name: redFighter.name,
-                age: redFighter.age,
-                ageType: typeof redFighter.age
-            },
-            fighter2: {
-                name: blueFighter.name,
-                age: blueFighter.age,
-                ageType: typeof blueFighter.age
-            }
-        });
-    });
-
-    console.log('Transformed fights:', {
-      count: transformedFights.length,
-      fights: transformedFights.map(f => ({
-        id: f.id,
-        idType: typeof f.id,
-        fighter1_name: f.fighter1_name,
-        fighter2_name: f.fighter2_name
-      }))
+      transformedFights.push(transformedFight);
     });
 
     res.json(transformedFights);
@@ -865,16 +804,6 @@ app.get('/events/:id/fights', async (req, res) => {
     // Create a map of fight results
     const fightResultsMap = new Map();
     fightResults.forEach(result => {
-      console.log('Processing fight result:', {
-        fight_id: result.fight_id,
-        winner: result.fighter_id,
-        is_completed: result.is_completed
-      });
-      
-      if (result.fight_id === '11944') {
-        console.log('Found target fight result:', result);
-      }
-      // Convert fight_id to number to match the fight map
       const numericFightId = Number(result.fight_id);
       fightResultsMap.set(numericFightId, {
         winner: result.fighter_id,
@@ -882,25 +811,8 @@ app.get('/events/:id/fights', async (req, res) => {
       });
     });
 
-    console.log('Fight results map size:', fightResultsMap.size);
-    if (fightResultsMap.has(11944)) {
-      console.log('Target fight result found in map:', fightResultsMap.get(11944));
-    } else {
-      console.log('Target fight result not found in map');
-    }
-
     // Group fighters by FightId
     const fightMap = new Map();
-    console.log('Creating fight map with data:', {
-      fightCount: data.length,
-      fighters: data.map(f => ({
-        FightId: f.FightId,
-        FightIdType: typeof f.FightId,
-        Corner: f.Corner,
-        Name: `${f.FirstName} ${f.LastName}`
-      }))
-    });
-
     data.forEach(fighter => {
       if (!fightMap.has(fighter.FightId)) {
         fightMap.set(fighter.FightId, {
@@ -919,26 +831,11 @@ app.get('/events/:id/fights', async (req, res) => {
       }
     });
 
-    console.log('Fight map info:', {
-      size: fightMap.size,
-      sampleEntries: Array.from(fightMap.entries()).slice(0, 3).map(([id, data]) => ({
-        id,
-        idType: typeof id,
-        hasRedFighter: !!data.red,
-        hasBlueFighter: !!data.blue
-      }))
-    });
-
     // Transform fights into the required format
     const transformedFights = [];
     for (const [fightId, fighters] of fightMap) {
       // Skip incomplete fights
       if (!fighters.red || !fighters.blue) {
-        console.log('Skipping incomplete fight:', {
-          id: fightId,
-          hasRedFighter: !!fighters.red,
-          hasBlueFighter: !!fighters.blue
-        });
         continue;
       }
 
@@ -997,15 +894,6 @@ app.get('/events/:id/fights', async (req, res) => {
       };
 
       transformedFights.push(transformedFight);
-
-      // Add logging for the transformed fight
-      console.log('Transformed fight:', {
-        fightId,
-        rawWinner: result?.winner,
-        transformedWinner: transformedFight.winner,
-        fighter1_id: redFighter.id,
-        fighter2_id: blueFighter.id
-      });
     }
 
     res.json(transformedFights);
@@ -1148,7 +1036,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
       fighter1_rank: redFighter.Rank,
-      fighter1_odds: redFighter.Odds,
+      fighter1_odds: redFighter.odds,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -1164,7 +1052,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
       fighter2_rank: blueFighter.Rank,
-      fighter2_odds: blueFighter.Odds,
+      fighter2_odds: blueFighter.odds,
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,
