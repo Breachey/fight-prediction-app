@@ -200,6 +200,8 @@
   aspect-ratio: 1;
 }
 
+
+/* Test to see if the background is causing the purple background.
 .fighter-image-background {
   position: absolute;
   top: 0;
@@ -210,6 +212,7 @@
   overflow: hidden;
   background-color: #2d1f47;
 }
+*/
 
 .fighter-image {
   width: 100%;
