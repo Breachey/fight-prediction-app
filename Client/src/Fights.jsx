@@ -386,7 +386,7 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.15,
+                      opacity: 0.5,
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -414,9 +414,11 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Record</span>
                   <span>{fight.fighter1_record ? fight.fighter1_record.split('-').join(' - ') : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
+                <div className="stat-row odds-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}</span>
+                  <span className={parseInt(fight.fighter1_odds) < 0 ? 'favorite-odds' : 'underdog-odds'}>
+                    {fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}
+                  </span>
                 </div>
               </div>
               {expandedFightStats[fight.id] && (
@@ -470,7 +472,7 @@ function Fights({ eventId, username }) {
                     style={{
                       width: '100%',
                       height: '100%',
-                      opacity: 0.25,
+                      opacity: 0.5,
                       position: 'absolute',
                       top: 0,
                       left: 0,
@@ -498,9 +500,11 @@ function Fights({ eventId, username }) {
                   <span className="stat-label">Record</span>
                   <span>{fight.fighter2_record ? fight.fighter2_record.split('-').join(' - ') : 'N/A'}</span>
                 </div>
-                <div className="stat-row">
+                <div className="stat-row odds-row">
                   <span className="stat-label">Odds</span>
-                  <span>{fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}</span>
+                  <span className={parseInt(fight.fighter2_odds) < 0 ? 'favorite-odds' : 'underdog-odds'}>
+                    {fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}
+                  </span>
                 </div>
               </div>
               {expandedFightStats[fight.id] && (

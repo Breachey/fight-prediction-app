@@ -20,11 +20,20 @@ function EventSelector({ onEventSelect, selectedEventId }) {
         throw new Error('Failed to fetch events');
       }
       const data = await response.json();
+      
+      // Sort events by date and filter for upcoming events
+      const sortedEvents = data.sort((a, b) => new Date(a.date) - new Date(b.date));
+      const upcomingEvents = sortedEvents.filter(event => event.status === 'Upcoming');
+      
       setEvents(data);
       setIsLoading(false);
       
-      // If no event is selected and we have events, select the first one
-      if (!selectedEventId && data.length > 0) {
+      // If no event is selected and we have upcoming events, select the closest one
+      if (!selectedEventId && upcomingEvents.length > 0) {
+        onEventSelect(upcomingEvents[0].id);
+      }
+      // If no upcoming events but we have events, select the first one as fallback
+      else if (!selectedEventId && data.length > 0) {
         onEventSelect(data[0].id);
       }
     } catch (err) {
