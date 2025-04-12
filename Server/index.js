@@ -163,11 +163,24 @@ app.post('/login', async (req, res) => {
 function transformFighterData(fighter) {
   const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
   
+  // Debug log for raw fighter data
+  console.log('Raw fighter data:', {
+    name: `${fighter.FirstName} ${fighter.LastName}`,
+    odds: fighter.Odds,
+    oddsType: typeof fighter.Odds
+  });
+  
   // Format odds to include + sign for positive values
   let formattedOdds = null;
-  if (fighter.Odds) {
+  if (fighter.Odds !== null && fighter.Odds !== undefined) {
     const oddsNum = parseInt(fighter.Odds);
     formattedOdds = oddsNum > 0 ? `+${fighter.Odds}` : fighter.Odds;
+    console.log('Formatted odds:', {
+      name: `${fighter.FirstName} ${fighter.LastName}`,
+      rawOdds: fighter.Odds,
+      parsedOdds: oddsNum,
+      formattedOdds: formattedOdds
+    });
   }
   
   const transformedFighter = {
@@ -187,6 +200,12 @@ function transformFighterData(fighter) {
     height: fighter.Height_in || null,
     reach: fighter.Reach_in || null
   };
+
+  // Debug log for transformed fighter data
+  console.log('Transformed fighter:', {
+    name: transformedFighter.name,
+    odds: transformedFighter.odds
+  });
 
   return transformedFighter;
 }
@@ -215,6 +234,13 @@ app.get('/fights', async (req, res) => {
       console.error('Error fetching fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
+
+    // Debug log for raw fight data
+    console.log('Sample fight data from database:', fights.slice(0, 1).map(f => ({
+      name: `${f.FirstName} ${f.LastName}`,
+      odds: f.Odds,
+      oddsType: typeof f.Odds
+    })));
 
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
