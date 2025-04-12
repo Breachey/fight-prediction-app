@@ -341,8 +341,7 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
-              } ${((selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter1_id) || 
-                   (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id)) ? 'unselected' : ''
+              } ${submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
@@ -418,8 +417,7 @@ function Fights({ eventId, username }) {
             <div
               className={`fighter-card ${
                 (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id) ? 'selected' : ''
-              } ${((selectedFights[fight.id] && selectedFights[fight.id] !== fight.fighter2_id) || 
-                   (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id)) ? 'unselected' : ''
+              } ${submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id ? 'unselected' : ''
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
@@ -522,10 +520,8 @@ function Fights({ eventId, username }) {
 
             {expandedFights[fight.id] && fightVotes[fight.id] && (
               <div className="votes-container">
-                {/* Add back the vote distribution bar */}
                 <div className="vote-distribution">
                   {(() => {
-                    // Filter votes based on showAIVotes setting
                     const fighter1FilteredVotes = fightVotes[fight.id].fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
                     const fighter2FilteredVotes = fightVotes[fight.id].fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
                     const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
