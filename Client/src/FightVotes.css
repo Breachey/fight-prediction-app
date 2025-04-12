@@ -48,11 +48,11 @@
 }
 
 .fighter1-bar {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
 }
 
 .fighter2-bar {
-  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 }
 
 .votes-sections-container {
