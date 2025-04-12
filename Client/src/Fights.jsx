@@ -13,7 +13,11 @@ function Fights({ eventId, username }) {
     const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
     return saved ? JSON.parse(saved) : {};
   });
-  const [submittedFights, setSubmittedFights] = useState({});
+  const [submittedFights, setSubmittedFights] = useState(() => {
+    // Initialize from localStorage if available, will be updated with API data
+    const saved = localStorage.getItem(`submittedFights_${eventId}_${username}`);
+    return saved ? JSON.parse(saved) : {};
+  });
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
@@ -74,10 +78,19 @@ function Fights({ eventId, username }) {
     }
   }, [selectedFights, eventId, username]);
 
-  // Clear selected fights when username or eventId changes
+  // Save submittedFights to localStorage whenever it changes
+  useEffect(() => {
+    if (eventId && username) {
+      localStorage.setItem(`submittedFights_${eventId}_${username}`, JSON.stringify(submittedFights));
+    }
+  }, [submittedFights, eventId, username]);
+
+  // Clear both selected and submitted fights when username or eventId changes
   useEffect(() => {
     setSelectedFights({});
+    setSubmittedFights({});
     localStorage.removeItem(`selectedFights_${eventId}_${username}`);
+    localStorage.removeItem(`submittedFights_${eventId}_${username}`);
   }, [username, eventId]);
 
   // Function to handle selection (but not submission) of a fighter
