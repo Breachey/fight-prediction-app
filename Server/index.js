@@ -616,13 +616,25 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 
     // Update prediction_results for each prediction
     if (predictions && predictions.length > 0) {
-      const predictionResults = predictions.map(prediction => ({
-        user_id: prediction.username,
-        fight_id: id,
-        event_id: event_id,
-        predicted_correctly: prediction.fighter_id === winner_id,
-        created_at: new Date().toISOString()
-      }));
+      const predictionResults = predictions.map(prediction => {
+        // Log the comparison values for debugging
+        console.log('Prediction comparison:', {
+          fight_id: id,
+          prediction_fighter_id: prediction.fighter_id,
+          prediction_fighter_id_type: typeof prediction.fighter_id,
+          winner_id: winner_id,
+          winner_id_type: typeof winner_id,
+          isMatch: String(prediction.fighter_id) === String(winner_id)
+        });
+
+        return {
+          user_id: prediction.username,
+          fight_id: id,
+          event_id: event_id,
+          predicted_correctly: String(prediction.fighter_id) === String(winner_id),
+          created_at: new Date().toISOString()
+        };
+      });
 
       const { error: resultsError } = await supabase
         .from('prediction_results')
