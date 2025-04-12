@@ -45,21 +45,33 @@ function Fights({ eventId, username }) {
           ]);
 
           // Add debug logging
-          console.log('Fights data:', fightsData.map(fight => ({
-            id: fight.id,
-            is_completed: fight.is_completed,
-            winner: fight.winner,
-            fighter1_id: fight.fighter1_id,
-            fighter2_id: fight.fighter2_id
-          })));
+          console.log('API Response:', {
+            fights: fightsData.map(fight => ({
+              id: fight.id,
+              fighter1_id: fight.fighter1_id,
+              fighter2_id: fight.fighter2_id
+            })),
+            predictions: predictionsData
+          });
 
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
           predictionsData.forEach(pred => {
-            submittedVotes[pred.fight_id] = pred.fighter_id;
+            console.log('Processing prediction:', {
+              fight_id: pred.fight_id,
+              fighter_id: pred.fighter_id,
+              stringified_fighter_id: String(pred.fighter_id)
+            });
+            submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
           });
 
-          setFights(fightsData);
+          console.log('Final submitted votes:', submittedVotes);
+
+          setFights(fightsData.map(fight => ({
+            ...fight,
+            fighter1_id: String(fight.fighter1_id), // Ensure fighter IDs are strings
+            fighter2_id: String(fight.fighter2_id)
+          })));
           setSubmittedFights(submittedVotes);
           setLoading(false);
         })
@@ -358,6 +370,13 @@ function Fights({ eventId, username }) {
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
+              {console.log('Fighter 1 class data:', {
+                fightId: fight.id,
+                fighter1Id: fight.fighter1_id,
+                submittedVote: submittedFights[fight.id],
+                isSelected: submittedFights[fight.id] === fight.fighter1_id,
+                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id
+              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
@@ -434,6 +453,13 @@ function Fights({ eventId, username }) {
               } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
+              {console.log('Fighter 2 class data:', {
+                fightId: fight.id,
+                fighter2Id: fight.fighter2_id,
+                submittedVote: submittedFights[fight.id],
+                isSelected: submittedFights[fight.id] === fight.fighter2_id,
+                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id
+              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
