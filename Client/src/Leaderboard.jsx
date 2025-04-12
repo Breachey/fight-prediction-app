@@ -6,6 +6,7 @@ function Leaderboard({ eventId, currentUser }) {
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showBots, setShowBots] = useState(false);
 
   useEffect(() => {
     fetchLeaderboards();
@@ -22,14 +23,32 @@ function Leaderboard({ eventId, currentUser }) {
 
       // Fetch both leaderboards in parallel
       const [eventResponse, overallResponse] = await Promise.all([
-        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`) : Promise.resolve(null),
-        fetch(`${API_URL}/leaderboard`)
+        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Event leaderboard fetch error:', error);
+          return { ok: false, error };
+        }) : Promise.resolve(null),
+        fetch(`${API_URL}/leaderboard`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Overall leaderboard fetch error:', error);
+          return { ok: false, error };
+        })
       ]);
 
       // Check overall leaderboard response
       if (!overallResponse.ok) {
-        const errorData = await overallResponse.json();
-        throw new Error(errorData.error || 'Failed to load overall leaderboard');
+        const errorMessage = overallResponse.error 
+          ? `Failed to load overall leaderboard: ${overallResponse.error.message}`
+          : 'Failed to load overall leaderboard. Please try again later.';
+        throw new Error(errorMessage);
       }
       const overallData = await overallResponse.json();
       setOverallLeaderboard(overallData || []);
@@ -37,8 +56,10 @@ function Leaderboard({ eventId, currentUser }) {
       // Check event leaderboard response if we have an event ID
       if (eventId && eventResponse) {
         if (!eventResponse.ok) {
-          const errorData = await eventResponse.json();
-          throw new Error(errorData.error || 'Failed to load event leaderboard');
+          const errorMessage = eventResponse.error 
+            ? `Failed to load event leaderboard: ${eventResponse.error.message}`
+            : 'Failed to load event leaderboard. Please try again later.';
+          throw new Error(errorMessage);
         }
         const eventData = await eventResponse.json();
         setEventLeaderboard(eventData || []);
@@ -49,8 +70,12 @@ function Leaderboard({ eventId, currentUser }) {
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
-      setError(error.message);
+      setError(error.message || 'An unexpected error occurred. Please try again later.');
       setIsLoading(false);
+      
+      // Set empty arrays to prevent undefined errors
+      setEventLeaderboard([]);
+      setOverallLeaderboard([]);
     }
   };
 
@@ -59,7 +84,10 @@ function Leaderboard({ eventId, currentUser }) {
     maxWidth: '900px',
     margin: '0 auto',
     boxSizing: 'border-box',
-    fontFamily: 'Inter, system-ui, sans-serif'
+    fontFamily: 'Inter, system-ui, sans-serif',
+    '@media (max-width: 768px)': {
+      padding: '10px'
+    }
   };
 
   const titleStyle = {
@@ -88,52 +116,83 @@ function Leaderboard({ eventId, currentUser }) {
     marginBottom: '40px',
     WebkitOverflowScrolling: 'touch',
     border: '1px solid rgba(76, 29, 149, 0.2)',
-    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1)'
+    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1)',
+    '@media (max-width: 768px)': {
+      margin: '0 -10px',
+      borderRadius: '10px'
+    }
   };
 
   const tableStyle = {
     width: '100%',
     borderCollapse: 'separate',
     borderSpacing: '0',
-    minWidth: '700px'
+    minWidth: '100%',
+    tableLayout: 'fixed'
   };
 
   const headerStyle = {
     background: 'rgba(76, 29, 149, 0.3)',
     backdropFilter: 'blur(5px)',
     color: '#ffffff',
-    padding: '20px',
+    padding: '15px 10px',
     textAlign: 'left',
     whiteSpace: 'nowrap',
-    fontSize: '1.1rem',
+    fontSize: '0.9rem',
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: '0.08em'
+    letterSpacing: '0.05em',
+    '@media (max-width: 768px)': {
+      padding: '8px 2px',
+      fontSize: '0.65rem',
+      letterSpacing: '0',
+      textAlign: 'center'
+    }
   };
 
   const firstHeaderStyle = {
     ...headerStyle,
     borderTopLeftRadius: '20px',
-    width: '80px',
-    textAlign: 'center'
+    width: '10%',
+    textAlign: 'center',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '15%',
+      padding: '8px 0'
+    }
+  };
+
+  const userHeaderStyle = {
+    ...headerStyle,
+    width: '45%',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '35%',
+      padding: '8px 0'
+    }
+  };
+
+  const statsHeaderStyle = {
+    ...headerStyle,
+    width: '15%',
+    textAlign: 'center',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '15%',
+      padding: '8px 0'
+    }
   };
 
   const lastHeaderStyle = {
     ...headerStyle,
     borderTopRightRadius: '20px',
-    width: '120px',
-    textAlign: 'center'
-  };
-
-  const userHeaderStyle = {
-    ...headerStyle,
-    width: '250px'
-  };
-
-  const statsHeaderStyle = {
-    ...headerStyle,
-    width: '100px',
-    textAlign: 'center'
+    width: '15%',
+    textAlign: 'center',
+    '@media (max-width: 768px)': {
+      ...headerStyle['@media (max-width: 768px)'],
+      width: '20%',
+      padding: '8px 0'
+    }
   };
 
   const rowStyle = (index, isCurrentUser) => ({
@@ -158,12 +217,16 @@ function Leaderboard({ eventId, currentUser }) {
   });
 
   const cellStyle = {
-    padding: '20px',
+    padding: '15px 10px',
     color: '#ffffff',
     borderBottom: '1px solid rgba(76, 29, 149, 0.1)',
     fontSize: '1rem',
     letterSpacing: '0.02em',
-    textAlign: 'center'
+    textAlign: 'center',
+    '@media (max-width: 768px)': {
+      padding: '8px 4px',
+      fontSize: '0.85rem'
+    }
   };
 
   const userCellStyle = (isCurrentUser) => ({
@@ -173,7 +236,11 @@ function Leaderboard({ eventId, currentUser }) {
     color: isCurrentUser ? '#a78bfa' : '#ffffff',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '4px',
+    '@media (max-width: 768px)': {
+      ...cellStyle['@media (max-width: 768px)'],
+      gap: '2px'
+    }
   });
 
   const getRankBadge = (index) => {
@@ -240,7 +307,49 @@ function Leaderboard({ eventId, currentUser }) {
     borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: '500',
-    border: '1px solid rgba(139, 92, 246, 0.3)'
+    border: '1px solid rgba(139, 92, 246, 0.3)',
+    '@media (max-width: 768px)': {
+      padding: '1px 4px',
+      fontSize: '0.65rem'
+    }
+  };
+
+  const aiBadge = {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: '#60a5fa',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    border: '1px solid rgba(59, 130, 246, 0.3)',
+    marginLeft: '4px',
+    '@media (max-width: 768px)': {
+      padding: '1px 4px',
+      fontSize: '0.65rem',
+      marginLeft: '2px'
+    }
+  };
+
+  const filterToggleStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    marginBottom: '20px'
+  };
+
+  const toggleButtonStyle = {
+    padding: '8px 16px',
+    borderRadius: '8px',
+    background: showBots ? 'rgba(59, 130, 246, 0.2)' : 'rgba(76, 29, 149, 0.2)',
+    color: showBots ? '#60a5fa' : '#a78bfa',
+    border: `1px solid ${showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      background: showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(76, 29, 149, 0.3)'
+    }
   };
 
   const LeaderboardTable = ({ data, title }) => {
@@ -252,6 +361,9 @@ function Leaderboard({ eventId, currentUser }) {
       );
     }
 
+    // Filter out bots if showBots is false
+    const filteredData = showBots ? data : data.filter(entry => !entry.is_bot);
+
     return (
       <>
         <h2 style={sectionTitleStyle}>{title}</h2>
@@ -259,27 +371,37 @@ function Leaderboard({ eventId, currentUser }) {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={firstHeaderStyle}>Rank</th>
-                <th style={userHeaderStyle}>User</th>
-                <th style={statsHeaderStyle}>Correct</th>
-                <th style={statsHeaderStyle}>Total</th>
-                <th style={lastHeaderStyle}>Accuracy</th>
+                <th style={firstHeaderStyle}>RNK</th>
+                <th style={userHeaderStyle}>USER</th>
+                <th style={statsHeaderStyle}>✓</th>
+                <th style={statsHeaderStyle}>TOT</th>
+                <th style={lastHeaderStyle}>ACC</th>
               </tr>
             </thead>
             <tbody>
-              {data.map((entry, index) => {
+              {filteredData.map((entry, index) => {
                 const isCurrentUser = entry.user_id === currentUser;
+                // Round the accuracy to the nearest whole number
+                const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
                     <td style={rankStyle(index)}>{getRankBadge(index)}</td>
                     <td style={userCellStyle(isCurrentUser)}>
-                      {entry.user_id}
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        maxWidth: '100%'
+                      }}>
+                        {entry.user_id}
+                      </span>
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
+                      {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
-                    <td style={accuracyStyle(parseFloat(entry.accuracy))}>
-                      {entry.accuracy}%
+                    <td style={accuracyStyle(roundedAccuracy)}>
+                      {roundedAccuracy}%
                     </td>
                   </tr>
                 );
@@ -314,6 +436,15 @@ function Leaderboard({ eventId, currentUser }) {
   return (
     <div style={containerStyle}>
       <h1 style={titleStyle}>Leaderboard</h1>
+      
+      <div style={filterToggleStyle}>
+        <button 
+          style={toggleButtonStyle}
+          onClick={() => setShowBots(!showBots)}
+        >
+          {showBots ? 'Hide AI Users' : 'Show AI Users'}
+        </button>
+      </div>
       
       {eventId && (
         <LeaderboardTable 
