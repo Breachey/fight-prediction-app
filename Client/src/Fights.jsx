@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
 import ReactCountryFlag from 'react-country-flag';
-import { getCountryCode } from './utils/countryUtils';
+import { getCountryCode, convertInchesToHeightString } from './utils/countryUtils';
 import './Fights.css';
 
 function Fights({ eventId, username }) {
@@ -433,7 +433,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
-                    <span>{fight.fighter1_height || 'N/A'}</span>
+                    <span>{convertInchesToHeightString(fight.fighter1_height)}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
@@ -519,7 +519,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
-                    <span>{fight.fighter2_height || 'N/A'}</span>
+                    <span>{convertInchesToHeightString(fight.fighter2_height)}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
