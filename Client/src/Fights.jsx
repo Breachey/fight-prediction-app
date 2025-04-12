@@ -429,7 +429,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Weight</span>
-                    <span>{fight.fighter1_weight || 'N/A'}</span>
+                    <span>{fight.fighter1_weight ? `${fight.fighter1_weight} lb` : 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
@@ -437,7 +437,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
-                    <span>{fight.fighter1_reach || 'N/A'}</span>
+                    <span>{fight.fighter1_reach ? `${fight.fighter1_reach}"` : 'N/A'}</span>
                   </div>
                 </div>
               )}
@@ -515,7 +515,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Weight</span>
-                    <span>{fight.fighter2_weight || 'N/A'}</span>
+                    <span>{fight.fighter2_weight ? `${fight.fighter2_weight} lb` : 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Height</span>
@@ -523,7 +523,7 @@ function Fights({ eventId, username }) {
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Reach</span>
-                    <span>{fight.fighter2_reach || 'N/A'}</span>
+                    <span>{fight.fighter2_reach ? `${fight.fighter2_reach}"` : 'N/A'}</span>
                   </div>
                 </div>
               )}
