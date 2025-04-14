@@ -352,6 +352,26 @@ app.post('/predict', async (req, res) => {
       username
     });
 
+    // Get fight details to get betting odds
+    const { data: fightData, error: fightError } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('id', fightId)
+      .single();
+
+    if (fightError) {
+      console.error('Error fetching fight data:', fightError);
+      return res.status(500).json({ error: "Error fetching fight data" });
+    }
+
+    // Determine the betting odds for the selected fighter
+    let betting_odds = null;
+    if (fighter_id === fightData.fighter1_id) {
+      betting_odds = parseInt(fightData.fighter1_odds);
+    } else if (fighter_id === fightData.fighter2_id) {
+      betting_odds = parseInt(fightData.fighter2_odds);
+    }
+
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
@@ -370,7 +390,10 @@ app.post('/predict', async (req, res) => {
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
-        .update({ fighter_id: fighter_id })
+        .update({ 
+          fighter_id: fighter_id,
+          betting_odds: betting_odds 
+        })
         .eq('fight_id', fightId)
         .eq('username', username);
 
@@ -390,7 +413,8 @@ app.post('/predict', async (req, res) => {
         fight_id: fightId,
         fighter_id: fighter_id,
         username,
-        selected_fighter: fighter_id
+        selected_fighter: fighter_id,
+        betting_odds: betting_odds
       }]);
 
     if (insertError) {
@@ -400,8 +424,8 @@ app.post('/predict', async (req, res) => {
 
     console.log('Prediction saved successfully');
     res.status(200).json({ message: "Prediction saved successfully" });
-  } catch (err) {
-    console.error('Server error:', err);
+  } catch (error) {
+    console.error('Error in prediction endpoint:', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -668,6 +692,26 @@ app.get('/leaderboard', async (req, res) => {
       });
     }
 
+    // Get all predictions to get betting odds
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*');
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch predictions data',
+        details: predictionsError.message 
+      });
+    }
+
+    // Create a map of fight_id and username to betting odds
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${pred.fight_id}-${pred.username}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
+
     // Get all users with their is_bot status
     const { data: users, error: usersError } = await supabase
       .from('users')
@@ -692,12 +736,23 @@ app.get('/leaderboard', async (req, res) => {
           user_id: result.user_id,
           is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
-          correct_predictions: 0
+          correct_predictions: 0,
+          total_points: 0
         };
       }
       userStats[result.user_id].total_predictions++;
+      
       if (result.predicted_correctly) {
         userStats[result.user_id].correct_predictions++;
+        
+        // Calculate points based on betting odds
+        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
+        if (odds) {
+          const points = odds > 0 ? 
+            Math.ceil((odds / 100) + 1) : // Round up for positive odds
+            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
+          userStats[result.user_id].total_points += points;
+        }
       }
     });
 
@@ -705,11 +760,13 @@ app.get('/leaderboard', async (req, res) => {
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
       }))
       .sort((a, b) => 
-        b.correct_predictions - a.correct_predictions || 
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
       );
 
     res.json(leaderboard);
@@ -931,6 +988,26 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       });
     }
 
+    // Get all predictions to get betting odds
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*');
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch predictions data',
+        details: predictionsError.message 
+      });
+    }
+
+    // Create a map of fight_id and username to betting odds
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${pred.fight_id}-${pred.username}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
+
     // Get all users with their is_bot status
     const { data: users, error: usersError } = await supabase
       .from('users')
@@ -955,12 +1032,23 @@ app.get('/events/:id/leaderboard', async (req, res) => {
           user_id: result.user_id,
           is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
-          correct_predictions: 0
+          correct_predictions: 0,
+          total_points: 0
         };
       }
       userStats[result.user_id].total_predictions++;
+      
       if (result.predicted_correctly) {
         userStats[result.user_id].correct_predictions++;
+        
+        // Calculate points based on betting odds
+        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
+        if (odds) {
+          const points = odds > 0 ? 
+            Math.ceil((odds / 100) + 1) : // Round up for positive odds
+            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
+          userStats[result.user_id].total_points += points;
+        }
       }
     });
 
@@ -968,11 +1056,13 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
       }))
       .sort((a, b) => 
-        b.correct_predictions - a.correct_predictions || 
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
       );
 
     res.json(leaderboard);

@@ -352,6 +352,14 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  const pointsStyle = (points) => ({
+    ...cellStyle,
+    color: points >= 10 ? '#22c55e' : 
+           points >= 5 ? '#eab308' : 
+           points > 0 ? '#ef4444' : '#6b7280',
+    fontWeight: '600'
+  });
+
   const LeaderboardTable = ({ data, title }) => {
     if (!data.length) {
       return (
@@ -373,6 +381,7 @@ function Leaderboard({ eventId, currentUser }) {
               <tr>
                 <th style={firstHeaderStyle}>RNK</th>
                 <th style={userHeaderStyle}>USER</th>
+                <th style={statsHeaderStyle}>PTS</th>
                 <th style={statsHeaderStyle}>✓</th>
                 <th style={statsHeaderStyle}>TOT</th>
                 <th style={lastHeaderStyle}>ACC</th>
@@ -398,6 +407,7 @@ function Leaderboard({ eventId, currentUser }) {
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
                       {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
+                    <td style={pointsStyle(entry.total_points)}>{entry.total_points}</td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
                     <td style={accuracyStyle(roundedAccuracy)}>
