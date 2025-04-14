@@ -352,6 +352,26 @@ app.post('/predict', async (req, res) => {
       username
     });
 
+    // Get fight details to get betting odds
+    const { data: fightData, error: fightError } = await supabase
+      .from('fights')
+      .select('*')
+      .eq('id', fightId)
+      .single();
+
+    if (fightError) {
+      console.error('Error fetching fight data:', fightError);
+      return res.status(500).json({ error: "Error fetching fight data" });
+    }
+
+    // Determine the betting odds for the selected fighter
+    let betting_odds = null;
+    if (fighter_id === fightData.fighter1_id) {
+      betting_odds = parseInt(fightData.fighter1_odds);
+    } else if (fighter_id === fightData.fighter2_id) {
+      betting_odds = parseInt(fightData.fighter2_odds);
+    }
+
     // Check if prediction already exists
     const { data: existingPrediction, error: checkError } = await supabase
       .from('predictions')
@@ -370,7 +390,10 @@ app.post('/predict', async (req, res) => {
       // Update existing prediction
       const { error: updateError } = await supabase
         .from('predictions')
-        .update({ fighter_id: fighter_id })
+        .update({ 
+          fighter_id: fighter_id,
+          betting_odds: betting_odds 
+        })
         .eq('fight_id', fightId)
         .eq('username', username);
 
@@ -390,7 +413,8 @@ app.post('/predict', async (req, res) => {
         fight_id: fightId,
         fighter_id: fighter_id,
         username,
-        selected_fighter: fighter_id
+        selected_fighter: fighter_id,
+        betting_odds: betting_odds
       }]);
 
     if (insertError) {
@@ -400,8 +424,8 @@ app.post('/predict', async (req, res) => {
 
     console.log('Prediction saved successfully');
     res.status(200).json({ message: "Prediction saved successfully" });
-  } catch (err) {
-    console.error('Server error:', err);
+  } catch (error) {
+    console.error('Error in prediction endpoint:', error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -655,10 +679,13 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
-    // Get all prediction results
+    // Get all prediction results joined with predictions to get betting odds
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select('*');
+      .select(`
+        *,
+        predictions:predictions(betting_odds)
+      `);
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
@@ -692,12 +719,23 @@ app.get('/leaderboard', async (req, res) => {
           user_id: result.user_id,
           is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
-          correct_predictions: 0
+          correct_predictions: 0,
+          total_points: 0
         };
       }
       userStats[result.user_id].total_predictions++;
+      
       if (result.predicted_correctly) {
         userStats[result.user_id].correct_predictions++;
+        
+        // Calculate points based on betting odds
+        const odds = result.predictions?.betting_odds;
+        if (odds) {
+          const points = odds > 0 ? 
+            (odds / 100) + 1 : 
+            (100 / Math.abs(odds)) + 1;
+          userStats[result.user_id].total_points += points;
+        }
       }
     });
 
@@ -705,11 +743,13 @@ app.get('/leaderboard', async (req, res) => {
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: parseFloat(user.total_points.toFixed(2))
       }))
       .sort((a, b) => 
-        b.correct_predictions - a.correct_predictions || 
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
       );
 
     res.json(leaderboard);
@@ -917,10 +957,13 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get all prediction results for this event
+    // Get all prediction results for this event with betting odds
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select('*')
+      .select(`
+        *,
+        predictions:predictions(betting_odds)
+      `)
       .eq('event_id', id);
 
     if (resultsError) {
@@ -955,12 +998,23 @@ app.get('/events/:id/leaderboard', async (req, res) => {
           user_id: result.user_id,
           is_bot: userMap.get(result.user_id) || false,
           total_predictions: 0,
-          correct_predictions: 0
+          correct_predictions: 0,
+          total_points: 0
         };
       }
       userStats[result.user_id].total_predictions++;
+      
       if (result.predicted_correctly) {
         userStats[result.user_id].correct_predictions++;
+        
+        // Calculate points based on betting odds
+        const odds = result.predictions?.betting_odds;
+        if (odds) {
+          const points = odds > 0 ? 
+            (odds / 100) + 1 : 
+            (100 / Math.abs(odds)) + 1;
+          userStats[result.user_id].total_points += points;
+        }
       }
     });
 
@@ -968,11 +1022,13 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: parseFloat(user.total_points.toFixed(2))
       }))
       .sort((a, b) => 
-        b.correct_predictions - a.correct_predictions || 
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
       );
 
     res.json(leaderboard);
