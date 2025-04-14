@@ -679,13 +679,10 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
-    // Get all prediction results joined with predictions to get betting odds
+    // Get all prediction results
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select(`
-        *,
-        predictions:predictions(betting_odds)
-      `);
+      .select('*');
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
@@ -694,6 +691,26 @@ app.get('/leaderboard', async (req, res) => {
         details: resultsError.message 
       });
     }
+
+    // Get all predictions to get betting odds
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*');
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch predictions data',
+        details: predictionsError.message 
+      });
+    }
+
+    // Create a map of fight_id and username to betting odds
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${pred.fight_id}-${pred.username}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
 
     // Get all users with their is_bot status
     const { data: users, error: usersError } = await supabase
@@ -729,7 +746,7 @@ app.get('/leaderboard', async (req, res) => {
         userStats[result.user_id].correct_predictions++;
         
         // Calculate points based on betting odds
-        const odds = result.predictions?.betting_odds;
+        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
         if (odds) {
           const points = odds > 0 ? 
             (odds / 100) + 1 : 
@@ -957,13 +974,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get all prediction results for this event with betting odds
+    // Get all prediction results for this event
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select(`
-        *,
-        predictions:predictions(betting_odds)
-      `)
+      .select('*')
       .eq('event_id', id);
 
     if (resultsError) {
@@ -973,6 +987,26 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         details: resultsError.message 
       });
     }
+
+    // Get all predictions to get betting odds
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*');
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch predictions data',
+        details: predictionsError.message 
+      });
+    }
+
+    // Create a map of fight_id and username to betting odds
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${pred.fight_id}-${pred.username}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
 
     // Get all users with their is_bot status
     const { data: users, error: usersError } = await supabase
@@ -1008,7 +1042,7 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         userStats[result.user_id].correct_predictions++;
         
         // Calculate points based on betting odds
-        const odds = result.predictions?.betting_odds;
+        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
         if (odds) {
           const points = odds > 0 ? 
             (odds / 100) + 1 : 
