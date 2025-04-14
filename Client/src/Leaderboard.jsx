@@ -407,7 +407,7 @@ function Leaderboard({ eventId, currentUser }) {
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
                       {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
-                    <td style={pointsStyle(entry.total_points)}>{entry.total_points.toFixed(1)}</td>
+                    <td style={pointsStyle(entry.total_points)}>{entry.total_points}</td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
                     <td style={accuracyStyle(roundedAccuracy)}>

@@ -749,8 +749,8 @@ app.get('/leaderboard', async (req, res) => {
         const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
         if (odds) {
           const points = odds > 0 ? 
-            (odds / 100) + 1 : 
-            (100 / Math.abs(odds)) + 1;
+            Math.ceil((odds / 100) + 1) : // Round up for positive odds
+            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
           userStats[result.user_id].total_points += points;
         }
       }
@@ -761,7 +761,7 @@ app.get('/leaderboard', async (req, res) => {
       .map(user => ({
         ...user,
         accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: parseFloat(user.total_points.toFixed(2))
+        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
       }))
       .sort((a, b) => 
         b.total_points - a.total_points || // Sort by points first
@@ -1045,8 +1045,8 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
         if (odds) {
           const points = odds > 0 ? 
-            (odds / 100) + 1 : 
-            (100 / Math.abs(odds)) + 1;
+            Math.ceil((odds / 100) + 1) : // Round up for positive odds
+            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
           userStats[result.user_id].total_points += points;
         }
       }
@@ -1057,7 +1057,7 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       .map(user => ({
         ...user,
         accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: parseFloat(user.total_points.toFixed(2))
+        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
       }))
       .sort((a, b) => 
         b.total_points - a.total_points || // Sort by points first
