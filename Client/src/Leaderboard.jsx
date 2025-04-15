@@ -255,15 +255,17 @@ function Leaderboard({ eventId, currentUser }) {
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 'bold',
-    fontSize: '1.3rem',
-    color: '#fffbe6',
-    background: 'linear-gradient(90deg, #ffd700 0%, #ffb700 100%)',
+    fontSize: '1.1rem',
+    color: '#7c5e00',
+    background: 'linear-gradient(90deg, #ffe066 0%, #ffd700 100%)',
     border: '2px solid #fffbe6',
     borderRadius: '50%',
     width: '2.2rem',
     height: '2.2rem',
     boxShadow: '0 0 8px 2px #ffd70088',
-    margin: '0 auto'
+    margin: '0 auto',
+    gap: '0.2rem',
+    letterSpacing: '0.05em'
   };
 
   const rankStyle = (index) => ({
@@ -428,7 +430,10 @@ function Leaderboard({ eventId, currentUser }) {
                         const badge = getRankBadge(index);
                         if (badge.isChamp) {
                           return (
-                            <span style={champBadgeStyle} title="Champion">👑 {badge.label}</span>
+                            <span style={champBadgeStyle} title="Champion">
+                              <span role="img" aria-label="crown" style={{fontSize: '1.1rem', marginRight: '0.15rem'}}>👑</span>
+                              <span style={{fontWeight: 900, fontSize: '1.1rem'}}>C</span>
+                            </span>
                           );
                         }
                         return badge.label;
