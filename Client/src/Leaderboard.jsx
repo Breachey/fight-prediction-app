@@ -244,8 +244,26 @@ function Leaderboard({ eventId, currentUser }) {
   });
 
   const getRankBadge = (index) => {
-    const badges = ['🥇', '🥈', '🥉'];
-    return index < 3 ? badges[index] : (index + 1);
+    if (index === 0) {
+      return { label: 'C', isChamp: true };
+    }
+    return { label: index, isChamp: false };
+  };
+
+  const champBadgeStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 'bold',
+    fontSize: '1.3rem',
+    color: '#fffbe6',
+    background: 'linear-gradient(90deg, #ffd700 0%, #ffb700 100%)',
+    border: '2px solid #fffbe6',
+    borderRadius: '50%',
+    width: '2.2rem',
+    height: '2.2rem',
+    boxShadow: '0 0 8px 2px #ffd70088',
+    margin: '0 auto'
   };
 
   const rankStyle = (index) => ({
@@ -405,7 +423,17 @@ function Leaderboard({ eventId, currentUser }) {
                 const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
-                    <td style={rankStyle(index)}>{getRankBadge(index)}</td>
+                    <td style={rankStyle(index)}>
+                      {(() => {
+                        const badge = getRankBadge(index);
+                        if (badge.isChamp) {
+                          return (
+                            <span style={champBadgeStyle} title="Champion">👑 {badge.label}</span>
+                          );
+                        }
+                        return badge.label;
+                      })()}
+                    </td>
                     <td style={userCellStyle(isCurrentUser)}>
                       <span style={{ 
                         overflow: 'hidden', 
