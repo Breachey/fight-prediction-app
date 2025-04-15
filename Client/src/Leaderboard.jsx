@@ -243,12 +243,16 @@ function Leaderboard({ eventId, currentUser }) {
     }
   });
 
-  const getRankBadge = (index) => {
-    if (index === 0) {
-      return { label: 'C', isChamp: true };
-    }
-    return { label: index, isChamp: false };
-  };
+  const getRankBadge = (index) => (index === 0 ? 'C' : index);
+
+  const rankTextStyle = (index) => ({
+    fontWeight: 700,
+    fontSize: '1.1rem',
+    color: index === 0 ? '#FFD700' : '#b0b3b8', // gold for champ, silver/gray for others
+    textShadow: index === 0 ? '0 0 4px #FFD70088' : 'none',
+    letterSpacing: '0.02em',
+    textAlign: 'center'
+  });
 
   const champBadgeStyle = {
     display: 'inline-flex',
@@ -425,19 +429,8 @@ function Leaderboard({ eventId, currentUser }) {
                 const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
-                    <td style={rankStyle(index)}>
-                      {(() => {
-                        const badge = getRankBadge(index);
-                        if (badge.isChamp) {
-                          return (
-                            <span style={champBadgeStyle} title="Champion">
-                              <span role="img" aria-label="crown" style={{fontSize: '1.1rem', marginRight: '0.15rem'}}>👑</span>
-                              <span style={{fontWeight: 900, fontSize: '1.1rem'}}>C</span>
-                            </span>
-                          );
-                        }
-                        return badge.label;
-                      })()}
+                    <td style={{ ...rankStyle(index), ...rankTextStyle(index) }}>
+                      {getRankBadge(index)}
                     </td>
                     <td style={userCellStyle(isCurrentUser)}>
                       <span style={{ 
