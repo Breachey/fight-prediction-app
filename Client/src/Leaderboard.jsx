@@ -243,9 +243,33 @@ function Leaderboard({ eventId, currentUser }) {
     }
   });
 
-  const getRankBadge = (index) => {
-    const badges = ['🥇', '🥈', '🥉'];
-    return index < 3 ? badges[index] : (index + 1);
+  const getRankBadge = (index) => (index === 0 ? 'C' : index);
+
+  const rankTextStyle = (index) => ({
+    fontWeight: 700,
+    fontSize: '1.1rem',
+    color: index === 0 ? '#FFD700' : '#b0b3b8', // gold for champ, silver/gray for others
+    textShadow: index === 0 ? '0 0 4px #FFD70088' : 'none',
+    letterSpacing: '0.02em',
+    textAlign: 'center'
+  });
+
+  const champBadgeStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 'bold',
+    fontSize: '1.1rem',
+    color: '#7c5e00',
+    background: 'linear-gradient(90deg, #ffe066 0%, #ffd700 100%)',
+    border: '2px solid #fffbe6',
+    borderRadius: '50%',
+    width: '2.2rem',
+    height: '2.2rem',
+    boxShadow: '0 0 8px 2px #ffd70088',
+    margin: '0 auto',
+    gap: '0.2rem',
+    letterSpacing: '0.05em'
   };
 
   const rankStyle = (index) => ({
@@ -352,13 +376,24 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
-  const pointsStyle = (points) => ({
-    ...cellStyle,
-    color: points >= 10 ? '#22c55e' : 
-           points >= 5 ? '#eab308' : 
-           points > 0 ? '#ef4444' : '#6b7280',
-    fontWeight: '600'
-  });
+  // Helper to interpolate between two colors (hex strings, e.g. '22c55e' and 'ef4444')
+  function interpolateColor(color1, color2, factor) {
+    const c1 = color1.match(/\w\w/g).map(x => parseInt(x, 16));
+    const c2 = color2.match(/\w\w/g).map(x => parseInt(x, 16));
+    const result = c1.map((v, i) => Math.round(v + (c2[i] - v) * factor));
+    return result.map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  const pointsStyle = (index, total) => {
+    // 0 = green, 1 = red
+    const factor = total <= 1 ? 0 : index / (total - 1);
+    const color = interpolateColor('22c55e', 'ef4444', factor); // green to red
+    return {
+      ...cellStyle,
+      color: `#${color}`,
+      fontWeight: '600'
+    };
+  };
 
   const LeaderboardTable = ({ data, title }) => {
     if (!data.length) {
@@ -394,7 +429,9 @@ function Leaderboard({ eventId, currentUser }) {
                 const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
                 return (
                   <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
-                    <td style={rankStyle(index)}>{getRankBadge(index)}</td>
+                    <td style={{ ...rankStyle(index), ...rankTextStyle(index) }}>
+                      {getRankBadge(index)}
+                    </td>
                     <td style={userCellStyle(isCurrentUser)}>
                       <span style={{ 
                         overflow: 'hidden', 
@@ -407,7 +444,7 @@ function Leaderboard({ eventId, currentUser }) {
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
                       {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
-                    <td style={pointsStyle(entry.total_points)}>{entry.total_points}</td>
+                    <td style={pointsStyle(index, filteredData.length)}>{entry.total_points}</td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
                     <td style={accuracyStyle(roundedAccuracy)}>
