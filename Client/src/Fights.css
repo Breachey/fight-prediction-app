@@ -964,3 +964,13 @@
     font-size: 0.9rem;
   }
 }
+
+.fighter-votes.fighter1-votes {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%, #1a1a1a 100%);
+  border: 1.5px solid #ef4444;
+}
+
+.fighter-votes.fighter2-votes {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%, #1a1a1a 100%);
+  border: 1.5px solid #3b82f6;
+}

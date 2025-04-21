@@ -618,7 +618,7 @@ function Fights({ eventId, username }) {
                 </div>
 
                 <div className="votes-list-container">
-                  <div className="fighter-votes">
+                  <div className="fighter-votes fighter1-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter1Votes
@@ -631,7 +631,7 @@ function Fights({ eventId, username }) {
                         ))}
                     </div>
                   </div>
-                  <div className="fighter-votes">
+                  <div className="fighter-votes fighter2-votes">
                     <h4>{fight.fighter2_name}'s Votes</h4>
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter2Votes
