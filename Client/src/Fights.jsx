@@ -607,11 +607,15 @@ function Fights({ eventId, username }) {
                         <div 
                           className="vote-bar fighter1-bar" 
                           style={{ width: `${fighter1Percentage}%` }}
-                        />
+                        >
+                          <span className="vote-bar-label">{fighter1Percentage}%</span>
+                        </div>
                         <div 
                           className="vote-bar fighter2-bar" 
                           style={{ width: `${fighter2Percentage}%` }}
-                        />
+                        >
+                          <span className="vote-bar-label">{fighter2Percentage}%</span>
+                        </div>
                       </>
                     );
                   })()}
