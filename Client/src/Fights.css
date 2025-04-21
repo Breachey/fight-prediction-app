@@ -260,15 +260,13 @@
 
 .vote-distribution {
   display: flex;
-  height: 38px;
-  background: #18181b;
-  border-radius: 18px;
+  height: 32px;
+  background-color: #1a1a1a;
+  border-radius: 12px; /* Matches fighter cards */
   overflow: hidden;
-  margin-bottom: 28px;
-  border: 2px solid #fff;
-  box-shadow: 0 2px 8px 0 rgba(76,29,149,0.10);
-  position: relative;
-  align-items: center;
+  margin-bottom: 20px;
+  border: 1px solid #4c1d95;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Enhanced shadow for depth */
 }
 
 .expand-votes-button {
@@ -306,13 +304,18 @@
 }
 
 .vote-bar {
-  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: transparent;
+  font-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: width 0.3s ease;
   min-width: 40px;
   position: relative;
-  height: 32px;
-  box-shadow: 0 2px 8px 0 rgba(76,29,149,0.10);
-  border: 2px solid #fff;
-  margin: 0 2px;
 }
 
 .vote-bar:not(:last-child)::after {
@@ -325,81 +328,66 @@
   background: rgba(0, 0, 0, 0.2);
 }
 
-.vote-bar.fighter1-bar {
-  background: linear-gradient(90deg, #ef4444 60%, #b91c1c 100%);
+.fighter1-bar {
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
 }
 
-.vote-bar.fighter2-bar {
-  background: linear-gradient(90deg, #3b82f6 60%, #1d4ed8 100%);
-}
-
-.vote-bar-label {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-size: 1.1rem;
-  font-weight: 700;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.18);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.vote-bar.fighter1-bar .vote-bar-label {
-  left: 90%;
-  color: #fff0f0;
-  text-align: right;
-}
-
-.vote-bar.fighter2-bar .vote-bar-label {
-  left: 10%;
-  color: #f0f6ff;
-  text-align: left;
+.fighter2-bar {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
 .votes-list-container {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 36px;
-  min-height: 340px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.fighter-votes {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid #4c1d95;
+}
+
+.fighter-votes h4 {
+  margin: 0 0 15px 0;
+  color: #e9d5ff;
+  font-size: 1rem;
+}
+
+.votes-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.votes-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.votes-list::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.votes-list::-webkit-scrollbar-thumb {
+  background: #4c1d95;
+  border-radius: 3px;
 }
 
 .vote-item {
-  padding: 18px 18px;
-  background-color: #18181b;
-  border-radius: 16px;
-  margin-bottom: 18px;
-  font-size: 1.18rem;
-  color: #f3f4f6;
-  font-weight: 700;
-  box-shadow: 0 2px 10px 0 rgba(76,29,149,0.10);
-  transition: transform 0.18s cubic-bezier(.4,2,.6,1), box-shadow 0.18s cubic-bezier(.4,2,.6,1), background 0.18s;
-  position: relative;
-  z-index: 1;
-  opacity: 0;
-  animation: voteFadeIn 0.7s cubic-bezier(.4,2,.6,1) forwards;
+  padding: 8px 12px;
+  background-color: #2d1f47;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: #e9d5ff;
 }
 
 .vote-item.current-user {
-  background: linear-gradient(135deg, #1e3a8a 10%, #3b82f6 90%);
-  border: 2px solid #3b82f6;
-  color: #fff;
-  box-shadow: 0 4px 18px 0 rgba(59,130,246,0.18);
-}
-
-.vote-item:hover {
-  transform: translateY(-7px) scale(1.04);
-  box-shadow: 0 8px 32px 0 rgba(76,29,149,0.18), 0 2px 12px 0 rgba(0,0,0,0.16);
-  background: #232336;
-  z-index: 2;
-}
-
-@keyframes voteFadeIn {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
+  background: linear-gradient(135deg, #4c1d95, #2d1f47);
+  border: 1px solid #6d28d9;
 }
 
 .fight-meta {
@@ -978,53 +966,11 @@
 }
 
 .fighter-votes.fighter1-votes {
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 80%, #1a1a1a 100%);
-  border: 2px solid #ef4444;
-  box-shadow: 0 6px 32px 0 rgba(239, 68, 68, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.12);
-  border-radius: 22px;
-  padding: 28px 22px 28px 38px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-height: 340px;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.fighter-votes.fighter1-votes::before {
-  content: '\1F91C'; /* 🤜 red glove emoji fallback */
-  position: absolute;
-  left: 12px;
-  top: 18px;
-  font-size: 2.2rem;
-  opacity: 0.13;
-  pointer-events: none;
-  z-index: 0;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%, #1a1a1a 100%);
+  border: 1.5px solid #ef4444;
 }
 
 .fighter-votes.fighter2-votes {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 80%, #1a1a1a 100%);
-  border: 2px solid #3b82f6;
-  box-shadow: 0 6px 32px 0 rgba(59, 130, 246, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.12);
-  border-radius: 22px;
-  padding: 28px 38px 28px 22px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-height: 340px;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.fighter-votes.fighter2-votes::before {
-  content: '\1F91B'; /* 🤛 blue glove emoji fallback */
-  position: absolute;
-  right: 12px;
-  top: 18px;
-  font-size: 2.2rem;
-  opacity: 0.13;
-  pointer-events: none;
-  z-index: 0;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%, #1a1a1a 100%);
+  border: 1.5px solid #3b82f6;
 }
