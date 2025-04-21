@@ -177,6 +177,9 @@ function FightVotes({ fight }) {
                           <div className="vote-username">
                             {vote.username} {vote.username === fight.username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            <span style={{ color: 'yellow', fontSize: 20 }}>
+                              [{String(vote.rank)}]
+                            </span>
                             {vote.rank && <span className="rank-badge">{getRankDisplay(vote.rank)}</span>}
                           </div>
                           <div className="vote-timestamp">
@@ -208,6 +211,9 @@ function FightVotes({ fight }) {
                           <div className="vote-username">
                             {vote.username} {vote.username === fight.username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            <span style={{ color: 'yellow', fontSize: 20 }}>
+                              [{String(vote.rank)}]
+                            </span>
                             {vote.rank && <span className="rank-badge">{getRankDisplay(vote.rank)}</span>}
                           </div>
                           <div className="vote-timestamp">
