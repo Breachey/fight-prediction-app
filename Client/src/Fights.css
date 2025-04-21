@@ -995,38 +995,37 @@
   justify-content: flex-start;
   overflow: hidden;
 }
+.vote-username-card {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  font-size: 1.35rem;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 0 2px #000;
+  transition: color 0.2s, transform 0.18s, filter 0.18s;
+  cursor: pointer;
+}
 .vote-username-on-bg {
   display: flex;
   justify-content: center;
   align-items: center;
   margin-bottom: 22px;
+  transition: transform 0.18s, filter 0.18s;
 }
 .vote-username-on-bg:last-child {
   margin-bottom: 0;
 }
-.vote-username-card {
-  background: rgba(255,255,255,0.92);
-  border-radius: 14px;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.07);
-  padding: 12px 0;
-  min-width: 160px;
-  max-width: 90%;
-  width: 100%;
-  margin: 0 auto;
-  font-size: 1.08rem;
-  color: #222;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  border: 1.5px solid #f3f4f6;
-  transition: box-shadow 0.18s, border 0.18s, transform 0.18s;
-  cursor: pointer;
-}
-.vote-username-card:hover {
-  box-shadow: 0 4px 18px 0 rgba(59,130,246,0.13);
-  border: 1.5px solid #a5b4fc;
-  transform: translateY(-2px) scale(1.03);
+.vote-username-on-bg:hover .vote-username-card {
+  filter: brightness(1.15);
+  transform: scale(1.04);
 }
 .fighter-votes.fighter1-votes {
   box-shadow: 0 2px 24px 0 rgba(239, 68, 68, 0.13), 0 0 0 4px rgba(239,68,68,0.08);
