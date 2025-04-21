@@ -497,7 +497,7 @@ app.get('/predictions/filter', async (req, res) => {
     results.forEach(result => {
       if (!userStats[result.user_id]) {
         userStats[result.user_id] = {
-          user_id: result.user_id,
+          username: result.user_id, // Store username since user_id is actually the username
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -518,9 +518,9 @@ app.get('/predictions/filter', async (req, res) => {
         ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions)) // Then by accuracy
       );
 
-    // Create maps for user data
+    // Create maps for user data - use username instead of user_id for rankMap
     const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-    const rankMap = new Map(leaderboard.map((user, index) => [user.user_id, index + 1]));
+    const rankMap = new Map(leaderboard.map((user, index) => [user.username, index + 1]));
 
     // Add is_bot status and ranking to each prediction
     const predictionsWithMetadata = predictions.map(prediction => ({
