@@ -624,7 +624,7 @@ function Fights({ eventId, username }) {
                       {fightVotes[fight.id].fighter1Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                          <div key={index} className="vote-username-on-bg">
                             {vote.username} {vote.username === username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
                           </div>
@@ -637,7 +637,7 @@ function Fights({ eventId, username }) {
                       {fightVotes[fight.id].fighter2Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
+                          <div key={index} className="vote-username-on-bg">
                             {vote.username} {vote.username === username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
                           </div>
