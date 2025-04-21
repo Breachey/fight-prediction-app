@@ -966,9 +966,9 @@
 }
 
 .fighter-votes.fighter1-votes {
-  background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
-  border: 1.5px solid #fca5a5;
-  box-shadow: 0 2px 16px 0 rgba(239, 68, 68, 0.07);
+  background: linear-gradient(135deg, rgba(30,23,23,1) 80%, rgba(239,68,68,0.18) 100%);
+  border: 2px solid #ef4444;
+  box-shadow: 0 2px 16px 0 rgba(239, 68, 68, 0.10);
   border-radius: 22px;
   padding: 36px 18px;
   min-width: 240px;
@@ -981,9 +981,9 @@
   overflow: hidden;
 }
 .fighter-votes.fighter2-votes {
-  background: linear-gradient(135deg, #bae6fd 0%, #60a5fa 100%);
-  border: 1.5px solid #60a5fa;
-  box-shadow: 0 2px 16px 0 rgba(59, 130, 246, 0.07);
+  background: linear-gradient(135deg, rgba(23,28,38,1) 80%, rgba(59,130,246,0.18) 100%);
+  border: 2px solid #3b82f6;
+  box-shadow: 0 2px 16px 0 rgba(59, 130, 246, 0.10);
   border-radius: 22px;
   padding: 36px 18px;
   min-width: 240px;
