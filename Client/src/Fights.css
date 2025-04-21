@@ -978,179 +978,53 @@
 }
 
 .fighter-votes.fighter1-votes {
-  background: linear-gradient(135deg, #fde4e1 0%, #fca5a5 100%);
-  border: 1.5px solid #fca5a5;
-  border-radius: 20px;
-  padding: 32px 18px;
-  min-width: 240px;
-  box-shadow: none;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 80%, #1a1a1a 100%);
+  border: 2px solid #ef4444;
+  box-shadow: 0 6px 32px 0 rgba(239, 68, 68, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.12);
+  border-radius: 22px;
+  padding: 28px 22px 28px 38px;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  min-height: 320px;
-  justify-content: flex-start;
+  min-height: 340px;
+  justify-content: center;
   overflow: hidden;
+}
+
+.fighter-votes.fighter1-votes::before {
+  content: '\1F91C'; /* 🤜 red glove emoji fallback */
+  position: absolute;
+  left: 12px;
+  top: 18px;
+  font-size: 2.2rem;
+  opacity: 0.13;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .fighter-votes.fighter2-votes {
-  background: linear-gradient(135deg, #dbeafe 0%, #60a5fa 100%);
-  border: 1.5px solid #60a5fa;
-  border-radius: 20px;
-  padding: 32px 18px;
-  min-width: 240px;
-  box-shadow: none;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 80%, #1a1a1a 100%);
+  border: 2px solid #3b82f6;
+  box-shadow: 0 6px 32px 0 rgba(59, 130, 246, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.12);
+  border-radius: 22px;
+  padding: 28px 38px 28px 22px;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  min-height: 320px;
-  justify-content: flex-start;
-  overflow: hidden;
-}
-
-.votes-list-container {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
+  min-height: 340px;
   justify-content: center;
-  gap: 48px;
-  margin: 0 auto;
-  max-width: 700px;
-  width: 100%;
-  min-height: 320px;
-  padding: 32px 0 0 0;
-}
-
-.vote-item {
-  padding: 16px 0;
-  background: #fff;
-  border-radius: 14px;
-  margin-bottom: 18px;
-  font-size: 1.08rem;
-  color: #222;
-  font-weight: 500;
-  box-shadow: none;
-  border: 1.5px solid #f3f4f6;
-  transition: box-shadow 0.18s, border 0.18s, transform 0.18s;
-  text-align: center;
-  opacity: 0;
-  animation: voteFadeIn 0.6s cubic-bezier(.4,2,.6,1) forwards;
-}
-
-.vote-item.current-user {
-  background: #e0f2fe;
-  color: #0369a1;
-  font-weight: 700;
-  border: 1.5px solid #38bdf8;
-}
-
-.vote-item:hover {
-  box-shadow: 0 2px 12px 0 rgba(59,130,246,0.08);
-  border: 1.5px solid #a5b4fc;
-  transform: translateY(-3px) scale(1.03);
-}
-
-@keyframes voteFadeIn {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.vote-bar {
-  border-radius: 12px;
-  min-width: 24px;
-  height: 18px;
-  box-shadow: none;
-  border: 1.5px solid #e5e7eb;
-  margin: 0 1px;
-  transition: width 0.3s;
-}
-
-.vote-bar.fighter1-bar {
-  background: linear-gradient(90deg, #fca5a5 60%, #f87171 100%);
-}
-
-.vote-bar.fighter2-bar {
-  background: linear-gradient(90deg, #60a5fa 60%, #2563eb 100%);
-}
-
-.vote-distribution {
-  display: flex;
-  height: 18px;
-  background: #f3f4f6;
-  border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 18px;
-  border: 1.5px solid #e5e7eb;
-  box-shadow: none;
-  position: relative;
-  align-items: center;
 }
 
-.vote-bar-label {
+.fighter-votes.fighter2-votes::before {
+  content: '\1F91B'; /* 🤛 blue glove emoji fallback */
   position: absolute;
-  left: 50%;
-  top: -26px;
-  transform: translateX(-50%);
-  color: #222;
-  font-size: 0.98rem;
-  font-weight: 600;
-  background: #fff;
-  padding: 2px 10px;
-  border-radius: 8px;
-  box-shadow: 0 1px 4px 0 rgba(0,0,0,0.04);
+  right: 12px;
+  top: 18px;
+  font-size: 2.2rem;
+  opacity: 0.13;
   pointer-events: none;
-  z-index: 2;
-  min-width: 38px;
-  text-align: center;
-}
-
-.fighter-votes h4 {
-  margin: 0 0 18px 0;
-  color: #222;
-  font-size: 1.08rem;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0.01em;
-}
-
-.votes-list {
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 6px;
-}
-
-.votes-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.votes-list::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
-  border-radius: 3px;
-}
-
-@media (max-width: 900px) {
-  .votes-list-container {
-    gap: 18px;
-    max-width: 98vw;
-    padding: 18px 0 0 0;
-  }
-  .fighter-votes.fighter1-votes, .fighter-votes.fighter2-votes {
-    min-width: 0;
-    padding: 22px 6px;
-  }
-}
-
-@media (max-width: 600px) {
-  .votes-list-container {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 18px;
-    padding: 0;
-  }
-  .fighter-votes.fighter1-votes, .fighter-votes.fighter2-votes {
-    min-width: 0;
-    padding: 18px 4px;
-    min-height: 0;
-  }
+  z-index: 0;
 }
