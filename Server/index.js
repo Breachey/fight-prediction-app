@@ -482,16 +482,54 @@ app.get('/predictions/filter', async (req, res) => {
       return res.status(500).json({ error: "Error fetching user data" });
     }
 
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+    // Get leaderboard data for rankings
+    const { data: results, error: resultsError } = await supabase
+      .from('prediction_results')
+      .select('*');
 
-    // Add is_bot status to each prediction
-    const predictionsWithBotStatus = predictions.map(prediction => ({
+    if (resultsError) {
+      console.error('Error fetching prediction results:', resultsError);
+      return res.status(500).json({ error: "Error fetching leaderboard data" });
+    }
+
+    // Process leaderboard data
+    const userStats = {};
+    results.forEach(result => {
+      if (!userStats[result.user_id]) {
+        userStats[result.user_id] = {
+          user_id: result.user_id,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        };
+      }
+      userStats[result.user_id].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[result.user_id].correct_predictions++;
+        userStats[result.user_id].total_points++;
+      }
+    });
+
+    // Convert to array and sort to get rankings
+    const leaderboard = Object.values(userStats)
+      .sort((a, b) => 
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions)) // Then by accuracy
+      );
+
+    // Create maps for user data
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+    const rankMap = new Map(leaderboard.map((user, index) => [user.user_id, index + 1]));
+
+    // Add is_bot status and ranking to each prediction
+    const predictionsWithMetadata = predictions.map(prediction => ({
       ...prediction,
-      is_bot: userMap.get(prediction.username) || false
+      is_bot: userMap.get(prediction.username) || false,
+      rank: rankMap.get(prediction.username) || null
     }));
 
-    res.status(200).json(predictionsWithBotStatus);
+    res.status(200).json(predictionsWithMetadata);
   } catch (err) {
     console.error('Server error:', err);
     res.status(500).json({ error: "Internal server error" });
