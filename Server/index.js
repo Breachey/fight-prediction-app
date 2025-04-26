@@ -352,24 +352,26 @@ app.post('/predict', async (req, res) => {
       username
     });
 
-    // Get fight details to get betting odds
+    // Get fight details to get betting odds from ufc_full_fight_card
     const { data: fightData, error: fightError } = await supabase
-      .from('fights')
+      .from('ufc_full_fight_card')
       .select('*')
-      .eq('id', fightId)
-      .single();
+      .eq('FightId', fightId);
 
     if (fightError) {
       console.error('Error fetching fight data:', fightError);
       return res.status(500).json({ error: "Error fetching fight data" });
     }
 
-    // Determine the betting odds for the selected fighter
+    if (!fightData || fightData.length < 2) {
+      return res.status(404).json({ error: 'Fight not found or missing fighter data' });
+    }
+
+    // Find the selected fighter and get their odds
+    const selectedFighter = fightData.find(f => String(f.FighterId) === String(fighter_id));
     let betting_odds = null;
-    if (fighter_id === fightData.fighter1_id) {
-      betting_odds = parseInt(fightData.fighter1_odds);
-    } else if (fighter_id === fightData.fighter2_id) {
-      betting_odds = parseInt(fightData.fighter2_odds);
+    if (selectedFighter) {
+      betting_odds = parseInt(selectedFighter.odds);
     }
 
     // Check if prediction already exists
