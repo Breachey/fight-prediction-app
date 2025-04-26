@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Fight Picker App: Project Structure & Main Files
+
+This project is a React-based web application for picking, voting, and viewing predictions on fight events. Below is an overview of the main files and their purposes to help you navigate the codebase efficiently.
+
+## Main Entry Point
+- [main.jsx](mdc:main.jsx): Renders the root `App` component and wraps it with React Router's `BrowserRouter`.
+- [App.jsx](mdc:App.jsx): The central component that manages authentication, event selection, and renders the main sections (Fights, Leaderboard, Admin, etc.).
+
+## Core Components
+- [Fights.jsx](mdc:Fights.jsx): Displays all fights for a selected event, allows users to pick winners, submit votes, and view vote distributions. Handles local state and API interactions for predictions.
+- [Leaderboard.jsx](mdc:Leaderboard.jsx): Shows both event-specific and overall leaderboards, with options to include/exclude bot votes.
+- [FightVotes.jsx](mdc:FightVotes.jsx): Displays detailed vote breakdowns for a single fight, including user and AI votes.
+- [VotedFights.jsx](mdc:VotedFights.jsx): Shows all fights a user has voted on, leveraging [FightVotes.jsx](mdc:FightVotes.jsx).
+- [FightAdmin.jsx](mdc:FightAdmin.jsx): Admin interface for updating fight results and managing fight data.
+- [EventSelector.jsx](mdc:EventSelector.jsx): Dropdown for selecting the current event, with status badges and error handling.
+- [UserAuth.jsx](mdc:UserAuth.jsx): Handles user login and registration via phone number and username.
+- [AdminPin.jsx](mdc:AdminPin.jsx): Simple PIN-based admin authentication.
+- [components/SplashScreen.jsx](mdc:components/SplashScreen.jsx): Splash/loading screen shown during app initialization.
+
+## Utility Functions
+- [utils/countryUtils.js](mdc:utils/countryUtils.js): Provides helpers for country code mapping, height formatting, and streak formatting for fighter stats.
+- [config.js](mdc:config.js): Exports the API base URL, using an environment variable or a default value.
+
+## Styling
+- [Fights.css](mdc:Fights.css): Main styles for the fight cards, voting UI, and responsive layout.
+- [FightVotes.css](mdc:FightVotes.css): Styles for the vote breakdown and user/AI vote lists.
+- [EventSelector.css](mdc:EventSelector.css): Styles for the event dropdown and status badges.
+- [index.css](mdc:index.css): Global styles and resets for the app.
+- [components/SplashScreen.css](mdc:components/SplashScreen.css): Styles for the splash/loading screen.
+- [App.css](mdc:App.css): General app layout and header/footer styles.
+
+## Assets
+- [assets/](mdc:assets): Contains logos, images, and other static assets used throughout the app.
+
+## Notes
+- All API interactions use the `API_URL` from [config.js](mdc:config.js).
+- Local storage is used for persisting user selections and authentication state.
+- The app is fully responsive and uses modern CSS for layout and theming.
+
+This structure should help you quickly locate the main logic, UI, and utility files in the Fight Picker app.

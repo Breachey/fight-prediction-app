@@ -352,24 +352,26 @@ app.post('/predict', async (req, res) => {
       username
     });
 
-    // Get fight details to get betting odds
+    // Get fight details to get betting odds from ufc_full_fight_card
     const { data: fightData, error: fightError } = await supabase
-      .from('fights')
+      .from('ufc_full_fight_card')
       .select('*')
-      .eq('id', fightId)
-      .single();
+      .eq('FightId', fightId);
 
     if (fightError) {
       console.error('Error fetching fight data:', fightError);
       return res.status(500).json({ error: "Error fetching fight data" });
     }
 
-    // Determine the betting odds for the selected fighter
+    if (!fightData || fightData.length < 2) {
+      return res.status(404).json({ error: 'Fight not found or missing fighter data' });
+    }
+
+    // Find the selected fighter and get their odds
+    const selectedFighter = fightData.find(f => String(f.FighterId) === String(fighter_id));
     let betting_odds = null;
-    if (fighter_id === fightData.fighter1_id) {
-      betting_odds = parseInt(fightData.fighter1_odds);
-    } else if (fighter_id === fightData.fighter2_id) {
-      betting_odds = parseInt(fightData.fighter2_odds);
+    if (selectedFighter) {
+      betting_odds = parseInt(selectedFighter.odds);
     }
 
     // Check if prediction already exists
@@ -482,16 +484,54 @@ app.get('/predictions/filter', async (req, res) => {
       return res.status(500).json({ error: "Error fetching user data" });
     }
 
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+    // Get leaderboard data for rankings
+    const { data: results, error: resultsError } = await supabase
+      .from('prediction_results')
+      .select('*');
 
-    // Add is_bot status to each prediction
-    const predictionsWithBotStatus = predictions.map(prediction => ({
+    if (resultsError) {
+      console.error('Error fetching prediction results:', resultsError);
+      return res.status(500).json({ error: "Error fetching leaderboard data" });
+    }
+
+    // Process leaderboard data
+    const userStats = {};
+    results.forEach(result => {
+      if (!userStats[result.user_id]) {
+        userStats[result.user_id] = {
+          username: result.user_id, // Store username since user_id is actually the username
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        };
+      }
+      userStats[result.user_id].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[result.user_id].correct_predictions++;
+        userStats[result.user_id].total_points++;
+      }
+    });
+
+    // Convert to array and sort to get rankings
+    const leaderboard = Object.values(userStats)
+      .sort((a, b) => 
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions)) // Then by accuracy
+      );
+
+    // Create maps for user data - use username instead of user_id for rankMap
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+    const rankMap = new Map(leaderboard.map((user, index) => [user.username, index + 1]));
+
+    // Add is_bot status and ranking to each prediction
+    const predictionsWithMetadata = predictions.map(prediction => ({
       ...prediction,
-      is_bot: userMap.get(prediction.username) || false
+      is_bot: userMap.get(prediction.username) || false,
+      rank: rankMap.get(prediction.username) || null
     }));
 
-    res.status(200).json(predictionsWithBotStatus);
+    res.status(200).json(predictionsWithMetadata);
   } catch (err) {
     console.error('Server error:', err);
     res.status(500).json({ error: "Internal server error" });
@@ -1080,7 +1120,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     const { id } = req.params;
     console.log('Fetching fight data for ID:', id);
 
-    // First get the fight data
+    // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
       .select('*')
@@ -1104,7 +1144,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       return res.status(404).json({ error: 'Missing fighter data' });
     }
 
-    // Get the fight result
+    // Get the fight result (keep .single() here)
     const { data: fightResult, error: getResultError } = await supabase
       .from('fight_results')
       .select('*')

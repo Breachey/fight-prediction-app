@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
 import './FightVotes.css';
 
+const getRankDisplay = (rank) => {
+  if (!rank) return '';
+  if (rank === 1) return '👑';
+  return `#${rank}`;
+};
+
 function FightVotes({ fight }) {
   const [fighter1Votes, setFighter1Votes] = useState([]);
   const [fighter2Votes, setFighter2Votes] = useState([]);
@@ -171,6 +177,10 @@ function FightVotes({ fight }) {
                           <div className="vote-username">
                             {vote.username} {vote.username === fight.username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            <span style={{ color: 'yellow', fontSize: 20 }}>
+                              [{String(vote.rank)}]
+                            </span>
+                            {vote.rank && <span className="rank-badge">{getRankDisplay(vote.rank)}</span>}
                           </div>
                           <div className="vote-timestamp">
                             {new Date(vote.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -201,6 +211,10 @@ function FightVotes({ fight }) {
                           <div className="vote-username">
                             {vote.username} {vote.username === fight.username && '(You)'}
                             {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            <span style={{ color: 'yellow', fontSize: 20 }}>
+                              [{String(vote.rank)}]
+                            </span>
+                            {vote.rank && <span className="rank-badge">{getRankDisplay(vote.rank)}</span>}
                           </div>
                           <div className="vote-timestamp">
                             {new Date(vote.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

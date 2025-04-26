@@ -168,6 +168,23 @@
   margin: 24px 0;
 }
 
+.rank-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
+  color: #7c5e00;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.rank-badge:empty {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .fight-votes-container {
     padding: 12px;
@@ -189,6 +206,12 @@
 
   .fighter-votes-section {
     padding: 16px;
+  }
+
+  .rank-badge {
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    margin-left: 4px;
   }
 }
 

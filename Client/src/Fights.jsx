@@ -618,28 +618,32 @@ function Fights({ eventId, username }) {
                 </div>
 
                 <div className="votes-list-container">
-                  <div className="fighter-votes">
+                  <div className="fighter-votes fighter1-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter1Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                            {vote.username} {vote.username === username && '(You)'}
-                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          <div key={index} className="vote-username-on-bg">
+                            <div className="vote-username-card">
+                              {vote.username} {vote.username === username && '(You)'}
+                              {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            </div>
                           </div>
                         ))}
                     </div>
                   </div>
-                  <div className="fighter-votes">
+                  <div className="fighter-votes fighter2-votes">
                     <h4>{fight.fighter2_name}'s Votes</h4>
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter2Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <div key={index} className={`vote-item ${vote.username === username ? 'current-user' : ''}`}>
-                            {vote.username} {vote.username === username && '(You)'}
-                            {vote.is_bot && <span style={aiBadge}>AI</span>}
+                          <div key={index} className="vote-username-on-bg">
+                            <div className="vote-username-card">
+                              {vote.username} {vote.username === username && '(You)'}
+                              {vote.is_bot && <span style={aiBadge}>AI</span>}
+                            </div>
                           </div>
                         ))}
                     </div>
