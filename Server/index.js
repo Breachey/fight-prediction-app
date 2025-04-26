@@ -1118,7 +1118,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     const { id } = req.params;
     console.log('Fetching fight data for ID:', id);
 
-    // First get the fight data
+    // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
       .select('*')
@@ -1142,7 +1142,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       return res.status(404).json({ error: 'Missing fighter data' });
     }
 
-    // Get the fight result
+    // Get the fight result (keep .single() here)
     const { data: fightResult, error: getResultError } = await supabase
       .from('fight_results')
       .select('*')
