@@ -819,6 +819,118 @@ app.get('/leaderboard', async (req, res) => {
   }
 });
 
+// Get monthly leaderboard
+app.get('/leaderboard/monthly', async (req, res) => {
+  try {
+    // Get the first and last day of the current month in ISO format
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const firstDayISO = firstDay.toISOString();
+    const nextMonthISO = nextMonth.toISOString();
+
+    // Get all prediction results for the current month
+    const { data: results, error: resultsError } = await supabase
+      .from('prediction_results')
+      .select('*')
+      .gte('created_at', firstDayISO)
+      .lt('created_at', nextMonthISO);
+
+    if (resultsError) {
+      console.error('Error fetching prediction results:', resultsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch monthly leaderboard data',
+        details: resultsError.message 
+      });
+    }
+
+    // Get all predictions to get betting odds
+    const { data: predictions, error: predictionsError } = await supabase
+      .from('predictions')
+      .select('*');
+
+    if (predictionsError) {
+      console.error('Error fetching predictions:', predictionsError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch predictions data',
+        details: predictionsError.message 
+      });
+    }
+
+    // Create a map of fight_id and username to betting odds
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${pred.fight_id}-${pred.username}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
+
+    // Get all users with their is_bot status
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('username, is_bot');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch user data',
+        details: usersError.message 
+      });
+    }
+
+    // Create a map of username to is_bot status
+    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+
+    // Process the results to create the leaderboard
+    const userStats = {};
+    results.forEach(result => {
+      if (!userStats[result.user_id]) {
+        userStats[result.user_id] = {
+          user_id: result.user_id,
+          is_bot: userMap.get(result.user_id) || false,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        };
+      }
+      userStats[result.user_id].total_predictions++;
+      
+      if (result.predicted_correctly) {
+        userStats[result.user_id].correct_predictions++;
+        
+        // Calculate points based on betting odds
+        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
+        if (odds) {
+          const points = odds > 0 ? 
+            Math.ceil((odds / 100) + 1) : // Round up for positive odds
+            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
+          userStats[result.user_id].total_points += points;
+        }
+      }
+    });
+
+    // Convert to array and calculate accuracy
+    const leaderboard = Object.values(userStats)
+      .map(user => ({
+        ...user,
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
+      }))
+      .sort((a, b) => 
+        b.total_points - a.total_points || // Sort by points first
+        b.correct_predictions - a.correct_predictions || // Then by correct predictions
+        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
+      );
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('Error processing monthly leaderboard:', error);
+    res.status(500).json({ 
+      error: 'Failed to process monthly leaderboard',
+      details: error.message 
+    });
+  }
+});
+
 // Get all events
 app.get('/events', async (req, res) => {
   try {
@@ -826,7 +938,7 @@ app.get('/events', async (req, res) => {
 
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
-      .select('Event, EventId, StartTime, EventStatus')
+      .select('Event, EventId, StartTime, EventStatus, Venue, Location_City, Location_State')
       .order('EventId', { ascending: false });
 
     if (error) {
@@ -851,7 +963,10 @@ app.get('/events', async (req, res) => {
         id: event.EventId, 
         name: event.Event,
         date: event.StartTime,
-        status: event.EventStatus
+        status: event.EventStatus,
+        venue: event.Venue,
+        location_city: event.Location_City,
+        location_state: event.Location_State
       })))
     ).map(str => JSON.parse(str));
 
@@ -863,7 +978,10 @@ app.get('/events', async (req, res) => {
       name: event.name,
       date: event.date,
       is_completed: event.status === 'Final',
-      status: event.status === 'Final' ? 'Complete' : 'Upcoming'
+      status: event.status === 'Final' ? 'Complete' : 'Upcoming',
+      venue: event.venue,
+      location_city: event.location_city,
+      location_state: event.location_state
     }));
 
     res.json(transformedEvents);
