@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './EventSelector.css';
 import { API_URL } from './config';
 
@@ -6,12 +6,27 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  const [hoveredId, setHoveredId] = useState(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const carouselRef = useRef(null);
+  const cardRefs = useRef([]);
+  const touchStartX = useRef(null);
 
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  useEffect(() => {
+    // Update currentIndex if selectedEventId changes externally
+    const idx = events.findIndex(e => e.id === selectedEventId);
+    if (idx !== -1 && idx !== currentIndex) setCurrentIndex(idx);
+  }, [selectedEventId, events]);
+
+  // Scroll selected card into view when currentIndex or events change
+  useEffect(() => {
+    if (cardRefs.current[currentIndex]) {
+      cardRefs.current[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [currentIndex, events]);
 
   const fetchEvents = async () => {
     try {
@@ -20,21 +35,14 @@ function EventSelector({ onEventSelect, selectedEventId }) {
         throw new Error('Failed to fetch events');
       }
       const data = await response.json();
-      
-      // Sort events by date and filter for upcoming events
       const sortedEvents = data.sort((a, b) => new Date(a.date) - new Date(b.date));
-      const upcomingEvents = sortedEvents.filter(event => event.status === 'Upcoming');
-      
-      setEvents(data);
+      console.log('Fetched events:', sortedEvents);
+      setEvents(sortedEvents);
       setIsLoading(false);
-      
-      // If no event is selected and we have upcoming events, select the closest one
-      if (!selectedEventId && upcomingEvents.length > 0) {
-        onEventSelect(upcomingEvents[0].id);
-      }
-      // If no upcoming events but we have events, select the first one as fallback
-      else if (!selectedEventId && data.length > 0) {
-        onEventSelect(data[0].id);
+      // Auto-select first upcoming or first event
+      if (!selectedEventId && sortedEvents.length > 0) {
+        const upcoming = sortedEvents.find(e => e.status === 'Upcoming');
+        onEventSelect(upcoming ? upcoming.id : sortedEvents[0].id);
       }
     } catch (err) {
       console.error('Error fetching events:', err);
@@ -43,11 +51,40 @@ function EventSelector({ onEventSelect, selectedEventId }) {
     }
   };
 
-  const selectedEvent = events.find(event => event.id === selectedEventId);
+  const handleSelect = (idx) => {
+    setCurrentIndex(idx);
+    onEventSelect(events[idx].id);
+  };
+
+  const handlePrev = (e) => {
+    e.stopPropagation();
+    if (currentIndex > 0) handleSelect(currentIndex - 1);
+  };
+
+  const handleNext = (e) => {
+    e.stopPropagation();
+    if (currentIndex < events.length - 1) handleSelect(currentIndex + 1);
+  };
+
+  // Touch/swipe handlers
+  const onTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    if (deltaX > 50 && currentIndex > 0) {
+      handleSelect(currentIndex - 1);
+    } else if (deltaX < -50 && currentIndex < events.length - 1) {
+      handleSelect(currentIndex + 1);
+    }
+    touchStartX.current = null;
+  };
 
   if (isLoading) {
     return (
-      <div className="event-selector-container">
+      <div className="event-selector-carousel-container">
+        <div className="event-selector-heading">Event Selector</div>
         <div className="loading-message">Loading events...</div>
       </div>
     );
@@ -55,60 +92,53 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
   if (error) {
     return (
-      <div className="event-selector-container">
+      <div className="event-selector-carousel-container">
+        <div className="event-selector-heading">Event Selector</div>
         <div className="error-message">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="event-selector-container">
-      <div 
-        className={`dropdown ${isOpen ? 'open' : ''}`}
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span>
-          {selectedEvent ? (
-            <>
-              {selectedEvent.name}
-              <span className={`status-badge ${selectedEvent.status === 'Complete' ? 'completed' : 'active'}`}>
-                {selectedEvent.status}
-              </span>
-            </>
-          ) : 'Select Event'}
-        </span>
-        <span className={`chevron ${isOpen ? 'open' : ''}`}>▼</span>
-      </div>
-
-      <div className={`options-container ${isOpen ? 'visible' : 'hidden'}`}>
-        {events.map((event) => (
-          <div
-            key={event.id}
-            className={`option ${event.id === selectedEventId ? 'selected' : ''}`}
-            onClick={() => {
-              onEventSelect(event.id);
-              setIsOpen(false);
-            }}
-            onMouseEnter={() => setHoveredId(event.id)}
-            onMouseLeave={() => setHoveredId(null)}
-          >
-            <span>
-              {event.name}
-            </span>
-            <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>
-              {event.status}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {isOpen && (
+    <>
+      <div className="event-selector-heading">Event Selector</div>
+      <div className="event-selector-carousel-container">
         <div
-          className="overlay"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-    </div>
+          className="event-carousel"
+          ref={carouselRef}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {events.map((event, idx) => {
+            // Format date (exclude time)
+            let dateStr = '';
+            if (event.date) {
+              const dateObj = new Date(event.date);
+              dateStr = dateObj.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+            }
+            // Format location
+            const locationParts = [event.venue, event.location_city, event.location_state].filter(Boolean);
+            const locationStr = locationParts.join(', ');
+            return (
+              <div
+                key={event.id}
+                className={`event-card${idx === currentIndex ? ' selected' : ''}`}
+                onClick={() => handleSelect(idx)}
+                tabIndex={0}
+                role="button"
+                aria-pressed={idx === currentIndex}
+                ref={el => cardRefs.current[idx] = el}
+              >
+                <span className="event-title">{event.name}</span>
+                {dateStr && <span className="event-date">{dateStr}</span>}
+                {locationStr && <span className="event-location">{locationStr}</span>}
+                <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>{event.status}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 

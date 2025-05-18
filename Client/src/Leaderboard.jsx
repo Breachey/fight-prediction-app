@@ -1,28 +1,45 @@
+// Leaderboard.jsx
+// This component displays a leaderboard for an event and/or overall, with options to toggle between them and show/hide AI users.
+
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
+import { Link } from 'react-router-dom';
 
 function Leaderboard({ eventId, currentUser }) {
+  // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
+  // State for overall leaderboard data
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
+  // State for monthly leaderboard data
+  const [monthlyLeaderboard, setMonthlyLeaderboard] = useState([]);
+  // Loading and error state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  // Whether to show AI users in the leaderboard
   const [showBots, setShowBots] = useState(false);
+  // Which leaderboard is currently selected ('event' or 'overall' or 'monthly')
+  const [selectedLeaderboard, setSelectedLeaderboard] = useState(eventId ? 'event' : 'overall');
+  // Add state for sorting
+  const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
 
+  // Fetch leaderboard data when component mounts or eventId changes
   useEffect(() => {
     fetchLeaderboards();
     // Refresh leaderboard data every 30 seconds
     const refreshInterval = setInterval(fetchLeaderboards, 30000);
-    
+    // Reset selected leaderboard if eventId changes
+    setSelectedLeaderboard(eventId ? 'event' : 'overall');
     return () => clearInterval(refreshInterval);
   }, [eventId]);
 
+  // Fetch both event, overall, and monthly leaderboards from the API
   const fetchLeaderboards = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      // Fetch both leaderboards in parallel
-      const [eventResponse, overallResponse] = await Promise.all([
+      // Fetch all leaderboards in parallel
+      const [eventResponse, overallResponse, monthlyResponse] = await Promise.all([
         eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`, {
           headers: {
             'Accept': 'application/json',
@@ -40,6 +57,15 @@ function Leaderboard({ eventId, currentUser }) {
         }).catch(error => {
           console.error('Overall leaderboard fetch error:', error);
           return { ok: false, error };
+        }),
+        fetch(`${API_URL}/leaderboard/monthly`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Monthly leaderboard fetch error:', error);
+          return { ok: false, error };
         })
       ]);
 
@@ -52,6 +78,16 @@ function Leaderboard({ eventId, currentUser }) {
       }
       const overallData = await overallResponse.json();
       setOverallLeaderboard(overallData || []);
+
+      // Check monthly leaderboard response
+      if (!monthlyResponse.ok) {
+        const errorMessage = monthlyResponse.error 
+          ? `Failed to load monthly leaderboard: ${monthlyResponse.error.message}`
+          : 'Failed to load monthly leaderboard. Please try again later.';
+        throw new Error(errorMessage);
+      }
+      const monthlyData = await monthlyResponse.json();
+      setMonthlyLeaderboard(monthlyData || []);
 
       // Check event leaderboard response if we have an event ID
       if (eventId && eventResponse) {
@@ -72,12 +108,15 @@ function Leaderboard({ eventId, currentUser }) {
       console.error('Error fetching leaderboards:', error);
       setError(error.message || 'An unexpected error occurred. Please try again later.');
       setIsLoading(false);
-      
       // Set empty arrays to prevent undefined errors
       setEventLeaderboard([]);
       setOverallLeaderboard([]);
+      setMonthlyLeaderboard([]);
     }
   };
+
+  // --- Styling objects ---
+  // These objects define the inline styles for the leaderboard UI
 
   const containerStyle = {
     padding: '20px',
@@ -131,6 +170,7 @@ function Leaderboard({ eventId, currentUser }) {
     tableLayout: 'fixed'
   };
 
+  // --- Table header and cell styles ---
   const headerStyle = {
     background: 'rgba(76, 29, 149, 0.3)',
     backdropFilter: 'blur(5px)',
@@ -150,6 +190,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // First column (rank) header style
   const firstHeaderStyle = {
     ...headerStyle,
     borderTopLeftRadius: '20px',
@@ -162,6 +203,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // User column header style
   const userHeaderStyle = {
     ...headerStyle,
     width: '45%',
@@ -172,6 +214,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // Stats columns header style
   const statsHeaderStyle = {
     ...headerStyle,
     width: '15%',
@@ -183,6 +226,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // Last column (accuracy) header style
   const lastHeaderStyle = {
     ...headerStyle,
     borderTopRightRadius: '20px',
@@ -195,6 +239,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // Row style, highlights current user and alternates row colors
   const rowStyle = (index, isCurrentUser) => ({
     backgroundColor: isCurrentUser
       ? 'rgba(139, 92, 246, 0.15)'
@@ -216,6 +261,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   });
 
+  // Table cell style
   const cellStyle = {
     padding: '15px 10px',
     color: '#ffffff',
@@ -229,6 +275,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // User cell style, highlights current user
   const userCellStyle = (isCurrentUser) => ({
     ...cellStyle,
     textAlign: 'left',
@@ -243,8 +290,10 @@ function Leaderboard({ eventId, currentUser }) {
     }
   });
 
+  // Returns the rank badge (C for champ, otherwise index)
   const getRankBadge = (index) => (index === 0 ? 'C' : index);
 
+  // Style for rank text (gold for champ, gray for others)
   const rankTextStyle = (index) => ({
     fontWeight: 700,
     fontSize: '1.1rem',
@@ -254,6 +303,7 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center'
   });
 
+  // Style for the champ badge (first place)
   const champBadgeStyle = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -272,6 +322,7 @@ function Leaderboard({ eventId, currentUser }) {
     letterSpacing: '0.05em'
   };
 
+  // Style for rank cell (gradient for top 3)
   const rankStyle = (index) => ({
     ...cellStyle,
     fontWeight: 'bold',
@@ -289,6 +340,7 @@ function Leaderboard({ eventId, currentUser }) {
     position: 'relative'
   });
 
+  // Style for accuracy cell (green/yellow/red based on accuracy)
   const accuracyStyle = (accuracy) => ({
     ...cellStyle,
     color: accuracy >= 70 ? '#22c55e' : 
@@ -296,6 +348,7 @@ function Leaderboard({ eventId, currentUser }) {
            accuracy > 0 ? '#ef4444' : '#6b7280'
   });
 
+  // Error message style
   const errorStyle = {
     color: '#ef4444',
     textAlign: 'center',
@@ -307,6 +360,7 @@ function Leaderboard({ eventId, currentUser }) {
     boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)'
   };
 
+  // Empty leaderboard style
   const emptyStyle = {
     padding: '30px',
     textAlign: 'center',
@@ -317,6 +371,7 @@ function Leaderboard({ eventId, currentUser }) {
     border: '1px solid #4c1d95'
   };
 
+  // Loading message style
   const loadingStyle = {
     textAlign: 'center',
     padding: '20px',
@@ -324,6 +379,7 @@ function Leaderboard({ eventId, currentUser }) {
     fontSize: '1.2rem'
   };
 
+  // Badge for current user
   const currentUserBadge = {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
     color: '#a78bfa',
@@ -338,6 +394,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // Badge for AI users
   const aiBadge = {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
@@ -354,6 +411,7 @@ function Leaderboard({ eventId, currentUser }) {
     }
   };
 
+  // Style for the filter/toggle button containers
   const filterToggleStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -362,6 +420,7 @@ function Leaderboard({ eventId, currentUser }) {
     marginBottom: '20px'
   };
 
+  // Style for toggle buttons (leaderboard selection and AI toggle)
   const toggleButtonStyle = {
     padding: '8px 16px',
     borderRadius: '8px',
@@ -384,6 +443,7 @@ function Leaderboard({ eventId, currentUser }) {
     return result.map(x => x.toString(16).padStart(2, '0')).join('');
   }
 
+  // Style for points cell, interpolates color from green to red based on rank
   const pointsStyle = (index, total) => {
     // 0 = green, 1 = red
     const factor = total <= 1 ? 0 : index / (total - 1);
@@ -395,6 +455,19 @@ function Leaderboard({ eventId, currentUser }) {
     };
   };
 
+  // Helper to handle sorting
+  const handleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        // Toggle direction
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'desc' };
+    });
+  };
+
+  // --- LeaderboardTable subcomponent ---
+  // Renders a leaderboard table for the given data and title
   const LeaderboardTable = ({ data, title }) => {
     if (!data.length) {
       return (
@@ -407,6 +480,27 @@ function Leaderboard({ eventId, currentUser }) {
     // Filter out bots if showBots is false
     const filteredData = showBots ? data : data.filter(entry => !entry.is_bot);
 
+    // Sort the data based on sortConfig
+    const sortedData = [...filteredData].sort((a, b) => {
+      const { key, direction } = sortConfig;
+      let aValue = a[key];
+      let bValue = b[key];
+      // Convert to numbers if possible
+      if (!isNaN(parseFloat(aValue)) && !isNaN(parseFloat(bValue))) {
+        aValue = parseFloat(aValue);
+        bValue = parseFloat(bValue);
+      }
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    // Helper to show sort arrow
+    const getSortArrow = (key) => {
+      if (sortConfig.key !== key) return '';
+      return sortConfig.direction === 'asc' ? ' ▲' : ' ▼';
+    };
+
     return (
       <>
         <h2 style={sectionTitleStyle}>{title}</h2>
@@ -414,16 +508,28 @@ function Leaderboard({ eventId, currentUser }) {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={firstHeaderStyle}>RNK</th>
-                <th style={userHeaderStyle}>USER</th>
-                <th style={statsHeaderStyle}>PTS</th>
-                <th style={statsHeaderStyle}>✓</th>
-                <th style={statsHeaderStyle}>TOT</th>
-                <th style={lastHeaderStyle}>ACC</th>
+                <th style={firstHeaderStyle} onClick={() => handleSort('rank')}>
+                  #{getSortArrow('rank')}
+                </th>
+                <th style={userHeaderStyle} onClick={() => handleSort('user_id')}>
+                  USER{getSortArrow('user_id')}
+                </th>
+                <th style={statsHeaderStyle} onClick={() => handleSort('total_points')}>
+                  PTS{getSortArrow('total_points')}
+                </th>
+                <th style={statsHeaderStyle} onClick={() => handleSort('correct_predictions')}>
+                  ✓{getSortArrow('correct_predictions')}
+                </th>
+                <th style={statsHeaderStyle} onClick={() => handleSort('total_predictions')}>
+                  TOT{getSortArrow('total_predictions')}
+                </th>
+                <th style={lastHeaderStyle} onClick={() => handleSort('accuracy')}>
+                  ACC{getSortArrow('accuracy')}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((entry, index) => {
+              {sortedData.map((entry, index) => {
                 const isCurrentUser = entry.user_id === currentUser;
                 // Round the accuracy to the nearest whole number
                 const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
@@ -439,12 +545,17 @@ function Leaderboard({ eventId, currentUser }) {
                         whiteSpace: 'nowrap',
                         maxWidth: '100%'
                       }}>
-                        {entry.user_id}
+                        <Link 
+                          to={`/profile/${encodeURIComponent(entry.user_id)}`}
+                          style={{ color: isCurrentUser ? '#a78bfa' : '#fff', textDecoration: 'underline', fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                        >
+                          {entry.user_id}
+                        </Link>
                       </span>
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
                       {entry.is_bot && <span style={aiBadge}>AI</span>}
                     </td>
-                    <td style={pointsStyle(index, filteredData.length)}>{entry.total_points}</td>
+                    <td style={pointsStyle(index, sortedData.length)}>{entry.total_points}</td>
                     <td style={cellStyle}>{entry.correct_predictions}</td>
                     <td style={cellStyle}>{entry.total_predictions}</td>
                     <td style={accuracyStyle(roundedAccuracy)}>
@@ -460,6 +571,9 @@ function Leaderboard({ eventId, currentUser }) {
     );
   };
 
+  // --- Main render logic ---
+
+  // Show loading state
   if (isLoading) {
     return (
       <div style={containerStyle}>
@@ -471,6 +585,7 @@ function Leaderboard({ eventId, currentUser }) {
     );
   }
 
+  // Show error state
   if (error) {
     return (
       <div style={containerStyle}>
@@ -480,10 +595,49 @@ function Leaderboard({ eventId, currentUser }) {
     );
   }
 
+  // Main leaderboard UI
   return (
     <div style={containerStyle}>
       <h1 style={titleStyle}>Leaderboard</h1>
-      
+      {/* Leaderboard selection toggle */}
+      <div style={filterToggleStyle}>
+        {eventId && (
+          <button
+            style={{
+              ...toggleButtonStyle,
+              background: selectedLeaderboard === 'event' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
+              color: selectedLeaderboard === 'event' ? '#fff' : '#a78bfa',
+              fontWeight: selectedLeaderboard === 'event' ? '700' : '500'
+            }}
+            onClick={() => setSelectedLeaderboard('event')}
+          >
+            Event
+          </button>
+        )}
+        <button
+          style={{
+            ...toggleButtonStyle,
+            background: selectedLeaderboard === 'overall' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
+            color: selectedLeaderboard === 'overall' ? '#fff' : '#a78bfa',
+            fontWeight: selectedLeaderboard === 'overall' ? '700' : '500'
+          }}
+          onClick={() => setSelectedLeaderboard('overall')}
+        >
+          Overall
+        </button>
+        <button
+          style={{
+            ...toggleButtonStyle,
+            background: selectedLeaderboard === 'monthly' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
+            color: selectedLeaderboard === 'monthly' ? '#fff' : '#a78bfa',
+            fontWeight: selectedLeaderboard === 'monthly' ? '700' : '500'
+          }}
+          onClick={() => setSelectedLeaderboard('monthly')}
+        >
+          Monthly
+        </button>
+      </div>
+      {/* AI users toggle */}
       <div style={filterToggleStyle}>
         <button 
           style={toggleButtonStyle}
@@ -492,18 +646,25 @@ function Leaderboard({ eventId, currentUser }) {
           {showBots ? 'Hide AI Users' : 'Show AI Users'}
         </button>
       </div>
-      
-      {eventId && (
+      {/* Show only the selected leaderboard */}
+      {selectedLeaderboard === 'event' && eventId && (
         <LeaderboardTable 
           data={eventLeaderboard} 
           title="Event Leaderboard" 
         />
       )}
-
-      <LeaderboardTable 
-        data={overallLeaderboard} 
-        title="Overall Leaderboard" 
-      />
+      {selectedLeaderboard === 'overall' && (
+        <LeaderboardTable 
+          data={overallLeaderboard} 
+          title="Overall Leaderboard" 
+        />
+      )}
+      {selectedLeaderboard === 'monthly' && (
+        <LeaderboardTable 
+          data={monthlyLeaderboard} 
+          title="Monthly Leaderboard" 
+        />
+      )}
     </div>
   );
 }
