@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Fights from './Fights'; // Displays fight cards for the selected event
-import VotedFights from './VotedFights'; // (Unused import)
 import FightAdmin from './FightAdmin'; // Admin interface for managing fights
 import Leaderboard from './Leaderboard'; // Displays leaderboard for the event
 import EventSelector from './EventSelector'; // Dropdown to select an event
