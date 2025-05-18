@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
+import { Link } from 'react-router-dom';
 
 function Leaderboard({ eventId, currentUser }) {
   // State for event-specific leaderboard data
@@ -544,7 +545,12 @@ function Leaderboard({ eventId, currentUser }) {
                         whiteSpace: 'nowrap',
                         maxWidth: '100%'
                       }}>
-                        {entry.user_id}
+                        <Link 
+                          to={`/profile/${encodeURIComponent(entry.user_id)}`}
+                          style={{ color: isCurrentUser ? '#a78bfa' : '#fff', textDecoration: 'underline', fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                        >
+                          {entry.user_id}
+                        </Link>
                       </span>
                       {isCurrentUser && <span style={currentUserBadge}>You</span>}
                       {entry.is_bot && <span style={aiBadge}>AI</span>}

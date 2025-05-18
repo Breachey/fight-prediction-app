@@ -1,7 +1,7 @@
 // client/src/App.js
 // Main App component for Fight Picker application
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import Fights from './Fights'; // Displays fight cards for the selected event
 import FightAdmin from './FightAdmin'; // Admin interface for managing fights
 import Leaderboard from './Leaderboard'; // Displays leaderboard for the event
@@ -9,6 +9,7 @@ import EventSelector from './EventSelector'; // Dropdown to select an event
 import AdminPin from './AdminPin'; // Admin PIN authentication component
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
+import ProfilePage from './ProfilePage'; // New profile page component
 import logo from './assets/Fight Picks Logo_White 500x500.png';
 import './App.css';
 
@@ -120,42 +121,48 @@ function App() {
           <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
         </Link>
         <div style={userInfoStyle}>
-          <span>Welcome, {user.username}</span>
+          <span>Welcome, </span>
+          <Link to="/profile" style={{ color: '#a78bfa', textDecoration: 'underline', fontWeight: 'bold', cursor: 'pointer' }}>
+            {user.username}
+          </Link>
           <button onClick={handleLogout} style={logoutButtonStyle}>
             Logout
           </button>
         </div>
       </header>
-
-      {/* Event selection dropdown */}
-      <div className="section">
-        <EventSelector 
-          onEventSelect={setSelectedEventId} 
-          selectedEventId={selectedEventId}
-        />
-      </div>
-
-      {/* Fights list for selected event */}
-      <div className="section">
-        <Fights eventId={selectedEventId} username={user.username} />
-      </div>
-
-      {/* Leaderboard for selected event */}
-      <div className="section">
-        <Leaderboard eventId={selectedEventId} currentUser={user.username} />
-      </div>
-
-      {/* Admin section: show PIN entry or admin panel */}
-      {!isAdminAuthenticated ? (
-        <div className="admin-section">
-          <AdminPin onSuccess={() => setIsAdminAuthenticated(true)} />
-        </div>
-      ) : (
-        <div className="admin-section">
-          <FightAdmin eventId={selectedEventId} />
-        </div>
-      )}
-
+      <Routes>
+        <Route path="/" element={
+          <>
+            {/* Event selection dropdown */}
+            <div className="section">
+              <EventSelector 
+                onEventSelect={setSelectedEventId} 
+                selectedEventId={selectedEventId}
+              />
+            </div>
+            {/* Fights list for selected event */}
+            <div className="section">
+              <Fights eventId={selectedEventId} username={user.username} />
+            </div>
+            {/* Leaderboard for selected event */}
+            <div className="section">
+              <Leaderboard eventId={selectedEventId} currentUser={user.username} />
+            </div>
+            {/* Admin section: show PIN entry or admin panel */}
+            {!isAdminAuthenticated ? (
+              <div className="admin-section">
+                <AdminPin onSuccess={() => setIsAdminAuthenticated(true)} />
+              </div>
+            ) : (
+              <div className="admin-section">
+                <FightAdmin eventId={selectedEventId} />
+              </div>
+            )}
+          </>
+        } />
+        <Route path="/profile/:username" element={<ProfilePage user={user} />} />
+        <Route path="/profile" element={<ProfilePage user={user} />} />
+      </Routes>
       <footer style={footerStyle}>Made by Scrap & Screach</footer>
     </div>
   );

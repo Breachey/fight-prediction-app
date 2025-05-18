@@ -1460,6 +1460,32 @@ app.post('/migrate/fight-results', async (req, res) => {
   }
 });
 
+// Get user profile by username
+app.get('/user/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('username, phone_number, created_at')
+      .eq('username', username)
+      .single();
+    if (error) {
+      console.error('Error fetching user profile:', error);
+      return res.status(500).json({ error: 'Failed to fetch user profile' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('User profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   const connectionSuccess = await testSupabaseConnection();
