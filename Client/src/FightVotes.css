@@ -7,21 +7,22 @@
 }
 
 .fight-votes-card {
-  background-color: #1a1a1a;
-  border-radius: 12px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #702eb2 100%);
+  border-radius: 14px;
   padding: 24px;
   color: #ffffff;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px #851ea644;
+  border: 2px solid #ff74ff;
 }
 
 .fight-votes-header {
   font-size: 1.6rem;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #2c2c2c;
+  border-bottom: 2px solid #ff74ff;
   text-align: center;
-  background: linear-gradient(to right, #e9d5ff, #ffffff);
+  background: linear-gradient(90deg, #ff74ff, #43ccf3);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -40,19 +41,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #10120a;
   font-weight: 600;
   font-size: 0.9rem;
   transition: width 0.3s ease;
   min-width: 30px;
+  background: linear-gradient(90deg, #ff74ff 0%, #43ccf3 100%);
 }
 
 .fighter1-bar {
-  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  background: linear-gradient(135deg, #ff74ff, #851ea6);
 }
 
 .fighter2-bar {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(135deg, #43ccf3, #702eb2);
 }
 
 .votes-sections-container {
@@ -82,7 +84,7 @@
 .fighter-name {
   font-size: 1.2rem;
   font-weight: 600;
-  color: #e9d5ff;
+  color: #ff74ff;
 }
 
 .votes-count {
@@ -170,15 +172,22 @@
 
 .rank-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 2px 10px;
   margin-left: 8px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
-  color: #7c5e00;
-  border: 1px solid rgba(255, 215, 0, 0.3);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  border-radius: 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ff74ff 0%, #43ccf3 100%);
+  color: #10120a;
+  border: none;
+  box-shadow: 0 2px 8px #43ccf344;
+  text-shadow: 0 1px 0 #fff8;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.rank-badge:hover {
+  box-shadow: 0 4px 16px #ff74ff88;
+  transform: scale(1.07);
 }
 
 .rank-badge:empty {
@@ -249,4 +258,48 @@
   .vote-item {
     padding: 10px 12px;
   }
+}
+
+.fighter-votes.fighter1-votes {
+  background: linear-gradient(135deg, #3a003a 60%, #ff74ff 100%);
+  border: 2px solid #ff74ff;
+  box-shadow: 0 2px 16px 0 #ff74ff55;
+  color: #ffe6fa;
+  border-radius: 22px;
+  padding: 36px 18px;
+  min-width: 240px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 320px;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.fighter-votes.fighter2-votes {
+  background: linear-gradient(135deg, #002a3a 60%, #43ccf3 100%);
+  border: 2px solid #43ccf3;
+  box-shadow: 0 2px 16px 0 #43ccf355;
+  color: #e6faff;
+  border-radius: 22px;
+  padding: 36px 18px;
+  min-width: 240px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 320px;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.fighter-votes.fighter1-votes .fighter-votes-header,
+.fighter-votes.fighter1-votes .fighter-name {
+  color: #ffb3ff;
+}
+
+.fighter-votes.fighter2-votes .fighter-votes-header,
+.fighter-votes.fighter2-votes .fighter-name {
+  color: #b3f0ff;
 } 

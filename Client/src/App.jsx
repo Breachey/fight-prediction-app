@@ -10,7 +10,7 @@ import AdminPin from './AdminPin'; // Admin PIN authentication component
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import ProfilePage from './ProfilePage'; // New profile page component
-import logo from './assets/Fight Picks Logo_White 500x500.png';
+import logo from './assets/logo_street_500x500.png';
 import './App.css';
 
 function App() {

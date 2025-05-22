@@ -1,5 +1,5 @@
 import React from 'react';
-import logo from '../assets/Fight Picks Logo_White 500x500.png';
+import logo from '../assets/logo_street_500x500.svg';
 import './SplashScreen.css';
 
 function SplashScreen() {

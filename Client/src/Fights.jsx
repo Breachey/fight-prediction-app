@@ -326,6 +326,32 @@ function Fights({ eventId, username }) {
     }
   };
 
+  // Fetch votes for all eligible fights on mount or when fights/submittedFights change
+  useEffect(() => {
+    if (!fights.length) return;
+    fights.forEach(fight => {
+      const eligible = submittedFights[fight.id] || fight.is_completed;
+      if (eligible && !fightVotes[fight.id]) {
+        Promise.all([
+          fetch(`${API_URL}/predictions/filter?fight_id=${fight.id}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+          fetch(`${API_URL}/predictions/filter?fight_id=${fight.id}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+        ])
+          .then(async ([fighter1Response, fighter2Response]) => {
+            if (!fighter1Response.ok || !fighter2Response.ok) return;
+            const [fighter1Votes, fighter2Votes] = await Promise.all([
+              fighter1Response.json(),
+              fighter2Response.json()
+            ]);
+            setFightVotes(prev => ({
+              ...prev,
+              [fight.id]: { fighter1Votes, fighter2Votes }
+            }));
+          })
+          .catch(() => {});
+      }
+    });
+  }, [fights, submittedFights, showAIVotes]);
+
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
   }
@@ -582,41 +608,65 @@ function Fights({ eventId, username }) {
           )}
 
           <div className="fight-votes-section">
-            <button 
-              className={`expand-votes-button ${(!submittedFights[fight.id] && !fight.is_completed) ? 'disabled' : ''}`}
-              onClick={() => toggleFightExpansion(fight.id)}
+            <div
+              className={`vote-distribution${(!submittedFights[fight.id] && !fight.is_completed) ? ' disabled' : ''}`}
+              style={{ cursor: (submittedFights[fight.id] || fight.is_completed) ? 'pointer' : 'not-allowed', position: 'relative' }}
+              onClick={() => (submittedFights[fight.id] || fight.is_completed) && toggleFightExpansion(fight.id)}
+              tabIndex={0}
+              onKeyPress={e => {
+                if ((e.key === 'Enter' || e.key === ' ') && (submittedFights[fight.id] || fight.is_completed)) {
+                  toggleFightExpansion(fight.id);
+                }
+              }}
+              aria-label={expandedFights[fight.id] ? 'Hide Votes' : 'Show Votes'}
             >
-              {expandedFights[fight.id] ? '▲ Hide Votes' : 
-               (!submittedFights[fight.id] && !fight.is_completed) ? 
-               '🔒 Vote to See Predictions' : 
-               '▼ Show Votes'}
-            </button>
-
+              {(() => {
+                const fighter1FilteredVotes = fightVotes[fight.id]?.fighter1Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
+                const fighter2FilteredVotes = fightVotes[fight.id]?.fighter2Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
+                const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
+                const split = totalVotes ? Math.round((fighter1FilteredVotes.length / totalVotes) * 100) : 50;
+                return (
+                  <>
+                    <div
+                      className="vote-bar blended-bar"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: `linear-gradient(90deg, #ff74ff ${split}%, #43ccf3 ${split}%)`,
+                        borderRadius: 'inherit',
+                        transition: 'background 0.3s',
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        zIndex: 1
+                      }}
+                    />
+                    <span style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      color: '#fff',
+                      textShadow: '0 2px 8px #000a',
+                      pointerEvents: 'none',
+                      zIndex: 2,
+                      opacity: 0.85
+                    }}>
+                      {expandedFights[fight.id] ? '▲ Hide Votes' : 
+                        (!submittedFights[fight.id] && !fight.is_completed) ? '🔒 Vote to See Predictions' : '▼ Show Votes'}
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
             {expandedFights[fight.id] && fightVotes[fight.id] && (
               <div className="votes-container">
-                <div className="vote-distribution">
-                  {(() => {
-                    const fighter1FilteredVotes = fightVotes[fight.id].fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
-                    const fighter2FilteredVotes = fightVotes[fight.id].fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
-                    const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
-                    const fighter1Percentage = totalVotes ? Math.round((fighter1FilteredVotes.length / totalVotes) * 100) : 50;
-                    const fighter2Percentage = totalVotes ? Math.round((fighter2FilteredVotes.length / totalVotes) * 100) : 50;
-
-                    return (
-                      <>
-                        <div 
-                          className="vote-bar fighter1-bar" 
-                          style={{ width: `${fighter1Percentage}%` }}
-                        />
-                        <div 
-                          className="vote-bar fighter2-bar" 
-                          style={{ width: `${fighter2Percentage}%` }}
-                        />
-                      </>
-                    );
-                  })()}
-                </div>
-
                 <div className="votes-list-container">
                   <div className="fighter-votes fighter1-votes">
                     <h4>{fight.fighter1_name}'s Votes</h4>

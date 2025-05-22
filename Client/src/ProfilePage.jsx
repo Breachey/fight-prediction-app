@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { API_URL } from './config';
 import { useParams } from 'react-router-dom';
+import badgeBestPerc from './assets/badge_best_perc_1000x1000.svg';
+import badgeMostGuesses from './assets/badge_most_guesses_1000x1000.svg';
+import badgeMostPoints from './assets/badge_most_points_1000x1000.svg';
+import badgeWorstPerc from './assets/badge_worst_perc_1000x1000.svg';
 
 function formatAccountAge(createdAt) {
   if (!createdAt) return '';
@@ -158,12 +162,7 @@ function ProfilePage({ user: loggedInUser }) {
           userBadges.push({
             key: 'points',
             label: 'Most Points',
-            svg: (
-              <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="30" cy="30" r="28" fill="#FFD700" stroke="#FFF7B2" strokeWidth="4" />
-                <text x="30" y="38" textAnchor="middle" fontSize="2.2rem" fontWeight="bold" fill="#7c5e00">★</text>
-              </svg>
-            )
+            svg: <img src={badgeMostPoints} alt="Most Points Badge" width={60} height={60} />
           });
         }
         
@@ -171,12 +170,7 @@ function ProfilePage({ user: loggedInUser }) {
           userBadges.push({
             key: 'accuracy',
             label: 'Best Accuracy',
-            svg: (
-              <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="30" cy="30" r="28" fill="#a78bfa" stroke="#4c1d95" strokeWidth="4" />
-                <text x="30" y="38" textAnchor="middle" fontSize="2.2rem" fontWeight="bold" fill="#fff">%</text>
-              </svg>
-            )
+            svg: <img src={badgeBestPerc} alt="Best Accuracy Badge" width={60} height={60} />
           });
         }
         
@@ -184,12 +178,15 @@ function ProfilePage({ user: loggedInUser }) {
           userBadges.push({
             key: 'correct',
             label: 'Most Correct Picks',
-            svg: (
-              <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="30" cy="30" r="28" fill="#22c55e" stroke="#166534" strokeWidth="4" />
-                <text x="30" y="38" textAnchor="middle" fontSize="2.2rem" fontWeight="bold" fill="#fff">✓</text>
-              </svg>
-            )
+            svg: <img src={badgeMostGuesses} alt="Most Correct Picks Badge" width={60} height={60} />
+          });
+        }
+        
+        if (byAccuracy.length > 1 && (byAccuracy[byAccuracy.length-1].user_id || '').trim().toLowerCase() === normalizedUsername) {
+          userBadges.push({
+            key: 'worst_accuracy',
+            label: 'Worst Accuracy',
+            svg: <img src={badgeWorstPerc} alt="Worst Accuracy Badge" width={60} height={60} />
           });
         }
         
