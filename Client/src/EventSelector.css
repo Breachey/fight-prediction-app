@@ -10,9 +10,9 @@
 .dropdown {
   width: 100%;
   padding: 12px 16px;
-  background-color: #1a1a1a;
+  background: linear-gradient(135deg, #1a1a1a 0%, #702eb2 100%);
+  border: 2px solid #ff74ff;
   color: #ffffff;
-  border: 1px solid #4c1d95;
   border-radius: 12px;
   font-size: 1rem;
   cursor: pointer;
@@ -29,7 +29,7 @@
 }
 
 .dropdown.open {
-  box-shadow: 0 0 0 2px #6d28d9;
+  box-shadow: 0 0 0 3px #43ccf3;
 }
 
 .options-container {
@@ -39,11 +39,11 @@
   right: 0px;
   background-color: #1a1a1a;
   border-radius: 12px;
-  border: 1px solid #4c1d95;
+  border: 2px solid #ff74ff;
   overflow: hidden;
   z-index: 10;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.1);
+  box-shadow: 0 4px 20px #851ea633;
 }
 
 .options-container.hidden {
@@ -75,7 +75,8 @@
 }
 
 .option.selected {
-  background-color: #4c1d95;
+  background-color: #ff74ff;
+  color: #10120a;
 }
 
 .chevron {
@@ -96,11 +97,12 @@
 }
 
 .status-badge.completed {
-  background-color: #4c1d95;
+  background-color: #851ea6;
 }
 
 .status-badge.active {
-  background-color: #6d28d9;
+  background-color: #43ccf3;
+  color: #10120a;
 }
 
 .error-message {
@@ -156,9 +158,9 @@
 }
 
 .carousel-arrow {
-  background: linear-gradient(145deg, #2d1f47 0%, #1a1a1a 100%);
+  background: linear-gradient(135deg, #702eb2 0%, #43ccf3 100%);
   border: none;
-  color: #a78bfa;
+  color: #ff74ff;
   font-size: 2.2rem;
   border-radius: 50%;
   width: 44px;
@@ -169,7 +171,7 @@
   cursor: pointer;
   margin: 0 12px;
   transition: background 0.2s, color 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 12px rgba(76, 29, 149, 0.15);
+  box-shadow: 0 2px 12px #43ccf344;
 }
 .carousel-arrow:disabled {
   opacity: 0.3;
@@ -194,8 +196,8 @@
   min-width: 210px;
   max-width: 260px;
   flex: 0 0 auto;
-  background: linear-gradient(135deg, #1a1a1a 60%, #2d1f47 100%);
-  border: 2px solid #232136;
+  background: linear-gradient(135deg, #1a1a1a 60%, #ff74ff 100%);
+  border: 2px solid #851ea6;
   border-radius: 18px;
   color: #fff;
   padding: 20px 18px 16px 18px;
@@ -209,9 +211,9 @@
   outline: none;
 }
 .event-card.selected {
-  border: 2.5px solid #a78bfa;
+  border: 2.5px solid #43ccf3;
   background: linear-gradient(135deg, #2d1f47 60%, #4c1d95 100%);
-  box-shadow: 0 6px 32px rgba(109, 40, 217, 0.18);
+  box-shadow: 0 0 18px #43ccf388;
   z-index: 2;
 }
 .event-card:active, .event-card:focus {
