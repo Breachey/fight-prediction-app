@@ -13,14 +13,28 @@ const PORT = process.env.PORT || 3001;
 
 // Enable CORS for all routes
 app.use(cors({
-  origin: [
-    'https://fight-prediction-app.vercel.app',
-    'https://fight-prediction-app-git-breachey-brandons-projects-a1d75233.vercel.app',
-    'http://localhost:3000',  // For local development
-    'http://localhost:5173'   // For Vite's default port
-  ],
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'https://fight-prediction-app.vercel.app',
+      'https://fight-prediction-app-git-breachey-brandons-projects-a1d75233.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5173'
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200
 }));
 
 app.use(express.json());
@@ -477,7 +491,7 @@ app.get('/predictions/filter', async (req, res) => {
     // Get user information including is_bot status
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('username, is_bot');
+      .select('user_id, username, is_bot');
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
@@ -497,18 +511,21 @@ app.get('/predictions/filter', async (req, res) => {
     // Process leaderboard data
     const userStats = {};
     results.forEach(result => {
-      if (!userStats[result.user_id]) {
-        userStats[result.user_id] = {
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
           username: result.user_id, // Store username since user_id is actually the username
+          is_bot: result.is_bot || false,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
         };
       }
-      userStats[result.user_id].total_predictions++;
+      userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
-        userStats[result.user_id].correct_predictions++;
-        userStats[result.user_id].total_points++;
+        userStats[userIdStr].correct_predictions++;
+        userStats[userIdStr].total_points++;
       }
     });
 
@@ -723,7 +740,6 @@ app.get('/leaderboard', async (req, res) => {
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
       .select('*');
-
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ 
@@ -731,12 +747,10 @@ app.get('/leaderboard', async (req, res) => {
         details: resultsError.message 
       });
     }
-
     // Get all predictions to get betting odds
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
       .select('*');
-
     if (predictionsError) {
       console.error('Error fetching predictions:', predictionsError);
       return res.status(500).json({ 
@@ -744,19 +758,10 @@ app.get('/leaderboard', async (req, res) => {
         details: predictionsError.message 
       });
     }
-
-    // Create a map of fight_id and username to betting odds
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      const key = `${pred.fight_id}-${pred.username}`;
-      oddsMap.set(key, pred.betting_odds);
-    });
-
-    // Get all users with their is_bot status
+    // Get all users with their user_id, username, is_bot
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('username, is_bot');
-
+      .select('user_id, username, is_bot');
     if (usersError) {
       console.error('Error fetching users:', usersError);
       return res.status(500).json({ 
@@ -764,51 +769,54 @@ app.get('/leaderboard', async (req, res) => {
         details: usersError.message 
       });
     }
-
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-
+    // Map user_id to username and is_bot
+    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
+    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    // Build oddsMap using user_id
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
-      if (!userStats[result.user_id]) {
-        userStats[result.user_id] = {
-          user_id: result.user_id,
-          is_bot: userMap.get(result.user_id) || false,
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
+          username: userIdToUsername.get(userIdStr) || 'Unknown',
+          is_bot: userIdToIsBot.get(userIdStr) || false,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
         };
       }
-      userStats[result.user_id].total_predictions++;
-      
+      userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
-        userStats[result.user_id].correct_predictions++;
-        
-        // Calculate points based on betting odds
-        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
-        if (odds) {
-          const points = odds > 0 ? 
-            Math.ceil((odds / 100) + 1) : // Round up for positive odds
-            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
-          userStats[result.user_id].total_points += points;
+        userStats[userIdStr].correct_predictions++;
+        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
+        const odds = oddsMap.get(oddsKey);
+        if (odds !== undefined && odds !== null) {
+          const points = odds > 0
+            ? Math.ceil((odds / 100) + 1)
+            : Math.ceil((100 / Math.abs(odds)) + 1);
+          userStats[userIdStr].total_points += points;
         }
       }
     });
-
-    // Convert to array and calculate accuracy
+    // Convert to array and sort to get rankings
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
         accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
+        total_points: user.total_points,
       }))
-      .sort((a, b) => 
-        b.total_points - a.total_points || // Sort by points first
-        b.correct_predictions - a.correct_predictions || // Then by correct predictions
-        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
+      .sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.correct_predictions - a.correct_predictions ||
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
-
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
@@ -828,14 +836,12 @@ app.get('/leaderboard/monthly', async (req, res) => {
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const firstDayISO = firstDay.toISOString();
     const nextMonthISO = nextMonth.toISOString();
-
     // Get all prediction results for the current month
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
       .select('*')
       .gte('created_at', firstDayISO)
       .lt('created_at', nextMonthISO);
-
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ 
@@ -843,12 +849,10 @@ app.get('/leaderboard/monthly', async (req, res) => {
         details: resultsError.message 
       });
     }
-
     // Get all predictions to get betting odds
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
       .select('*');
-
     if (predictionsError) {
       console.error('Error fetching predictions:', predictionsError);
       return res.status(500).json({ 
@@ -856,19 +860,10 @@ app.get('/leaderboard/monthly', async (req, res) => {
         details: predictionsError.message 
       });
     }
-
-    // Create a map of fight_id and username to betting odds
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      const key = `${pred.fight_id}-${pred.username}`;
-      oddsMap.set(key, pred.betting_odds);
-    });
-
-    // Get all users with their is_bot status
+    // Get all users with their user_id, username, is_bot
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('username, is_bot');
-
+      .select('user_id, username, is_bot');
     if (usersError) {
       console.error('Error fetching users:', usersError);
       return res.status(500).json({ 
@@ -876,51 +871,54 @@ app.get('/leaderboard/monthly', async (req, res) => {
         details: usersError.message 
       });
     }
-
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-
+    // Map user_id to username and is_bot
+    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
+    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    // Build oddsMap using user_id
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
+      oddsMap.set(key, pred.betting_odds);
+    });
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
-      if (!userStats[result.user_id]) {
-        userStats[result.user_id] = {
-          user_id: result.user_id,
-          is_bot: userMap.get(result.user_id) || false,
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
+          username: userIdToUsername.get(userIdStr) || 'Unknown',
+          is_bot: userIdToIsBot.get(userIdStr) || false,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
         };
       }
-      userStats[result.user_id].total_predictions++;
-      
+      userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
-        userStats[result.user_id].correct_predictions++;
-        
-        // Calculate points based on betting odds
-        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
-        if (odds) {
-          const points = odds > 0 ? 
-            Math.ceil((odds / 100) + 1) : // Round up for positive odds
-            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
-          userStats[result.user_id].total_points += points;
+        userStats[userIdStr].correct_predictions++;
+        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
+        const odds = oddsMap.get(oddsKey);
+        if (odds !== undefined && odds !== null) {
+          const points = odds > 0
+            ? Math.ceil((odds / 100) + 1)
+            : Math.ceil((100 / Math.abs(odds)) + 1);
+          userStats[userIdStr].total_points += points;
         }
       }
     });
-
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
         accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
+        total_points: user.total_points,
       }))
-      .sort((a, b) => 
-        b.total_points - a.total_points || // Sort by points first
-        b.correct_predictions - a.correct_predictions || // Then by correct predictions
-        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
+      .sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.correct_predictions - a.correct_predictions ||
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
-
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing monthly leaderboard:', error);
@@ -1131,13 +1129,11 @@ app.get('/events/:id/fights', async (req, res) => {
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
-    
     // Get all prediction results for this event
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
       .select('*')
       .eq('event_id', id);
-
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
       return res.status(500).json({ 
@@ -1145,12 +1141,20 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         details: resultsError.message 
       });
     }
-
-    // Get all predictions to get betting odds
+    // Get all fight IDs for the event
+    const { data: fights, error: fightsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('FightId')
+      .eq('EventId', id);
+    if (fightsError) {
+      console.error('Error fetching fights:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch fights', details: fightsError.message });
+    }
+    const fightIds = fights.map(f => String(f.FightId));
+    // Get all predictions for these fights
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
       .select('*');
-
     if (predictionsError) {
       console.error('Error fetching predictions:', predictionsError);
       return res.status(500).json({ 
@@ -1158,19 +1162,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         details: predictionsError.message 
       });
     }
-
-    // Create a map of fight_id and username to betting odds
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      const key = `${pred.fight_id}-${pred.username}`;
-      oddsMap.set(key, pred.betting_odds);
-    });
-
-    // Get all users with their is_bot status
+    // Get all users with their user_id, username, is_bot
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('username, is_bot');
-
+      .select('user_id, username, is_bot');
     if (usersError) {
       console.error('Error fetching users:', usersError);
       return res.status(500).json({ 
@@ -1178,51 +1173,55 @@ app.get('/events/:id/leaderboard', async (req, res) => {
         details: usersError.message 
       });
     }
-
-    // Create a map of username to is_bot status
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-
+    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
+    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    // Build oddsMap using user_id
+    const oddsMap = new Map();
+    predictions.forEach(pred => {
+      if (fightIds.includes(String(pred.fight_id))) {
+        const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
+        oddsMap.set(key, pred.betting_odds);
+      }
+    });
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
-      if (!userStats[result.user_id]) {
-        userStats[result.user_id] = {
-          user_id: result.user_id,
-          is_bot: userMap.get(result.user_id) || false,
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
+          username: userIdToUsername.get(userIdStr) || 'Unknown',
+          is_bot: userIdToIsBot.get(userIdStr) || false,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
         };
       }
-      userStats[result.user_id].total_predictions++;
-      
+      userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
-        userStats[result.user_id].correct_predictions++;
-        
-        // Calculate points based on betting odds
-        const odds = oddsMap.get(`${result.fight_id}-${result.user_id}`);
-        if (odds) {
-          const points = odds > 0 ? 
-            Math.ceil((odds / 100) + 1) : // Round up for positive odds
-            Math.ceil((100 / Math.abs(odds)) + 1); // Round up for negative odds
-          userStats[result.user_id].total_points += points;
+        userStats[userIdStr].correct_predictions++;
+        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
+        const odds = oddsMap.get(oddsKey);
+        if (odds !== undefined && odds !== null) {
+          const points = odds > 0
+            ? Math.ceil((odds / 100) + 1)
+            : Math.ceil((100 / Math.abs(odds)) + 1);
+          userStats[userIdStr].total_points += points;
         }
       }
     });
-
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
       .map(user => ({
         ...user,
         accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points // No need for decimal formatting since points are already whole numbers
+        total_points: user.total_points
       }))
-      .sort((a, b) => 
-        b.total_points - a.total_points || // Sort by points first
-        b.correct_predictions - a.correct_predictions || // Then by correct predictions
-        parseFloat(b.accuracy) - parseFloat(a.accuracy) // Then by accuracy
+      .sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.correct_predictions - a.correct_predictions ||
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
-
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing event leaderboard:', error);
