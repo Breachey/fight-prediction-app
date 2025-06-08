@@ -440,7 +440,7 @@ function Leaderboard({ eventId, currentUser }) {
     const c1 = color1.match(/\w\w/g).map(x => parseInt(x, 16));
     const c2 = color2.match(/\w\w/g).map(x => parseInt(x, 16));
     const result = c1.map((v, i) => Math.round(v + (c2[i] - v) * factor));
-    return result.map(x => x.toString(16).padStart(2, '0')).join('');
+    return '#' + result.map(x => x.toString(16).padStart(2, '0')).join('');
   }
 
   // Style for points cell, interpolates color from green to red based on rank
@@ -466,9 +466,157 @@ function Leaderboard({ eventId, currentUser }) {
     });
   };
 
-  // --- LeaderboardTable subcomponent ---
-  // Renders a leaderboard table for the given data and title
-  const LeaderboardTable = ({ data, title }) => {
+  // --- LeaderboardCard subcomponent ---
+  // Renders a single leaderboard entry as a card
+  const LeaderboardCard = ({ entry, index, isCurrentUser, total, minCorrect, maxCorrect, minTotal, maxTotal, minAcc, maxAcc, minPoints, maxPoints }) => {
+    const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
+    // Color interpolation for stats
+    const getStatColor = (val, min, max) => {
+      if (max === min) return '#b0a8c9'; // fallback if all values are the same
+      const factor = (val - min) / (max - min);
+      return interpolateColor('ef4444', '22c55e', factor); // red to green
+    };
+    return (
+      <div
+        style={{
+          background: '#231b36',
+          borderRadius: 20,
+          padding: 16,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: '#fff',
+          position: 'relative',
+          flexWrap: 'wrap',
+          // Card border and glow for top 3 and current user
+          border:
+            isCurrentUser
+              ? '2.5px solid #22d3ee' // blue-cyan for current user
+              : index === 0
+              ? '2.5px solid #FFD700' // gold for champ
+              : index === 1
+              ? '2.5px solid #C0C0C0' // silver for 1
+              : index === 2
+              ? '2.5px solid #CD7F32' // bronze for 2
+              : 'none',
+          boxShadow:
+            isCurrentUser
+              ? '0 0 16px 2px #22d3ee88, 0 2px 8px rgba(0,0,0,0.15)'
+              : index === 0
+              ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
+              : index === 1
+              ? '0 0 16px 2px #C0C0C088, 0 2px 8px rgba(0,0,0,0.15)'
+              : index === 2
+              ? '0 0 16px 2px #CD7F3288, 0 2px 8px rgba(0,0,0,0.15)'
+              : '0 2px 8px rgba(0,0,0,0.15)',
+        }}
+      >
+        {/* Rank & Medal */}
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 48 }}>
+          <span
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              marginRight: 6,
+              color:
+                isCurrentUser
+                  ? '#22d3ee' // blue-cyan for current user
+                  : index === 0
+                  ? '#FFD700' // gold
+                  : index === 1
+                  ? '#C0C0C0' // silver
+                  : index === 2
+                  ? '#CD7F32' // bronze
+                  : undefined,
+              textShadow:
+                isCurrentUser
+                  ? '0 0 4px #22d3ee88'
+                  : index === 0
+                  ? '0 0 4px #FFD70088'
+                  : index === 1
+                  ? '0 0 4px #C0C0C088'
+                  : index === 2
+                  ? '0 0 4px #CD7F3288'
+                  : undefined,
+            }}
+          >
+            {index === 0 ? 'C' : index}
+          </span>
+        </div>
+        {/* Name & Details */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              minWidth: 0,
+              maxWidth: '100%',
+              flexShrink: 1,
+            }}>
+              <span style={{
+                fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
+                whiteSpace: 'nowrap',
+                overflow: 'visible',
+                lineHeight: 1.1,
+              }}>
+                <Link
+                  to={`/profile/${encodeURIComponent(entry.username)}`}
+                  style={{ color: isCurrentUser ? '#ffd700' : '#fff', textDecoration: 'none', fontWeight: 700 }}
+                >
+                  {entry.username}
+                </Link>
+              </span>
+              {entry.is_bot && (
+                <span style={{
+                  background: 'rgba(59,130,246,0.2)',
+                  color: '#60a5fa',
+                  padding: '0px 7px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginTop: 1,
+                  lineHeight: 1,
+                  height: 16,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  minHeight: 0,
+                  minWidth: 0,
+                }}>
+                  AI
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+        {/* Points (big) and stats (small, no text) */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 70 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, textAlign: 'right', color: getStatColor(entry.total_points, minPoints, maxPoints) }}>{entry.total_points}</div>
+          <div style={{ fontSize: 20, color: '#b0a8c9', fontWeight: 500, marginTop: 4, letterSpacing: 1, display: 'flex', gap: 18 }}>
+            <span>
+              <span style={{ color: getStatColor(entry.correct_predictions, minCorrect, maxCorrect) }}>{entry.correct_predictions}</span>
+              /<span style={{ color: '#b0a8c9' }}>{entry.total_predictions}</span>
+            </span>
+            <span>
+              <span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>{roundedAccuracy}<span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>%</span></span>
+            </span>
+          </div>
+        </div>
+        {/* Responsive: stack on mobile */}
+        <style>{`
+          @media (max-width: 500px) {
+            .leaderboard-card { flex-direction: column; align-items: flex-start; padding: 12px; }
+            .leaderboard-card-points { margin-left: 0; margin-top: 8px; align-self: flex-end; }
+          }
+        `}</style>
+      </div>
+    );
+  };
+
+  // --- LeaderboardCardsList subcomponent ---
+  // Renders a list of leaderboard cards for the given data and title
+  const LeaderboardCardsList = ({ data, title }) => {
     if (!data.length) {
       return (
         <div style={emptyStyle}>
@@ -476,16 +624,13 @@ function Leaderboard({ eventId, currentUser }) {
         </div>
       );
     }
-
     // Filter out bots if showBots is false
     const filteredData = showBots ? data : data.filter(entry => !entry.is_bot);
-
     // Sort the data based on sortConfig
     const sortedData = [...filteredData].sort((a, b) => {
       const { key, direction } = sortConfig;
       let aValue = a[key];
       let bValue = b[key];
-      // Convert to numbers if possible
       if (!isNaN(parseFloat(aValue)) && !isNaN(parseFloat(bValue))) {
         aValue = parseFloat(aValue);
         bValue = parseFloat(bValue);
@@ -495,77 +640,41 @@ function Leaderboard({ eventId, currentUser }) {
       return 0;
     });
 
-    // Helper to show sort arrow
-    const getSortArrow = (key) => {
-      if (sortConfig.key !== key) return '';
-      return sortConfig.direction === 'asc' ? ' ▲' : ' ▼';
-    };
+    // Find min/max for each stat
+    const corrects = sortedData.map(e => e.correct_predictions);
+    const totals = sortedData.map(e => e.total_predictions);
+    const accuracies = sortedData.map(e => Math.round(parseFloat(e.accuracy)));
+    const pointsArr = sortedData.map(e => e.total_points);
+    const minCorrect = Math.min(...corrects);
+    const maxCorrect = Math.max(...corrects);
+    const minTotal = Math.min(...totals);
+    const maxTotal = Math.max(...totals);
+    const minAcc = Math.min(...accuracies);
+    const maxAcc = Math.max(...accuracies);
+    const minPoints = Math.min(...pointsArr);
+    const maxPoints = Math.max(...pointsArr);
 
     return (
       <>
         <h2 style={sectionTitleStyle}>{title}</h2>
-        <div style={tableContainerStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={firstHeaderStyle} onClick={() => handleSort('rank')}>
-                  #{getSortArrow('rank')}
-                </th>
-                <th style={userHeaderStyle} onClick={() => handleSort('user_id')}>
-                  USER{getSortArrow('user_id')}
-                </th>
-                <th style={statsHeaderStyle} onClick={() => handleSort('total_points')}>
-                  PTS{getSortArrow('total_points')}
-                </th>
-                <th style={statsHeaderStyle} onClick={() => handleSort('correct_predictions')}>
-                  ✓{getSortArrow('correct_predictions')}
-                </th>
-                <th style={statsHeaderStyle} onClick={() => handleSort('total_predictions')}>
-                  TOT{getSortArrow('total_predictions')}
-                </th>
-                <th style={lastHeaderStyle} onClick={() => handleSort('accuracy')}>
-                  ACC{getSortArrow('accuracy')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedData.map((entry, index) => {
-                const isCurrentUser = entry.user_id === currentUser;
-                // Round the accuracy to the nearest whole number
-                const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
-                return (
-                  <tr key={entry.user_id} style={rowStyle(index, isCurrentUser)}>
-                    <td style={{ ...rankStyle(index), ...rankTextStyle(index) }}>
-                      {getRankBadge(index)}
-                    </td>
-                    <td style={userCellStyle(isCurrentUser)}>
-                      <span style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        maxWidth: '100%'
-                      }}>
-                        <Link 
-                          to={`/profile/${encodeURIComponent(entry.user_id)}`}
-                          style={{ color: isCurrentUser ? '#a78bfa' : '#fff', textDecoration: 'underline', fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                        >
-                          {entry.user_id}
-                        </Link>
-                      </span>
-                      {isCurrentUser && <span style={currentUserBadge}>You</span>}
-                      {entry.is_bot && <span style={aiBadge}>AI</span>}
-                    </td>
-                    <td style={pointsStyle(index, sortedData.length)}>{entry.total_points}</td>
-                    <td style={cellStyle}>{entry.correct_predictions}</td>
-                    <td style={cellStyle}>{entry.total_predictions}</td>
-                    <td style={accuracyStyle(roundedAccuracy)}>
-                      {roundedAccuracy}%
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ width: '100%', maxWidth: 500, margin: '0 auto' }}>
+          {sortedData.map((entry, index) => (
+            <LeaderboardCard
+              key={entry.username}
+              entry={entry}
+              index={index}
+              isCurrentUser={entry.username === currentUser}
+              total={sortedData.length}
+              minCorrect={minCorrect}
+              maxCorrect={maxCorrect}
+              minTotal={minTotal}
+              maxTotal={maxTotal}
+              minAcc={minAcc}
+              maxAcc={maxAcc}
+              minPoints={minPoints}
+              maxPoints={maxPoints}
+            />
+          ))}
         </div>
       </>
     );
@@ -648,21 +757,21 @@ function Leaderboard({ eventId, currentUser }) {
       </div>
       {/* Show only the selected leaderboard */}
       {selectedLeaderboard === 'event' && eventId && (
-        <LeaderboardTable 
-          data={eventLeaderboard} 
-          title="Event Leaderboard" 
+        <LeaderboardCardsList
+          data={eventLeaderboard}
+          title="Event Leaderboard"
         />
       )}
       {selectedLeaderboard === 'overall' && (
-        <LeaderboardTable 
-          data={overallLeaderboard} 
-          title="Overall Leaderboard" 
+        <LeaderboardCardsList
+          data={overallLeaderboard}
+          title="Overall Leaderboard"
         />
       )}
       {selectedLeaderboard === 'monthly' && (
-        <LeaderboardTable 
-          data={monthlyLeaderboard} 
-          title="Monthly Leaderboard" 
+        <LeaderboardCardsList
+          data={monthlyLeaderboard}
+          title="Monthly Leaderboard"
         />
       )}
     </div>
