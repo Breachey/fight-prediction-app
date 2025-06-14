@@ -26,10 +26,11 @@ function App() {
       try {
         const savedUsername = localStorage.getItem('username');
         const savedPhoneNumber = localStorage.getItem('phoneNumber');
+        const savedUserId = localStorage.getItem('user_id');
         // Simulate splash screen minimum time
         await new Promise(resolve => setTimeout(resolve, 2000));
-        if (savedUsername && savedPhoneNumber) {
-          setUser({ username: savedUsername, phoneNumber: savedPhoneNumber });
+        if (savedUsername && savedPhoneNumber && savedUserId) {
+          setUser({ username: savedUsername, phoneNumber: savedPhoneNumber, user_id: savedUserId });
         }
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -122,7 +123,7 @@ function App() {
         </Link>
         <div style={userInfoStyle}>
           <span>Welcome, </span>
-          <Link to="/profile" style={{ color: '#a78bfa', textDecoration: 'underline', fontWeight: 'bold', cursor: 'pointer' }}>
+          <Link to={`/profile/${user.user_id}`} style={{ color: '#a78bfa', textDecoration: 'underline', fontWeight: 'bold', cursor: 'pointer' }}>
             {user.username}
           </Link>
           <button onClick={handleLogout} style={logoutButtonStyle}>
@@ -142,7 +143,7 @@ function App() {
             </div>
             {/* Fights list for selected event */}
             <div className="section">
-              <Fights eventId={selectedEventId} username={user.username} />
+              <Fights eventId={selectedEventId} username={user.username} user_id={user.user_id} />
             </div>
             {/* Leaderboard for selected event */}
             <div className="section">
@@ -160,7 +161,7 @@ function App() {
             )}
           </>
         } />
-        <Route path="/profile/:username" element={<ProfilePage user={user} />} />
+        <Route path="/profile/:user_id" element={<ProfilePage user={user} />} />
         <Route path="/profile" element={<ProfilePage user={user} />} />
       </Routes>
       <footer style={footerStyle}>Made by Scrap & Screach</footer>

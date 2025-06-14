@@ -34,7 +34,7 @@ function ProfilePage({ user: loggedInUser }) {
   const [loading, setLoading] = useState(true);
   const [profileUser, setProfileUser] = useState(null);
   const [error, setError] = useState(null);
-  const { username: routeUsername } = useParams();
+  const { user_id: routeUserId } = useParams();
   const [accountCreatedAt, setAccountCreatedAt] = useState(null);
   const [accountAgeLoading, setAccountAgeLoading] = useState(true);
   const [accountAgeError, setAccountAgeError] = useState(null);
@@ -101,8 +101,8 @@ function ProfilePage({ user: loggedInUser }) {
     setAccountAgeLoading(true);
     setAccountAgeError(null);
     
-    // Determine which username to show
-    const usernameToShow = routeUsername || loggedInUser.username;
+    // Determine which user_id to show
+    const userIdToShow = routeUserId || loggedInUser.user_id;
     
     fetch(`${API_URL}/leaderboard`)
       .then(res => {
@@ -115,11 +115,8 @@ function ProfilePage({ user: loggedInUser }) {
         // Filter out bots
         const filtered = data.filter(entry => !entry.is_bot);
         
-        // Find the user entry (case-insensitive, trimmed)
-        const normalizedUsername = usernameToShow.trim().toLowerCase();
-        const userEntry = filtered.find(entry => 
-          (entry.user_id || '').trim().toLowerCase() === normalizedUsername
-        );
+        // Find the user entry by user_id
+        const userEntry = filtered.find(entry => String(entry.user_id) === String(userIdToShow));
         
         if (!userEntry) {
           setError('User not found');
@@ -127,8 +124,8 @@ function ProfilePage({ user: loggedInUser }) {
           return;
         }
         
-        // Fetch account age info
-        fetch(`${API_URL}/user/${encodeURIComponent(usernameToShow)}`)
+        // Fetch account age info using user_id (new endpoint)
+        fetch(`${API_URL}/user/by-id/${encodeURIComponent(userEntry.user_id)}`)
           .then(res => {
             if (!res.ok) throw new Error('Failed to fetch user profile');
             return res.json();
@@ -145,10 +142,11 @@ function ProfilePage({ user: loggedInUser }) {
             }
           });
         
-        // Set user profile data
+        // Set user profile data (display username, store user_id for backend if needed)
         setProfileUser({
-          username: userEntry.user_id,
-          phoneNumber: routeUsername ? undefined : loggedInUser.phoneNumber,
+          username: userEntry.username, // display username
+          user_id: userEntry.user_id,   // keep user_id if needed for backend
+          phoneNumber: routeUserId ? undefined : loggedInUser.phoneNumber,
         });
         
         // Calculate badges
@@ -158,7 +156,7 @@ function ProfilePage({ user: loggedInUser }) {
         
         const userBadges = [];
         
-        if (byPoints[0] && (byPoints[0].user_id || '').trim().toLowerCase() === normalizedUsername) {
+        if (byPoints[0] && String(byPoints[0].user_id) === String(userIdToShow)) {
           userBadges.push({
             key: 'points',
             label: 'Most Points',
@@ -166,7 +164,7 @@ function ProfilePage({ user: loggedInUser }) {
           });
         }
         
-        if (byAccuracy[0] && (byAccuracy[0].user_id || '').trim().toLowerCase() === normalizedUsername) {
+        if (byAccuracy[0] && String(byAccuracy[0].user_id) === String(userIdToShow)) {
           userBadges.push({
             key: 'accuracy',
             label: 'Best Accuracy',
@@ -174,7 +172,7 @@ function ProfilePage({ user: loggedInUser }) {
           });
         }
         
-        if (byCorrect[0] && (byCorrect[0].user_id || '').trim().toLowerCase() === normalizedUsername) {
+        if (byCorrect[0] && String(byCorrect[0].user_id) === String(userIdToShow)) {
           userBadges.push({
             key: 'correct',
             label: 'Most Correct Picks',
@@ -182,7 +180,7 @@ function ProfilePage({ user: loggedInUser }) {
           });
         }
         
-        if (byAccuracy.length > 1 && (byAccuracy[byAccuracy.length-1].user_id || '').trim().toLowerCase() === normalizedUsername) {
+        if (byAccuracy.length > 1 && String(byAccuracy[byAccuracy.length-1].user_id) === String(userIdToShow)) {
           userBadges.push({
             key: 'worst_accuracy',
             label: 'Worst Accuracy',
@@ -201,7 +199,7 @@ function ProfilePage({ user: loggedInUser }) {
       });
       
     return () => { isMounted = false; };
-  }, [routeUsername, loggedInUser]);
+  }, [routeUserId, loggedInUser]);
 
   // Loading timeout
   useEffect(() => {
@@ -332,12 +330,138 @@ function ProfilePage({ user: loggedInUser }) {
           )}
         </div>
         
+        {/* User Event Stats Section */}
+        <UserEventStats userId={profileUser.user_id} username={profileUser.username} />
+        
         <h3 style={{ color: '#a78bfa', marginBottom: 12, fontWeight: 600, fontSize: '1.2rem', letterSpacing: 1 }}>Your Voted Fights</h3>
         <div style={{ color: '#ccc', fontStyle: 'italic', fontSize: '1.05rem' }}>
           (Coming soon: List of fights you have voted on)
         </div>
       </div>
     </>
+  );
+}
+
+// --- UserEventStats subcomponent ---
+function UserEventStats({ userId, username }) {
+  const [eventStats, setEventStats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchStats() {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1. Fetch all user predictions
+        const predRes = await fetch(`${API_URL}/predictions?user_id=${encodeURIComponent(userId)}`);
+        if (!predRes.ok) throw new Error('Failed to fetch predictions');
+        const predictions = await predRes.json();
+        if (!predictions.length) {
+          setEventStats([]);
+          setLoading(false);
+          return;
+        }
+        // 2. Fetch all events
+        const eventsRes = await fetch(`${API_URL}/events`);
+        if (!eventsRes.ok) throw new Error('Failed to fetch events');
+        const events = await eventsRes.json();
+        // 3. Fetch all fights for all events
+        const eventIdToFights = {};
+        await Promise.all(events.map(async (event) => {
+          const fightsRes = await fetch(`${API_URL}/events/${event.id}/fights`);
+          if (!fightsRes.ok) return;
+          const fights = await fightsRes.json();
+          eventIdToFights[event.id] = fights;
+        }));
+        // 4. Map predictions to event IDs
+        const fightIdToEventId = {};
+        Object.entries(eventIdToFights).forEach(([eventId, fights]) => {
+          fights.forEach(fight => {
+            fightIdToEventId[fight.id] = eventId;
+          });
+        });
+        // 5. Group predictions by event
+        const eventPredictions = {};
+        predictions.forEach(pred => {
+          const eventId = fightIdToEventId[pred.fight_id];
+          if (eventId) {
+            if (!eventPredictions[eventId]) eventPredictions[eventId] = [];
+            eventPredictions[eventId].push(pred);
+          }
+        });
+        // 6. For each event, fetch leaderboard and extract user stats
+        const stats = [];
+        await Promise.all(Object.keys(eventPredictions).map(async (eventId) => {
+          const event = events.find(e => String(e.id) === String(eventId));
+          if (!event) return;
+          const leaderboardRes = await fetch(`${API_URL}/events/${eventId}/leaderboard`);
+          if (!leaderboardRes.ok) return;
+          const leaderboard = await leaderboardRes.json();
+          const userEntry = leaderboard.find(entry => String(entry.user_id) === String(userId));
+          if (!userEntry) return;
+          stats.push({
+            event,
+            ...userEntry
+          });
+        }));
+        // 7. Sort by event date descending
+        stats.sort((a, b) => new Date(b.event.date) - new Date(a.event.date));
+        if (isMounted) {
+          setEventStats(stats);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || 'Failed to load event stats');
+          setLoading(false);
+        }
+      }
+    }
+    fetchStats();
+    return () => { isMounted = false; };
+  }, [userId]);
+
+  if (loading) return <div style={{ color: '#a78bfa', marginBottom: 24 }}>Loading event stats...</div>;
+  if (error) return <div style={{ color: '#ff6b6b', marginBottom: 24 }}>{error}</div>;
+  if (!eventStats.length) return <div style={{ color: '#ccc', fontStyle: 'italic', marginBottom: 24 }}>No event stats yet. Vote in some fights to see your stats!</div>;
+
+  // Render event stats as cards (similar to leaderboard)
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <h3 style={{ color: '#a78bfa', marginBottom: 12, fontWeight: 700, fontSize: '1.2rem', letterSpacing: 1 }}>Your Event Stats</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {eventStats.map((stat, i) => {
+          const dateStr = stat.event.date ? new Date(stat.event.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+          const locationParts = [stat.event.venue, stat.event.location_city, stat.event.location_state].filter(Boolean);
+          const locationStr = locationParts.join(', ');
+          const roundedAccuracy = Math.round(parseFloat(stat.accuracy));
+          return (
+            <div key={stat.event.id} style={{
+              background: '#231b36',
+              borderRadius: 16,
+              padding: 16,
+              color: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              boxShadow: '0 2px 8px rgba(76,29,149,0.10)',
+              border: '1.5px solid #4c1d95',
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#a78bfa' }}>{stat.event.name}</div>
+              <div style={{ fontSize: '0.98rem', color: '#c4b5fd' }}>{dateStr}</div>
+              {locationStr && <div style={{ fontSize: '0.92rem', color: '#a1a1aa' }}>{locationStr}</div>}
+              <div style={{ display: 'flex', gap: 24, marginTop: 8, fontSize: '1.1rem', alignItems: 'center' }}>
+                <span><strong>Points:</strong> {stat.total_points}</span>
+                <span><strong>Correct:</strong> {stat.correct_predictions}/{stat.total_predictions}</span>
+                <span><strong>Accuracy:</strong> {roundedAccuracy}%</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
