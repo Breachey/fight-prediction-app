@@ -39,6 +39,37 @@ app.use(cors({
 
 app.use(express.json());
 
+// Helper function to fetch all records from a Supabase query with pagination
+async function fetchAllFromSupabase(query) {
+  let allData = [];
+  let page = 0;
+  const pageSize = 1000; // Supabase's default page size limit
+  let keepFetching = true;
+
+  while (keepFetching) {
+    const { data, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching paginated data:', error);
+      throw error; // Propagate the error up
+    }
+
+    if (data && data.length > 0) {
+      allData = allData.concat(data);
+      page++;
+    } else {
+      keepFetching = false;
+    }
+
+    // Stop if we receive fewer records than the page size, indicating it's the last page
+    if (data && data.length < pageSize) {
+      keepFetching = false;
+    }
+  }
+
+  return allData;
+}
+
 // Add connection test
 async function testSupabaseConnection() {
   try {
@@ -106,7 +137,7 @@ app.post('/register', async (req, res) => {
       .insert([
         { phone_number: phoneNumber, username: username }
       ])
-      .select()
+      .select('user_id, username, phone_number')
       .single();
 
     if (insertError) {
@@ -124,6 +155,7 @@ app.post('/register', async (req, res) => {
     }
 
     res.json({
+      user_id: newUser.user_id,
       username: newUser.username,
       phoneNumber: newUser.phone_number
     });
@@ -164,6 +196,7 @@ app.post('/login', async (req, res) => {
     }
 
     res.json({
+      user_id: user.user_id,
       username: user.username,
       phoneNumber: user.phone_number
     });
@@ -353,17 +386,16 @@ app.get('/fights', async (req, res) => {
 });
 
 app.post('/predict', async (req, res) => {
-  const { fightId, fighter_id, username } = req.body;
-
-  if (!fightId || !fighter_id || !username) {
+  const { fightId, fighter_id, username, user_id } = req.body;
+  if (!fightId || !fighter_id || (!username && !user_id)) {
     return res.status(400).json({ error: "Missing required data" });
   }
-
   try {
     console.log('Received prediction request:', {
       fightId,
       fighter_id,
-      username
+      username,
+      user_id
     });
 
     // Get fight details to get betting odds from ufc_full_fight_card
@@ -389,57 +421,41 @@ app.post('/predict', async (req, res) => {
     }
 
     // Check if prediction already exists
-    const { data: existingPrediction, error: checkError } = await supabase
-      .from('predictions')
-      .select('*')
-      .eq('fight_id', fightId)
-      .eq('username', username)
-      .single();
+    let checkQuery = supabase.from('predictions').select('*').eq('fight_id', fightId);
+    if (user_id) {
+      checkQuery = checkQuery.eq('user_id', user_id);
+    } else if (username) {
+      checkQuery = checkQuery.eq('username', username);
+    }
+    const { data: existingPrediction, error: checkError } = await checkQuery.single();
 
     if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
       console.error('Error checking existing prediction:', checkError);
       return res.status(500).json({ error: "Error checking existing prediction" });
     }
 
-    if (existingPrediction) {
-      console.log('Updating existing prediction:', existingPrediction);
-      // Update existing prediction
-      const { error: updateError } = await supabase
-        .from('predictions')
-        .update({ 
-          fighter_id: fighter_id,
-          betting_odds: betting_odds 
-        })
-        .eq('fight_id', fightId)
-        .eq('username', username);
-
-      if (updateError) {
-        console.error('Error updating prediction:', updateError);
-        return res.status(500).json({ error: "Error updating prediction" });
-      }
-
-      return res.status(200).json({ message: "Prediction updated successfully" });
+    // Insert or update prediction
+    let insertData = {
+      fight_id: fightId,
+      fighter_id,
+      betting_odds,
+    };
+    if (user_id) {
+      insertData.user_id = user_id;
     }
+    if (username) {
+      insertData.username = username;
+    }
+    let upsertQuery = supabase.from('predictions').upsert([insertData], { onConflict: ['fight_id', user_id ? 'user_id' : 'username'] });
+    const { data: upserted, error: upsertError } = await upsertQuery;
 
-    console.log('Inserting new prediction');
-    // Insert new prediction
-    const { error: insertError } = await supabase
-      .from('predictions')
-      .insert([{ 
-        fight_id: fightId,
-        fighter_id: fighter_id,
-        username,
-        selected_fighter: fighter_id,
-        betting_odds: betting_odds
-      }]);
-
-    if (insertError) {
-      console.error('Error inserting prediction:', insertError);
-      return res.status(500).json({ error: "Error saving prediction" });
+    if (upsertError) {
+      console.error('Error inserting/updating prediction:', upsertError);
+      return res.status(500).json({ error: 'Failed to submit prediction' });
     }
 
     console.log('Prediction saved successfully');
-    res.status(200).json({ message: "Prediction saved successfully" });
+    res.status(200).json(upserted);
   } catch (error) {
     console.error('Error in prediction endpoint:', error);
     res.status(500).json({ error: "Internal server error" });
@@ -447,25 +463,27 @@ app.post('/predict', async (req, res) => {
 });
 
 app.get('/predictions', async (req, res) => {
-  const { username } = req.query;
-
-  // If username is provided, filter predictions for that user
-  const query = supabase
-    .from('predictions')
-    .select('*');
-
-  if (username) {
-    query.eq('username', username);
+  try {
+    const { username, user_id } = req.query;
+    if (!username && !user_id) {
+      return res.status(400).json({ error: 'Username or user_id is required' });
+    }
+    let query = supabase.from('predictions').select('*');
+    if (user_id) {
+      query = query.eq('user_id', user_id);
+    } else if (username) {
+      query = query.eq('username', username);
+    }
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching predictions:', error);
+      return res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('Error in /predictions:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const { data, error } = await query;
-  
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Error fetching predictions' });
-  }
-  
-  res.json(data);
 });
 
 app.get('/predictions/filter', async (req, res) => {
@@ -525,8 +543,9 @@ app.get('/predictions/filter', async (req, res) => {
       userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
-        userStats[userIdStr].total_points++;
       }
+      // Directly sum the points from the table
+      userStats[userIdStr].total_points += (result.points || 0);
     });
 
     // Convert to array and sort to get rankings
@@ -641,36 +660,51 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch predictions' });
     }
 
-    // Update prediction_results for each prediction
-    if (predictions && predictions.length > 0) {
-      const predictionResults = predictions.map(prediction => {
-        // Log the comparison values for debugging
-        console.log('Prediction comparison:', {
-          fight_id: id,
-          prediction_fighter_id: prediction.fighter_id,
-          prediction_fighter_id_type: typeof prediction.fighter_id,
-          winner_id: winner_id,
-          winner_id_type: typeof winner_id,
-          isMatch: String(prediction.fighter_id) === String(winner_id)
-        });
-
-        return {
-          user_id: prediction.username,
-          fight_id: id,
-          event_id: event_id,
-          predicted_correctly: String(prediction.fighter_id) === String(winner_id),
-          created_at: new Date().toISOString()
-        };
+    // Loop through each prediction and update/insert the result
+    for (const prediction of predictions) {
+      const isMatch = String(prediction.fighter_id) === String(winner);
+      
+      // Calculate points based on betting odds if the prediction is correct
+      let points = 0;
+      if (isMatch) {
+        const odds = prediction.betting_odds;
+        if (odds !== undefined && odds !== null) {
+          // UFC odds: positive is underdog, negative is favorite
+          // For a correct pick:
+          // Underdog: Points = (odds / 100) + 1
+          // Favorite: Points = (100 / abs(odds)) + 1
+          points = odds > 0
+            ? Math.ceil((odds / 100) + 1)
+            : Math.ceil((100 / Math.abs(odds)) + 1);
+        } else {
+          points = 1; // Default to 1 point if odds are not available
+        }
+      }
+      
+      console.log('Prediction comparison:', {
+        fight_id: id,
+        user_id: prediction.user_id, // Logging the user_id being used
+        prediction_fighter_id: prediction.fighter_id,
+        winner_id: winner_id,
+        isMatch: isMatch
       });
 
-      const { error: resultsError } = await supabase
+      const { error: resultError } = await supabase
         .from('prediction_results')
-        .upsert(predictionResults, {
-          onConflict: ['user_id', 'fight_id']
+        .upsert({
+          fight_id: id,
+          user_id: prediction.user_id,
+          username: prediction.username,
+          event_id: event_id,
+          predicted_correctly: isMatch,
+          points: points,
+          created_at: new Date().toISOString()
+        }, {
+          onConflict: ['fight_id', 'user_id']
         });
 
-      if (resultsError) {
-        console.error('Error updating prediction results:', resultsError);
+      if (resultError) {
+        console.error('Error updating prediction results:', resultError);
         return res.status(500).json({ error: 'Failed to update prediction results' });
       }
     }
@@ -736,48 +770,18 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
-    // Get all prediction results
-    const { data: results, error: resultsError } = await supabase
-      .from('prediction_results')
-      .select('*');
-    if (resultsError) {
-      console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch leaderboard data',
-        details: resultsError.message 
-      });
-    }
-    // Get all predictions to get betting odds
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('*');
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch predictions data',
-        details: predictionsError.message 
-      });
-    }
+    // Get all prediction results using the pagination helper
+    const resultsQuery = supabase.from('prediction_results').select('*');
+    const results = await fetchAllFromSupabase(resultsQuery);
+
     // Get all users with their user_id, username, is_bot
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('user_id, username, is_bot');
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch user data',
-        details: usersError.message 
-      });
-    }
+    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    const users = await fetchAllFromSupabase(usersQuery);
+
     // Map user_id to username and is_bot
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    // Build oddsMap using user_id
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
-      oddsMap.set(key, pred.betting_odds);
-    });
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
@@ -795,15 +799,9 @@ app.get('/leaderboard', async (req, res) => {
       userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
-        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
-        const odds = oddsMap.get(oddsKey);
-        if (odds !== undefined && odds !== null) {
-          const points = odds > 0
-            ? Math.ceil((odds / 100) + 1)
-            : Math.ceil((100 / Math.abs(odds)) + 1);
-          userStats[userIdStr].total_points += points;
-        }
       }
+      // Directly sum the points from the table
+      userStats[userIdStr].total_points += (result.points || 0);
     });
     // Convert to array and sort to get rankings
     const leaderboard = Object.values(userStats)
@@ -836,50 +834,23 @@ app.get('/leaderboard/monthly', async (req, res) => {
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const firstDayISO = firstDay.toISOString();
     const nextMonthISO = nextMonth.toISOString();
-    // Get all prediction results for the current month
-    const { data: results, error: resultsError } = await supabase
+
+    // Get all prediction results for the current month using the pagination helper
+    const resultsQuery = supabase
       .from('prediction_results')
       .select('*')
       .gte('created_at', firstDayISO)
       .lt('created_at', nextMonthISO);
-    if (resultsError) {
-      console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch monthly leaderboard data',
-        details: resultsError.message 
-      });
-    }
-    // Get all predictions to get betting odds
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('*');
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch predictions data',
-        details: predictionsError.message 
-      });
-    }
+    const results = await fetchAllFromSupabase(resultsQuery);
+
     // Get all users with their user_id, username, is_bot
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('user_id, username, is_bot');
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch user data',
-        details: usersError.message 
-      });
-    }
+    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    const users = await fetchAllFromSupabase(usersQuery);
+
     // Map user_id to username and is_bot
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    // Build oddsMap using user_id
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
-      oddsMap.set(key, pred.betting_odds);
-    });
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
@@ -897,15 +868,9 @@ app.get('/leaderboard/monthly', async (req, res) => {
       userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
-        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
-        const odds = oddsMap.get(oddsKey);
-        if (odds !== undefined && odds !== null) {
-          const points = odds > 0
-            ? Math.ceil((odds / 100) + 1)
-            : Math.ceil((100 / Math.abs(odds)) + 1);
-          userStats[userIdStr].total_points += points;
-        }
       }
+      // Directly sum the points from the table
+      userStats[userIdStr].total_points += (result.points || 0);
     });
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
@@ -1129,60 +1094,21 @@ app.get('/events/:id/fights', async (req, res) => {
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
-    // Get all prediction results for this event
-    const { data: results, error: resultsError } = await supabase
+    
+    // Get all prediction results for this event using the pagination helper
+    const resultsQuery = supabase
       .from('prediction_results')
       .select('*')
       .eq('event_id', id);
-    if (resultsError) {
-      console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch event leaderboard data',
-        details: resultsError.message 
-      });
-    }
-    // Get all fight IDs for the event
-    const { data: fights, error: fightsError } = await supabase
-      .from('ufc_full_fight_card')
-      .select('FightId')
-      .eq('EventId', id);
-    if (fightsError) {
-      console.error('Error fetching fights:', fightsError);
-      return res.status(500).json({ error: 'Failed to fetch fights', details: fightsError.message });
-    }
-    const fightIds = fights.map(f => String(f.FightId));
-    // Get all predictions for these fights
-    const { data: predictions, error: predictionsError } = await supabase
-      .from('predictions')
-      .select('*');
-    if (predictionsError) {
-      console.error('Error fetching predictions:', predictionsError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch predictions data',
-        details: predictionsError.message 
-      });
-    }
+    const results = await fetchAllFromSupabase(resultsQuery);
+
     // Get all users with their user_id, username, is_bot
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('user_id, username, is_bot');
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      return res.status(500).json({ 
-        error: 'Failed to fetch user data',
-        details: usersError.message 
-      });
-    }
+    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    const users = await fetchAllFromSupabase(usersQuery);
+    
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    // Build oddsMap using user_id
-    const oddsMap = new Map();
-    predictions.forEach(pred => {
-      if (fightIds.includes(String(pred.fight_id))) {
-        const key = `${String(pred.fight_id)}-${String(pred.user_id)}`;
-        oddsMap.set(key, pred.betting_odds);
-      }
-    });
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
@@ -1200,15 +1126,9 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       userStats[userIdStr].total_predictions++;
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
-        const oddsKey = `${String(result.fight_id)}-${userIdStr}`;
-        const odds = oddsMap.get(oddsKey);
-        if (odds !== undefined && odds !== null) {
-          const points = odds > 0
-            ? Math.ceil((odds / 100) + 1)
-            : Math.ceil((100 / Math.abs(odds)) + 1);
-          userStats[userIdStr].total_points += points;
-        }
       }
+      // Directly sum the points from the table
+      userStats[userIdStr].total_points += (result.points || 0);
     });
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
@@ -1481,6 +1401,32 @@ app.get('/user/:username', async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('User profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get user profile by user_id
+app.get('/user/by-id/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    if (!user_id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('username, phone_number, created_at')
+      .eq('user_id', user_id)
+      .single();
+    if (error) {
+      console.error('Error fetching user profile by ID:', error);
+      return res.status(500).json({ error: 'Failed to fetch user profile' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('User profile by ID error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -4,7 +4,8 @@ import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 
-function Fights({ eventId, username }) {
+function Fights({ eventId, username, user_id }) {
+  console.log('Fights props:', { eventId, username, user_id });
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,14 +27,14 @@ function Fights({ eventId, username }) {
   const [expandedFightStats, setExpandedFightStats] = useState({});
   const [editingFight, setEditingFight] = useState(null);
 
-  // Fetch both fights and predictions when component mounts or eventId/username changes
+  // Fetch both fights and predictions when component mounts or eventId/user_id changes
   useEffect(() => {
-    if (eventId && username) {
+    if (eventId && user_id) {
       Promise.all([
         // Fetch fights
         fetch(`${API_URL}/events/${eventId}/fights`),
-        // Fetch all predictions for the user
-        fetch(`${API_URL}/predictions?username=${encodeURIComponent(username)}`)
+        // Fetch all predictions for the user by user_id
+        fetch(`${API_URL}/predictions?user_id=${encodeURIComponent(user_id)}`)
       ])
         .then(async ([fightsResponse, predictionsResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
@@ -84,7 +85,7 @@ function Fights({ eventId, username }) {
           setLoading(false);
         });
     }
-  }, [eventId, username]);
+  }, [eventId, user_id]);
 
   // Save selectedFights to localStorage whenever it changes
   useEffect(() => {
@@ -132,7 +133,7 @@ function Fights({ eventId, username }) {
 
   // Function to submit the selected vote for a fight
   const handleSubmitVote = async (fightId) => {
-    if (!username) {
+    if (!user_id) {
       setVoteErrors(prev => ({ ...prev, [fightId]: 'Please log in to vote' }));
       return;
     }
@@ -150,9 +151,11 @@ function Fights({ eventId, username }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          user_id,
           username,
           fightId,
           fighter_id: selectedFighter,
+          selected_fighter: selectedFighter,
         }),
       });
 

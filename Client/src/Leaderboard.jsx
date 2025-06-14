@@ -562,7 +562,7 @@ function Leaderboard({ eventId, currentUser }) {
                 lineHeight: 1.1,
               }}>
                 <Link
-                  to={`/profile/${encodeURIComponent(entry.username)}`}
+                  to={`/profile/${encodeURIComponent(entry.user_id)}`}
                   style={{ color: isCurrentUser ? '#ffd700' : '#fff', textDecoration: 'none', fontWeight: 700 }}
                 >
                   {entry.username}

@@ -31,6 +31,7 @@ function UserAuth({ onAuthenticate }) {
       }
 
       const userData = await response.json();
+      localStorage.setItem('user_id', userData.user_id);
       localStorage.setItem('username', userData.username);
       localStorage.setItem('phoneNumber', userData.phoneNumber);
       onAuthenticate(userData);
