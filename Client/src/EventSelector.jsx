@@ -122,17 +122,46 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             return (
               <div
                 key={event.id}
-                className={`event-card${idx === currentIndex ? ' selected' : ''}`}
+                className={`event-card${event.image_url ? ' has-image' : ''}${idx === currentIndex ? ' selected' : ''}${event.status === 'Complete' ? ' completed' : ''}`}
                 onClick={() => handleSelect(idx)}
                 tabIndex={0}
                 role="button"
                 aria-pressed={idx === currentIndex}
                 ref={el => cardRefs.current[idx] = el}
               >
-                <span className="event-title">{event.name}</span>
-                {dateStr && <span className="event-date">{dateStr}</span>}
-                {locationStr && <span className="event-location">{locationStr}</span>}
-                <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>{event.status}</span>
+                {event.image_url ? (
+                  <div className="event-image-container">
+                    <img 
+                      src={event.image_url} 
+                      alt={`${event.name} logo`}
+                      className="event-image"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        // Show text content when image fails to load
+                        const card = e.target.closest('.event-card');
+                        const textContent = card.querySelector('.event-text-content');
+                        if (textContent) {
+                          textContent.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    {/* Status badge overlay */}
+                    <div className={`status-badge-overlay ${event.status === 'Complete' ? 'completed' : (event.has_fight_data === false ? 'coming-soon' : 'upcoming')}`}>
+                      {event.status === 'Complete' ? 'Completed' : (event.has_fight_data === false ? 'Coming Soon' : 'Upcoming')}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="event-text-content">
+                    <span className="event-title">{event.name}</span>
+                    {dateStr && <span className="event-date">{dateStr}</span>}
+                    {locationStr && <span className="event-location">{locationStr}</span>}
+                    <div className="event-badges">
+                      <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>
+                        {event.status === 'Complete' ? 'Completed' : (event.has_fight_data === false ? 'Coming Soon' : 'Upcoming')}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

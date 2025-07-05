@@ -164,7 +164,7 @@ function FightAdmin({ eventId }) {
                 {fight.fighter1_name} vs {fight.fighter2_name}
               </h3>
               <div style={fighterInfoStyle}>
-                <span>Rank: #{fight.fighter1_rank || 'N/A'} vs #{fight.fighter2_rank || 'N/A'}</span>
+                <span>Rank: #{fight.fighter1_rank === 0 ? 'C' : (fight.fighter1_rank || 'N/A')} vs #{fight.fighter2_rank === 0 ? 'C' : (fight.fighter2_rank || 'N/A')}</span>
                 <span>•</span>
                 <span>Record: {fight.fighter1_record} vs {fight.fighter2_record}</span>
               </div>

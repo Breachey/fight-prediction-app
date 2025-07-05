@@ -234,7 +234,7 @@ function transformFighterData(fighter) {
     record: record,
     style: fighter.Stance || 'N/A',
     image: fighter.ImageURL,
-    rank: fighter.Rank || null,
+    rank: (fighter.Rank !== undefined && fighter.Rank !== null) ? fighter.Rank : null,
     odds: formattedOdds,
     country: fighter.FightingOutOf_Country || 'N/A',
     age: fighter.Age !== undefined ? fighter.Age : null,
@@ -899,52 +899,56 @@ app.get('/events', async (req, res) => {
   try {
     console.log('Attempting to fetch events from Supabase...');
 
-    const { data, error } = await supabase
-      .from('ufc_full_fight_card')
-      .select('Event, EventId, StartTime, EventStatus, Venue, Location_City, Location_State')
-      .order('EventId', { ascending: false });
+    // Fetch events from the events table (this is the primary source now)
+    const { data: eventsData, error: eventsError } = await supabase
+      .from('events')
+      .select('*')
+      .order('date', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching events:', error);
-      console.error('Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-      return res.status(500).json({ error: 'Failed to fetch events', details: error.message });
+    if (eventsError) {
+      console.error('Error fetching events:', eventsError);
+      return res.status(500).json({ error: 'Failed to fetch events', details: eventsError.message });
     }
 
-    if (!data) {
-      console.log('No data returned from Supabase');
+    if (!eventsData || eventsData.length === 0) {
+      console.log('No events found in events table');
       return res.status(404).json({ error: 'No events found' });
     }
 
-    // Remove duplicates using Set
-    const uniqueEvents = Array.from(
-      new Set(data.map(event => JSON.stringify({ 
-        id: event.EventId, 
-        name: event.Event,
-        date: event.StartTime,
-        status: event.EventStatus,
-        venue: event.Venue,
-        location_city: event.Location_City,
-        location_state: event.Location_State
-      })))
-    ).map(str => JSON.parse(str));
+    // Get unique EventIds from ufc_full_fight_card to check which events have fight data
+    const { data: fightCardData, error: fightCardError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('EventId')
+      .order('EventId', { ascending: false });
 
-    console.log(`Successfully fetched ${uniqueEvents.length} unique events`);
+    if (fightCardError) {
+      console.error('Error fetching fight card data:', fightCardError);
+      // Continue without fight data check - events will still be shown
+    }
+
+    // Create a set of EventIds that have fight data
+    const eventIdsWithFights = new Set();
+    if (fightCardData) {
+      fightCardData.forEach(fight => {
+        eventIdsWithFights.add(fight.EventId);
+      });
+    }
+
+    console.log(`Successfully fetched ${eventsData.length} events from events table`);
+    console.log(`Found ${eventIdsWithFights.size} events with fight data`);
 
     // Transform the data to match the expected structure
-    const transformedEvents = uniqueEvents.map(event => ({
+    const transformedEvents = eventsData.map(event => ({
       id: event.id,
       name: event.name,
       date: event.date,
-      is_completed: event.status === 'Final',
-      status: event.status === 'Final' ? 'Complete' : 'Upcoming',
+      is_completed: event.is_completed,
+      status: event.is_completed ? 'Complete' : 'Upcoming',
       venue: event.venue,
       location_city: event.location_city,
-      location_state: event.location_state
+      location_state: event.location_state,
+      image_url: event.image_url,
+      has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
 
     res.json(transformedEvents);
@@ -964,7 +968,19 @@ app.get('/events/:id/fights', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get fights for the event
+    // First check if the event exists in the events table
+    const { data: eventData, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (eventError) {
+      console.error('Error fetching event:', eventError);
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    // Get fights for the event from ufc_full_fight_card
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
       .select('*')
@@ -974,6 +990,12 @@ app.get('/events/:id/fights', async (req, res) => {
     if (error) {
       console.error('Error fetching fights for event:', error);
       return res.status(500).json({ error: 'Failed to fetch fights' });
+    }
+
+    // If no fight data exists, return empty array (this allows future events to be displayed)
+    if (!data || data.length === 0) {
+      console.log(`No fight data found for event ${id}, returning empty array`);
+      return res.json([]);
     }
 
     // Get fight results
@@ -1211,7 +1233,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_image: redFighter.ImageURL,
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
-      fighter1_rank: redFighter.Rank,
+      fighter1_rank: redFighter.rank,
       fighter1_odds: redFighter.odds,
       fighter1_streak: redFighter.Streak,
       fighter2_id: blueFighter.FighterId,
@@ -1228,7 +1250,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_image: blueFighter.ImageURL,
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
-      fighter2_rank: blueFighter.Rank,
+      fighter2_rank: blueFighter.rank,
       fighter2_odds: blueFighter.odds,
       fighter2_streak: blueFighter.Streak,
       winner: fightResult?.fighter_id || null,
