@@ -159,8 +159,8 @@
   opacity: 1;
   filter: none;
   overflow: visible;
-  border: 2.5px solid #43ccf3;
-  box-shadow: 0 0 24px #43ccf388;
+  border: 2.5px solid #FFD700;
+  box-shadow: 0 0 24px #FFD70088;
   background: none;
   animation: winnerGlow 2s infinite;
 }
@@ -171,7 +171,7 @@
   top: -12px;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(90deg, #ff74ff, #43ccf3);
+  background: linear-gradient(90deg, #FFD700, #ffec8b);
   height: 28px;
   padding: 2px 16px;
   border-radius: 4px;
@@ -189,7 +189,7 @@
 
 @keyframes winnerGlow {
   0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.5); }
+  50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.7); }
   100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
 }
 
@@ -559,13 +559,13 @@
 /* Vote badge styles */
 .vote-badge {
   position: absolute;
-  bottom: -10px;
-  right: -10px;
+  bottom: -8px;
+  right: -8px;
   background: linear-gradient(135deg, #ff74ff 0%, #43ccf3 100%);
   color: #10120a;
-  padding: 4px 10px;
+  padding: 3px 6px;
   border-radius: 14px;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: bold;
   box-shadow: 0 2px 8px #43ccf344;
   z-index: 2;
@@ -920,6 +920,19 @@
     padding: 2px 5px;
     font-size: 0.7rem;
   }
+
+  .fighter-name {
+    font-size: 1.1rem;
+    line-height: 1.3;
+    min-height: 80px;
+  }
+
+  .fighter-nickname {
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    margin: 2px 0;
+    min-height: 20px;
+  }
 }
 
 .expand-stats-button {
@@ -1060,4 +1073,23 @@
   border-radius: inherit;
   z-index: 1;
   pointer-events: none;
+}
+
+.champion-rank {
+  color: #FFD700;
+  font-weight: bold;
+  text-shadow: 0 1px 2px #0008;
+  font-size: 1.1em;
+  letter-spacing: 0.04em;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  display: inline;
+  min-width: unset;
+  min-height: unset;
+  line-height: unset;
+  text-align: unset;
+  vertical-align: unset;
 }

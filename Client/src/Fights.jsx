@@ -397,10 +397,16 @@ function Fights({ eventId, username, user_id }) {
             })}
             <div
               className={`fighter-card ${
-                (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id) ? 'selected' : ''
-              } ${(submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id) || 
-                   (fight.is_completed && String(fight.winner) !== String(fight.fighter1_id)) ? 'unselected' : ''
-              } ${fight.is_completed && String(fight.winner) === String(fight.fighter1_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
+                fight.is_completed
+                  ? String(fight.winner) === String(fight.fighter1_id)
+                    ? 'winner'
+                    : 'loser'
+                  : (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id)
+                    ? 'selected'
+                    : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id)
+                      ? 'unselected'
+                      : ''
+              }`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
             >
               {console.log('Fighter 1 class data:', {
@@ -440,7 +446,7 @@ function Fights({ eventId, username, user_id }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter1_rank || 'N/A'}</span>
+                  <span>{fight.fighter1_rank === 0 ? <span className="champion-rank">C</span> : (fight.fighter1_rank || 'N/A')}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -453,6 +459,12 @@ function Fights({ eventId, username, user_id }) {
                   </span>
                 </div>
               </div>
+              {console.log('Rank debug:', {
+                fighter1_rank: fight.fighter1_rank,
+                fighter1_rank_type: typeof fight.fighter1_rank,
+                fighter2_rank: fight.fighter2_rank,
+                fighter2_rank_type: typeof fight.fighter2_rank
+              })}
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
                   {console.log('Fighter 1 Streak Debug:', {
@@ -496,10 +508,16 @@ function Fights({ eventId, username, user_id }) {
             {/* Fighter 2 Card */}
             <div
               className={`fighter-card ${
-                (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id) ? 'selected' : ''
-              } ${(submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id) || 
-                   (fight.is_completed && String(fight.winner) !== String(fight.fighter2_id)) ? 'unselected' : ''
-              } ${fight.is_completed && String(fight.winner) === String(fight.fighter2_id) ? 'winner' : fight.is_completed ? 'loser' : ''}`}
+                fight.is_completed
+                  ? String(fight.winner) === String(fight.fighter2_id)
+                    ? 'winner'
+                    : 'loser'
+                  : (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id)
+                    ? 'selected'
+                    : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id)
+                      ? 'unselected'
+                      : ''
+              }`}
               onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
             >
               {console.log('Fighter 2 class data:', {
@@ -539,7 +557,7 @@ function Fights({ eventId, username, user_id }) {
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter2_rank || 'N/A'}</span>
+                  <span>{fight.fighter2_rank === 0 ? <span className="champion-rank">C</span> : (fight.fighter2_rank || 'N/A')}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -552,6 +570,12 @@ function Fights({ eventId, username, user_id }) {
                   </span>
                 </div>
               </div>
+              {console.log('Rank debug:', {
+                fighter1_rank: fight.fighter1_rank,
+                fighter1_rank_type: typeof fight.fighter1_rank,
+                fighter2_rank: fight.fighter2_rank,
+                fighter2_rank_type: typeof fight.fighter2_rank
+              })}
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
                   {console.log('Fighter 2 Streak Debug:', {
@@ -708,9 +732,9 @@ function Fights({ eventId, username, user_id }) {
         </div>
       ))}
 
-      {fights.length === 0 && (
+      {fights.length === 0 && !loading && (
         <div className="no-fights-message">
-          No upcoming fights available
+          No fights available for this event yet. Check back later for updates!
         </div>
       )}
     </div>
