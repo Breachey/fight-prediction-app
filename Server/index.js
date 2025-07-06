@@ -12,6 +12,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
+// Validate admin client setup
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY not set, falling back to ANON_KEY. Admin operations may fail.');
+}
+
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -44,6 +49,17 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Add global error handlers to prevent server crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process, just log the error
+});
 
 // Helper function to fetch all records from a Supabase query with pagination
 async function fetchAllFromSupabase(query) {
@@ -102,6 +118,24 @@ async function testSupabaseConnection() {
       console.error('Failed to get table structure:', error);
     } else if (data && data.length > 0) {
       console.log('Available columns in ufc_full_fight_card:', Object.keys(data[0]).join(', '));
+    }
+
+    // Test admin client permissions
+    try {
+      console.log('Testing admin client permissions...');
+      const { data: adminTestData, error: adminTestError } = await supabaseAdmin
+        .from('users')
+        .select('user_id')
+        .limit(1);
+      
+      if (adminTestError) {
+        console.warn('Admin client test failed:', adminTestError);
+        console.warn('Admin operations may fail - check SUPABASE_SERVICE_ROLE_KEY');
+      } else {
+        console.log('Admin client test successful');
+      }
+    } catch (adminError) {
+      console.warn('Admin client test error:', adminError);
     }
 
     console.log('Supabase connection test successful');
@@ -1881,6 +1915,8 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
     const { user_id } = req.params;
     const { playercard_id } = req.body;
     
+    console.log('Playercard update request:', { user_id, playercard_id });
+    
     if (!user_id) {
       return res.status(400).json({ error: 'User ID is required' });
     }
@@ -1890,54 +1926,68 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
     }
     
     // Verify the playercard exists and get its requirements
-    const { data: playercard, error: playercardError } = await supabase
-      .from('playercards')
-      .select('id, required_event_id')
-      .eq('id', playercard_id)
-      .single();
-    
-    if (playercardError || !playercard) {
-      return res.status(404).json({ error: 'Playercard not found' });
+    let playercard;
+    try {
+      const { data, error: playercardError } = await supabase
+        .from('playercards')
+        .select('id, required_event_id')
+        .eq('id', playercard_id)
+        .single();
+      
+      if (playercardError || !data) {
+        console.error('Playercard not found:', playercardError);
+        return res.status(404).json({ error: 'Playercard not found' });
+      }
+      
+      playercard = data;
+    } catch (error) {
+      console.error('Error fetching playercard:', error);
+      return res.status(500).json({ error: 'Failed to fetch playercard' });
     }
     
     // If playercard requires an event, check if user voted in that event
     if (playercard.required_event_id !== null && playercard.required_event_id !== undefined) {
-      // Get all user predictions
-      const { data: userPredictions, error: predictionsError } = await supabase
-        .from('predictions')
-        .select('fight_id')
-        .eq('user_id', user_id);
-      
-      if (predictionsError) {
-        console.error('Error fetching user predictions:', predictionsError);
+      try {
+        // Get all user predictions
+        const { data: userPredictions, error: predictionsError } = await supabase
+          .from('predictions')
+          .select('fight_id')
+          .eq('user_id', user_id);
+        
+        if (predictionsError) {
+          console.error('Error fetching user predictions:', predictionsError);
+          return res.status(500).json({ error: 'Failed to verify voting eligibility' });
+        }
+        
+        // Get fight-to-event mapping
+        const { data: fights, error: fightsError } = await supabase
+          .from('ufc_full_fight_card')
+          .select('FightId, EventId')
+          .eq('EventId', playercard.required_event_id);
+        
+        if (fightsError) {
+          console.error('Error fetching fights:', fightsError);
+          return res.status(500).json({ error: 'Failed to verify voting eligibility' });
+        }
+        
+        // Check if user voted in any fight from the required event
+        const requiredEventFightIds = new Set(fights.map(f => f.FightId));
+        // Convert fight_ids to numbers for comparison since predictions store them as strings
+        const userVotedFightIds = new Set(userPredictions.map(p => parseInt(p.fight_id)));
+        
+        const hasVotedInRequiredEvent = [...requiredEventFightIds].some(fightId => 
+          userVotedFightIds.has(fightId)
+        );
+        
+        if (!hasVotedInRequiredEvent) {
+          return res.status(403).json({ 
+            error: 'You must vote in the required event to unlock this playercard',
+            required_event_id: playercard.required_event_id
+          });
+        }
+      } catch (error) {
+        console.error('Error during event verification:', error);
         return res.status(500).json({ error: 'Failed to verify voting eligibility' });
-      }
-      
-      // Get fight-to-event mapping
-      const { data: fights, error: fightsError } = await supabase
-        .from('ufc_full_fight_card')
-        .select('FightId, EventId')
-        .eq('EventId', playercard.required_event_id);
-      
-      if (fightsError) {
-        console.error('Error fetching fights:', fightsError);
-        return res.status(500).json({ error: 'Failed to verify voting eligibility' });
-      }
-      
-      // Check if user voted in any fight from the required event
-      const requiredEventFightIds = new Set(fights.map(f => f.FightId));
-      // Convert fight_ids to numbers for comparison since predictions store them as strings
-      const userVotedFightIds = new Set(userPredictions.map(p => parseInt(p.fight_id)));
-      
-      const hasVotedInRequiredEvent = [...requiredEventFightIds].some(fightId => 
-        userVotedFightIds.has(fightId)
-      );
-      
-      if (!hasVotedInRequiredEvent) {
-        return res.status(403).json({ 
-          error: 'You must vote in the required event to unlock this playercard',
-          required_event_id: playercard.required_event_id
-        });
       }
     }
     
@@ -1945,78 +1995,99 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
     console.log('Attempting to update user', user_id, 'to playercard', playercard_id);
     
     // First verify the user exists
-    const { data: existingUser, error: userCheckError } = await supabase
-      .from('users')
-      .select('user_id, username, selected_playercard_id')
-      .eq('user_id', user_id)
-      .single();
-    
-    if (userCheckError || !existingUser) {
-      console.error('User not found:', userCheckError);
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    console.log('User exists:', existingUser);
-    
-    // Try the update with the admin client to bypass RLS
-    const { data: updatedUser, error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({ selected_playercard_id: parseInt(playercard_id) })
-      .eq('user_id', parseInt(user_id))
-      .select('user_id, username, selected_playercard_id');
-    
-    console.log('Update result:', updatedUser);
-    console.log('Update error:', updateError);
-    
-    if (updateError) {
-      console.error('Error updating user playercard:', updateError);
-      return res.status(500).json({ 
-        error: 'Failed to update playercard', 
-        details: updateError.message,
-        code: updateError.code 
-      });
-    }
-    
-    // If the update didn't return data, try to fetch the user again to verify the update worked
-    if (!updatedUser || updatedUser.length === 0) {
-      console.log('Update returned empty, checking if update actually succeeded...');
-      const { data: verifyUser, error: verifyError } = await supabaseAdmin
+    let existingUser;
+    try {
+      const { data, error: userCheckError } = await supabase
         .from('users')
         .select('user_id, username, selected_playercard_id')
-        .eq('user_id', parseInt(user_id))
+        .eq('user_id', user_id)
         .single();
       
-      console.log('Verification result:', verifyUser);
-      console.log('Verification error:', verifyError);
-      
-      if (verifyError) {
-        console.error('Error verifying user update:', verifyError);
-        return res.status(500).json({ error: 'Failed to verify update' });
+      if (userCheckError || !data) {
+        console.error('User not found:', userCheckError);
+        return res.status(404).json({ error: 'User not found' });
       }
       
-      if (verifyUser && verifyUser.selected_playercard_id == playercard_id) {
-        console.log('Update actually succeeded, using verification data');
-        // Update succeeded, use the verification data
-        const user = verifyUser;
-        return res.json({
-          message: 'Playercard updated successfully',
-          user: user
-        });
-      } else {
-        console.error('Update verification failed - playercard not updated');
-        return res.status(500).json({ error: 'Update failed to persist' });
-      }
+      existingUser = data;
+      console.log('User exists:', existingUser);
+    } catch (error) {
+      console.error('Error checking user existence:', error);
+      return res.status(500).json({ error: 'Failed to verify user' });
     }
     
-    const user = updatedUser[0];
+    // Try the update with the admin client to bypass RLS
+    try {
+      const { data: updatedUser, error: updateError } = await supabaseAdmin
+        .from('users')
+        .update({ selected_playercard_id: parseInt(playercard_id) })
+        .eq('user_id', parseInt(user_id))
+        .select('user_id, username, selected_playercard_id');
+      
+      console.log('Update result:', updatedUser);
+      console.log('Update error:', updateError);
+      
+      if (updateError) {
+        console.error('Error updating user playercard:', updateError);
+        return res.status(500).json({ 
+          error: 'Failed to update playercard', 
+          details: updateError.message,
+          code: updateError.code 
+        });
+      }
+      
+      // If the update didn't return data, try to fetch the user again to verify the update worked
+      if (!updatedUser || updatedUser.length === 0) {
+        console.log('Update returned empty, checking if update actually succeeded...');
+        try {
+          const { data: verifyUser, error: verifyError } = await supabaseAdmin
+            .from('users')
+            .select('user_id, username, selected_playercard_id')
+            .eq('user_id', parseInt(user_id))
+            .single();
+          
+          console.log('Verification result:', verifyUser);
+          console.log('Verification error:', verifyError);
+          
+          if (verifyError) {
+            console.error('Error verifying user update:', verifyError);
+            return res.status(500).json({ error: 'Failed to verify update' });
+          }
+          
+          if (verifyUser && verifyUser.selected_playercard_id == playercard_id) {
+            console.log('Update actually succeeded, using verification data');
+            return res.json({
+              message: 'Playercard updated successfully',
+              user: verifyUser
+            });
+          } else {
+            console.error('Update verification failed - playercard not updated');
+            return res.status(500).json({ error: 'Update failed to persist' });
+          }
+        } catch (error) {
+          console.error('Error during update verification:', error);
+          return res.status(500).json({ error: 'Failed to verify update' });
+        }
+      }
+      
+      const user = updatedUser[0];
+      console.log('Playercard update completed successfully');
+      
+      return res.json({
+        message: 'Playercard updated successfully',
+        user: user
+      });
+      
+    } catch (error) {
+      console.error('Error during user update:', error);
+      return res.status(500).json({ error: 'Failed to update user' });
+    }
     
-    res.json({
-      message: 'Playercard updated successfully',
-      user: user
-    });
   } catch (error) {
-    console.error('Update playercard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update playercard error - top level:', error);
+    // Make sure we always return a response
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
