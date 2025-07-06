@@ -6,6 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuaXhub2hkZWF5c3BlZ3RyZmRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyODE3NzksImV4cCI6MjA1ODg1Nzc3OX0.quxIKY4BIWXAxSXVUSP353-sR_NBTCcrVZ8Fuj6hmiE'
 );
 
+// Create a service role client for admin operations
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL || 'https://rnixnohdeayspegtrfds.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+);
+
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -32,7 +38,7 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200
 }));
@@ -578,10 +584,21 @@ app.get('/predictions/filter', async (req, res) => {
       return res.status(500).json({ error: "Error fetching predictions" });
     }
 
-    // Get user information including is_bot status
+    // Get user information including is_bot status and playercard info
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('user_id, username, is_bot');
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
@@ -630,12 +647,14 @@ app.get('/predictions/filter', async (req, res) => {
 
     // Create maps for user data - use username instead of user_id for rankMap
     const userMap = new Map(users.map(user => [user.username, user.is_bot]));
+    const playercardMap = new Map(users.map(user => [user.username, user.playercards]));
     const rankMap = new Map(leaderboard.map((user, index) => [user.username, index + 1]));
 
-    // Add is_bot status and ranking to each prediction
+    // Add is_bot status, playercard, and ranking to each prediction
     const predictionsWithMetadata = predictions.map(prediction => ({
       ...prediction,
       is_bot: userMap.get(prediction.username) || false,
+      playercard: playercardMap.get(prediction.username) || null,
       rank: rankMap.get(prediction.username) || null
     }));
 
@@ -979,13 +998,27 @@ app.get('/leaderboard', async (req, res) => {
     const resultsQuery = supabase.from('prediction_results').select('*');
     const results = await fetchAllFromSupabase(resultsQuery);
 
-    // Get all users with their user_id, username, is_bot
-    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    // Get all users with their user_id, username, is_bot, and playercard info
+    const usersQuery = supabase
+      .from('users')
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
     const users = await fetchAllFromSupabase(usersQuery);
 
-    // Map user_id to username and is_bot
+    // Map user_id to username, is_bot, and playercard info
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
 
     // Process the results to create the leaderboard
     const userStats = {};
@@ -996,6 +1029,7 @@ app.get('/leaderboard', async (req, res) => {
           user_id: userIdStr,
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
+          playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -1048,13 +1082,27 @@ app.get('/leaderboard/monthly', async (req, res) => {
       .lt('created_at', nextMonthISO);
     const results = await fetchAllFromSupabase(resultsQuery);
 
-    // Get all users with their user_id, username, is_bot
-    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    // Get all users with their user_id, username, is_bot, and playercard info
+    const usersQuery = supabase
+      .from('users')
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
     const users = await fetchAllFromSupabase(usersQuery);
 
-    // Map user_id to username and is_bot
+    // Map user_id to username, is_bot, and playercard info
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
 
     // Process the results to create the leaderboard
     const userStats = {};
@@ -1065,6 +1113,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
           user_id: userIdStr,
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
+          playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -1340,12 +1389,26 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       .eq('event_id', id);
     const results = await fetchAllFromSupabase(resultsQuery);
 
-    // Get all users with their user_id, username, is_bot
-    const usersQuery = supabase.from('users').select('user_id, username, is_bot');
+    // Get all users with their user_id, username, is_bot, and playercard info
+    const usersQuery = supabase
+      .from('users')
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
     const users = await fetchAllFromSupabase(usersQuery);
     
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
 
     // Process the results to create the leaderboard
     const userStats = {};
@@ -1356,6 +1419,7 @@ app.get('/events/:id/leaderboard', async (req, res) => {
           user_id: userIdStr,
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
+          playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -1635,7 +1699,18 @@ app.get('/user/:username', async (req, res) => {
     }
     const { data: user, error } = await supabase
       .from('users')
-      .select('username, phone_number, created_at')
+      .select(`
+        username, 
+        phone_number, 
+        created_at, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `)
       .eq('username', username)
       .single();
     if (error) {
@@ -1661,7 +1736,18 @@ app.get('/user/by-id/:user_id', async (req, res) => {
     }
     const { data: user, error } = await supabase
       .from('users')
-      .select('username, phone_number, created_at')
+      .select(`
+        username, 
+        phone_number, 
+        created_at, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `)
       .eq('user_id', user_id)
       .single();
     if (error) {
@@ -1718,6 +1804,291 @@ app.post('/admin/set-user-type', async (req, res) => {
     });
   } catch (error) {
     console.error('Set user type error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all available playercards
+app.get('/playercards', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    const { data: playercards, error } = await supabase
+      .from('playercards')
+      .select('*')
+      .order('category', { ascending: true })
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching playercards:', error);
+      return res.status(500).json({ error: 'Failed to fetch playercards' });
+    }
+    
+    // If user_id is provided, check which playercards they can access
+    if (user_id) {
+      // Get all events the user has voted in
+      const { data: userPredictions, error: predictionsError } = await supabase
+        .from('predictions')
+        .select('fight_id')
+        .eq('user_id', user_id);
+      
+      if (predictionsError) {
+        console.error('Error fetching user predictions:', predictionsError);
+        return res.status(500).json({ error: 'Failed to fetch user predictions' });
+      }
+      
+      // Get fight-to-event mapping
+      const { data: fights, error: fightsError } = await supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, EventId');
+      
+      if (fightsError) {
+        console.error('Error fetching fights:', fightsError);
+        return res.status(500).json({ error: 'Failed to fetch fights data' });
+      }
+      
+      // Create set of events user has voted in
+      // Convert fight_ids to numbers for comparison since predictions store them as strings
+      const userVotedFightIds = new Set(userPredictions.map(p => parseInt(p.fight_id)));
+      const userVotedEventIds = new Set();
+      
+      fights.forEach(fight => {
+        if (userVotedFightIds.has(fight.FightId)) {
+          userVotedEventIds.add(fight.EventId);
+        }
+      });
+      
+      // Add availability status to each playercard
+      const playercardswithAvailability = playercards.map(card => ({
+        ...card,
+        is_available: !card.required_event_id || userVotedEventIds.has(card.required_event_id),
+        required_event_id: card.required_event_id
+      }));
+      
+      res.json(playercardswithAvailability);
+    } else {
+      res.json(playercards || []);
+    }
+  } catch (error) {
+    console.error('Playercards error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user's selected playercard
+app.patch('/user/:user_id/playercard', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { playercard_id } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    if (!playercard_id) {
+      return res.status(400).json({ error: 'Playercard ID is required' });
+    }
+    
+    // Verify the playercard exists and get its requirements
+    const { data: playercard, error: playercardError } = await supabase
+      .from('playercards')
+      .select('id, required_event_id')
+      .eq('id', playercard_id)
+      .single();
+    
+    if (playercardError || !playercard) {
+      return res.status(404).json({ error: 'Playercard not found' });
+    }
+    
+    // If playercard requires an event, check if user voted in that event
+    if (playercard.required_event_id !== null && playercard.required_event_id !== undefined) {
+      // Get all user predictions
+      const { data: userPredictions, error: predictionsError } = await supabase
+        .from('predictions')
+        .select('fight_id')
+        .eq('user_id', user_id);
+      
+      if (predictionsError) {
+        console.error('Error fetching user predictions:', predictionsError);
+        return res.status(500).json({ error: 'Failed to verify voting eligibility' });
+      }
+      
+      // Get fight-to-event mapping
+      const { data: fights, error: fightsError } = await supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, EventId')
+        .eq('EventId', playercard.required_event_id);
+      
+      if (fightsError) {
+        console.error('Error fetching fights:', fightsError);
+        return res.status(500).json({ error: 'Failed to verify voting eligibility' });
+      }
+      
+      // Check if user voted in any fight from the required event
+      const requiredEventFightIds = new Set(fights.map(f => f.FightId));
+      // Convert fight_ids to numbers for comparison since predictions store them as strings
+      const userVotedFightIds = new Set(userPredictions.map(p => parseInt(p.fight_id)));
+      
+      const hasVotedInRequiredEvent = [...requiredEventFightIds].some(fightId => 
+        userVotedFightIds.has(fightId)
+      );
+      
+      if (!hasVotedInRequiredEvent) {
+        return res.status(403).json({ 
+          error: 'You must vote in the required event to unlock this playercard',
+          required_event_id: playercard.required_event_id
+        });
+      }
+    }
+    
+    // Update the user's selected playercard
+    console.log('Attempting to update user', user_id, 'to playercard', playercard_id);
+    
+    // First verify the user exists
+    const { data: existingUser, error: userCheckError } = await supabase
+      .from('users')
+      .select('user_id, username, selected_playercard_id')
+      .eq('user_id', user_id)
+      .single();
+    
+    if (userCheckError || !existingUser) {
+      console.error('User not found:', userCheckError);
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    console.log('User exists:', existingUser);
+    
+    // Try the update with the admin client to bypass RLS
+    const { data: updatedUser, error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ selected_playercard_id: parseInt(playercard_id) })
+      .eq('user_id', parseInt(user_id))
+      .select('user_id, username, selected_playercard_id');
+    
+    console.log('Update result:', updatedUser);
+    console.log('Update error:', updateError);
+    
+    if (updateError) {
+      console.error('Error updating user playercard:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update playercard', 
+        details: updateError.message,
+        code: updateError.code 
+      });
+    }
+    
+    // If the update didn't return data, try to fetch the user again to verify the update worked
+    if (!updatedUser || updatedUser.length === 0) {
+      console.log('Update returned empty, checking if update actually succeeded...');
+      const { data: verifyUser, error: verifyError } = await supabaseAdmin
+        .from('users')
+        .select('user_id, username, selected_playercard_id')
+        .eq('user_id', parseInt(user_id))
+        .single();
+      
+      console.log('Verification result:', verifyUser);
+      console.log('Verification error:', verifyError);
+      
+      if (verifyError) {
+        console.error('Error verifying user update:', verifyError);
+        return res.status(500).json({ error: 'Failed to verify update' });
+      }
+      
+      if (verifyUser && verifyUser.selected_playercard_id == playercard_id) {
+        console.log('Update actually succeeded, using verification data');
+        // Update succeeded, use the verification data
+        const user = verifyUser;
+        return res.json({
+          message: 'Playercard updated successfully',
+          user: user
+        });
+      } else {
+        console.error('Update verification failed - playercard not updated');
+        return res.status(500).json({ error: 'Update failed to persist' });
+      }
+    }
+    
+    const user = updatedUser[0];
+    
+    res.json({
+      message: 'Playercard updated successfully',
+      user: user
+    });
+  } catch (error) {
+    console.error('Update playercard error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Database migration endpoint (run once to add required_event_id column)
+app.post('/migrate/add-playercard-event-requirements', async (req, res) => {
+  try {
+    // Add required_event_id column to playercards table
+    const { error } = await supabase.rpc('exec_sql', {
+      sql: `
+        ALTER TABLE playercards 
+        ADD COLUMN IF NOT EXISTS required_event_id INTEGER REFERENCES events(id);
+      `
+    });
+    
+    if (error) {
+      console.error('Migration error:', error);
+      return res.status(500).json({ error: 'Migration failed', details: error.message });
+    }
+    
+    res.json({ message: 'Migration completed successfully' });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ error: 'Migration failed', details: error.message });
+  }
+});
+
+// Endpoint to set event requirements for specific playercards
+app.patch('/playercards/:id/event-requirement', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { required_event_id } = req.body;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Playercard ID is required' });
+    }
+    
+    // Verify the event exists if provided
+    if (required_event_id !== null && required_event_id !== undefined) {
+      const { data: event, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('id', required_event_id)
+        .single();
+      
+      if (eventError || !event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+    }
+    
+    // Update the playercard
+    const { data: updatedCard, error: updateError } = await supabase
+      .from('playercards')
+      .update({ required_event_id })
+      .eq('id', id)
+      .select('*')
+      .single();
+    
+    if (updateError) {
+      console.error('Error updating playercard:', updateError);
+      return res.status(500).json({ error: 'Failed to update playercard' });
+    }
+    
+    if (!updatedCard) {
+      return res.status(404).json({ error: 'Playercard not found' });
+    }
+    
+    res.json({
+      message: 'Playercard event requirement updated successfully',
+      playercard: updatedCard
+    });
+  } catch (error) {
+    console.error('Update playercard requirement error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
