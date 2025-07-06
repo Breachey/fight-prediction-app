@@ -5,6 +5,8 @@ import badgeBestPerc from './assets/badge_best_perc_1000x1000.svg';
 import badgeMostGuesses from './assets/badge_most_guesses_1000x1000.svg';
 import badgeMostPoints from './assets/badge_most_points_1000x1000.svg';
 import badgeWorstPerc from './assets/badge_worst_perc_1000x1000.svg';
+import PlayerCard from './components/PlayerCard';
+import PlayerCardSelector from './components/PlayerCardSelector';
 
 function formatAccountAge(createdAt) {
   if (!createdAt) return '';
@@ -147,6 +149,7 @@ function ProfilePage({ user: loggedInUser }) {
           username: userEntry.username, // display username
           user_id: userEntry.user_id,   // keep user_id if needed for backend
           phoneNumber: routeUserId ? undefined : loggedInUser.phoneNumber,
+          playercard: userEntry.playercard
         });
         
         // Calculate badges
@@ -262,68 +265,139 @@ function ProfilePage({ user: loggedInUser }) {
       <div
         ref={cardRef}
         style={{
-          maxWidth: 600,
+          maxWidth: 800,
           margin: '0 auto',
-          padding: 32,
+          padding: '20px',
           background: 'linear-gradient(135deg, #1a1a1a 80%, #2d1f47 100%)',
-          borderRadius: 16,
+          borderRadius: 20,
           border: '1px solid #4c1d95',
           color: '#fff',
           boxShadow: '0 8px 32px 0 rgba(76,29,149,0.18)',
           opacity: 0,
         }}
       >
-        <h2 style={{ color: '#a78bfa', marginBottom: 24, letterSpacing: 2, fontWeight: 700, fontSize: '2.2rem' }}>Profile</h2>
-        <div style={{ marginBottom: 16, fontSize: '1.3rem' }}>
-          <strong>Username:</strong>{' '}
-          <span
-            ref={usernameRef}
-            style={{
-              fontWeight: 700,
-              fontSize: '1.5rem',
-              color: '#fff',
-              animation: 'usernameGlow 2.5s infinite alternate',
-              opacity: 0,
-              padding: '0 8px',
-              borderRadius: 8,
-              background: 'linear-gradient(90deg, #4c1d95 0%, #a78bfa 100%)',
-              boxShadow: '0 0 12px #a78bfa44',
-              display: 'inline-block',
-              transition: 'box-shadow 0.3s',
-            }}
-          >
-            {profileUser.username}
-          </span>
-        </div>
-        {/* Account Age Stat */}
-        <div style={{ marginBottom: 24, fontSize: '1.05rem', color: '#a78bfa', minHeight: 24 }}>
-          {accountAgeLoading ? (
-            <span style={{ color: '#a78bfa' }}>Loading account age...</span>
-          ) : accountAgeError ? (
-            <span style={{ color: '#ff6b6b' }}>{accountAgeError}</span>
-          ) : accountCreatedAt ? (
-            <span>{formatAccountAge(accountCreatedAt)}</span>
-          ) : null}
-        </div>
-        {profileUser.phoneNumber && (
-          <div style={{ marginBottom: 32, fontSize: '1.1rem', color: '#e0e0e0' }}>
-            <strong>Phone Number:</strong> {profileUser.phoneNumber}
+        {/* Profile Title */}
+        <h1 style={{ 
+          color: '#a78bfa', 
+          marginBottom: 32, 
+          letterSpacing: 2, 
+          fontWeight: 700, 
+          fontSize: '2.5rem',
+          textAlign: 'center',
+          textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
+        }}>
+          Profile
+        </h1>
+
+        {/* Current Playercard with Username Overlay */}
+        {profileUser && (
+          <div style={{ 
+            marginBottom: 40, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            position: 'relative'
+          }}>
+            <div style={{ position: 'relative', marginBottom: 16 }}>
+              <PlayerCard
+                username={profileUser.username}
+                playercard={profileUser.playercard}
+                size="large"
+                isCurrentUser={loggedInUser.user_id === profileUser.user_id}
+              />
+            </div>
+
+            {/* Account Age */}
+            <div style={{ fontSize: '1rem', color: '#a78bfa', marginBottom: 20, textAlign: 'center' }}>
+              {accountAgeLoading ? (
+                <span style={{ color: '#a78bfa' }}>Loading account age...</span>
+              ) : accountAgeError ? (
+                <span style={{ color: '#ff6b6b' }}>{accountAgeError}</span>
+              ) : accountCreatedAt ? (
+                <span>{formatAccountAge(accountCreatedAt)}</span>
+              ) : null}
+            </div>
+
+            {/* Playercard Selector for Current User */}
+            {loggedInUser.user_id === profileUser.user_id && (
+              <div style={{ width: '100%', maxWidth: 600 }}>
+                <h3 style={{ 
+                  color: '#a78bfa', 
+                  marginBottom: 16, 
+                  fontWeight: 600, 
+                  fontSize: '1.3rem', 
+                  letterSpacing: 1,
+                  textAlign: 'center'
+                }}>
+                  Change Your Playercard
+                </h3>
+                <PlayerCardSelector
+                  currentPlayercardId={profileUser.playercard?.id}
+                  userId={profileUser.user_id}
+                  onChange={() => window.location.reload()} // reload to update preview
+                />
+              </div>
+            )}
           </div>
         )}
         
         {/* Badges Section */}
-        <div style={{ marginBottom: 32 }}>
-          <h3 style={{ color: '#FFD700', marginBottom: 12, fontWeight: 700, fontSize: '1.2rem', letterSpacing: 1 }}>Badges</h3>
+        <div style={{ marginBottom: 40 }}>
+          <h3 style={{ 
+            color: '#FFD700', 
+            marginBottom: 20, 
+            fontWeight: 700, 
+            fontSize: '1.4rem', 
+            letterSpacing: 1,
+            textAlign: 'center',
+            textShadow: '0 2px 8px rgba(255, 215, 0, 0.3)'
+          }}>
+            Badges
+          </h3>
           {loading ? (
-            <div style={{ color: '#a78bfa', fontStyle: 'italic' }}>Loading badges...</div>
+            <div style={{ color: '#a78bfa', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
           ) : badges.length === 0 ? (
-            <div style={{ color: '#ccc', fontStyle: 'italic' }}>No badges yet. Get to the top of the leaderboard to earn some!</div>
+            <div style={{ 
+              color: '#ccc', 
+              fontStyle: 'italic', 
+              textAlign: 'center',
+              padding: 20,
+              background: 'rgba(76, 29, 149, 0.1)',
+              borderRadius: 12,
+              border: '1px dashed #4c1d95'
+            }}>
+              No badges yet. Get to the top of the leaderboard to earn some!
+            </div>
           ) : (
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ 
+              display: 'flex', 
+              gap: 24, 
+              flexWrap: 'wrap', 
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
               {badges.map((badge, i) => (
-                <div key={badge.key} style={{ textAlign: 'center', animation: 'badgePop 0.7s cubic-bezier(.61,1.42,.41,.99) both', animationDelay: `${0.2 + i * 0.15}s` }}>
-                  <div style={{ marginBottom: 6 }}>{badge.svg}</div>
-                  <div style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', letterSpacing: 0.5 }}>{badge.label}</div>
+                <div 
+                  key={badge.key} 
+                  style={{ 
+                    textAlign: 'center', 
+                    animation: 'badgePop 0.7s cubic-bezier(.61,1.42,.41,.99) both', 
+                    animationDelay: `${0.2 + i * 0.15}s`,
+                    padding: 16,
+                    background: 'rgba(255, 215, 0, 0.1)',
+                    borderRadius: 16,
+                    border: '1px solid rgba(255, 215, 0, 0.3)'
+                  }}
+                >
+                  <div style={{ marginBottom: 8 }}>{badge.svg}</div>
+                  <div style={{ 
+                    color: '#FFD700', 
+                    fontWeight: 600, 
+                    fontSize: '1rem', 
+                    letterSpacing: 0.5 
+                  }}>
+                    {badge.label}
+                  </div>
                 </div>
               ))}
             </div>
@@ -332,11 +406,6 @@ function ProfilePage({ user: loggedInUser }) {
         
         {/* User Event Stats Section */}
         <UserEventStats userId={profileUser.user_id} username={profileUser.username} />
-        
-        <h3 style={{ color: '#a78bfa', marginBottom: 12, fontWeight: 600, fontSize: '1.2rem', letterSpacing: 1 }}>Your Voted Fights</h3>
-        <div style={{ color: '#ccc', fontStyle: 'italic', fontSize: '1.05rem' }}>
-          (Coming soon: List of fights you have voted on)
-        </div>
       </div>
     </>
   );
@@ -423,14 +492,37 @@ function UserEventStats({ userId, username }) {
     return () => { isMounted = false; };
   }, [userId]);
 
-  if (loading) return <div style={{ color: '#a78bfa', marginBottom: 24 }}>Loading event stats...</div>;
-  if (error) return <div style={{ color: '#ff6b6b', marginBottom: 24 }}>{error}</div>;
-  if (!eventStats.length) return <div style={{ color: '#ccc', fontStyle: 'italic', marginBottom: 24 }}>No event stats yet. Vote in some fights to see your stats!</div>;
+  if (loading) return <div style={{ color: '#a78bfa', marginBottom: 24, textAlign: 'center' }}>Loading event stats...</div>;
+  if (error) return <div style={{ color: '#ff6b6b', marginBottom: 24, textAlign: 'center' }}>{error}</div>;
+  if (!eventStats.length) return (
+    <div style={{ 
+      color: '#ccc', 
+      fontStyle: 'italic', 
+      marginBottom: 24, 
+      textAlign: 'center',
+      padding: 20,
+      background: 'rgba(76, 29, 149, 0.1)',
+      borderRadius: 12,
+      border: '1px dashed #4c1d95'
+    }}>
+      No event stats yet. Vote in some fights to see your stats!
+    </div>
+  );
 
   // Render event stats as cards (similar to leaderboard)
   return (
     <div style={{ marginBottom: 32 }}>
-      <h3 style={{ color: '#a78bfa', marginBottom: 12, fontWeight: 700, fontSize: '1.2rem', letterSpacing: 1 }}>Your Event Stats</h3>
+      <h3 style={{ 
+        color: '#a78bfa', 
+        marginBottom: 20, 
+        fontWeight: 700, 
+        fontSize: '1.4rem', 
+        letterSpacing: 1,
+        textAlign: 'center',
+        textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
+      }}>
+        Your Event Stats
+      </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {eventStats.map((stat, i) => {
           const dateStr = stat.event.date ? new Date(stat.event.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
@@ -439,23 +531,49 @@ function UserEventStats({ userId, username }) {
           const roundedAccuracy = Math.round(parseFloat(stat.accuracy));
           return (
             <div key={stat.event.id} style={{
-              background: '#231b36',
+              background: 'linear-gradient(135deg, #231b36 0%, #2d1f47 100%)',
               borderRadius: 16,
-              padding: 16,
+              padding: 20,
               color: '#fff',
               display: 'flex',
               flexDirection: 'column',
-              gap: 4,
-              boxShadow: '0 2px 8px rgba(76,29,149,0.10)',
-              border: '1.5px solid #4c1d95',
+              gap: 8,
+              boxShadow: '0 4px 16px rgba(76,29,149,0.15)',
+              border: '1px solid #4c1d95',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = '0 8px 24px rgba(76,29,149,0.25)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 4px 16px rgba(76,29,149,0.15)';
             }}>
-              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#a78bfa' }}>{stat.event.name}</div>
-              <div style={{ fontSize: '0.98rem', color: '#c4b5fd' }}>{dateStr}</div>
-              {locationStr && <div style={{ fontSize: '0.92rem', color: '#a1a1aa' }}>{locationStr}</div>}
-              <div style={{ display: 'flex', gap: 24, marginTop: 8, fontSize: '1.1rem', alignItems: 'center' }}>
-                <span><strong>Points:</strong> {stat.total_points}</span>
-                <span><strong>Correct:</strong> {stat.correct_predictions}/{stat.total_predictions}</span>
-                <span><strong>Accuracy:</strong> {roundedAccuracy}%</span>
+              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#a78bfa' }}>{stat.event.name}</div>
+              <div style={{ fontSize: '1rem', color: '#c4b5fd' }}>{dateStr}</div>
+              {locationStr && <div style={{ fontSize: '0.9rem', color: '#a1a1aa' }}>{locationStr}</div>}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                gap: 16, 
+                marginTop: 12, 
+                fontSize: '1rem',
+                alignItems: 'center'
+              }}>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(167, 139, 250, 0.1)', borderRadius: 8 }}>
+                  <div style={{ color: '#a78bfa', fontSize: '0.85rem', marginBottom: 4 }}>Points</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.total_points}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(34, 211, 238, 0.1)', borderRadius: 8 }}>
+                  <div style={{ color: '#22d3ee', fontSize: '0.85rem', marginBottom: 4 }}>Correct</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.correct_predictions}/{stat.total_predictions}</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(34, 197, 94, 0.1)', borderRadius: 8 }}>
+                  <div style={{ color: '#22c55e', fontSize: '0.85rem', marginBottom: 4 }}>Accuracy</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{roundedAccuracy}%</div>
+                </div>
               </div>
             </div>
           );

@@ -8,7 +8,9 @@ import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import ProfilePage from './ProfilePage'; // New profile page component
+import PlayerCard from './components/PlayerCard'; // PlayerCard component for header
 import logo from './assets/logo_street_500x500.png';
+import { API_URL } from './config';
 import './App.css';
 
 function App() {
@@ -28,12 +30,37 @@ function App() {
         // Simulate splash screen minimum time
         await new Promise(resolve => setTimeout(resolve, 2000));
         if (savedUsername && savedPhoneNumber && savedUserId) {
-          setUser({ 
-            username: savedUsername, 
-            phoneNumber: savedPhoneNumber, 
-            user_id: savedUserId,
-            user_type: savedUserType || 'user'
-          });
+          // Fetch user data including playercard from backend
+          try {
+            const response = await fetch(`${API_URL}/user/by-id/${savedUserId}`);
+            if (response.ok) {
+              const userData = await response.json();
+              setUser({ 
+                username: savedUsername, 
+                phoneNumber: savedPhoneNumber, 
+                user_id: savedUserId,
+                user_type: savedUserType || 'user',
+                playercard: userData.playercards || null
+              });
+            } else {
+              // Fallback to localStorage data if API fails
+              setUser({ 
+                username: savedUsername, 
+                phoneNumber: savedPhoneNumber, 
+                user_id: savedUserId,
+                user_type: savedUserType || 'user'
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching user playercard:', error);
+            // Fallback to localStorage data if API fails
+            setUser({ 
+              username: savedUsername, 
+              phoneNumber: savedPhoneNumber, 
+              user_id: savedUserId,
+              user_type: savedUserType || 'user'
+            });
+          }
         }
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -128,8 +155,13 @@ function App() {
         </Link>
         <div style={userInfoStyle}>
           <span>Welcome, </span>
-          <Link to={`/profile/${user.user_id}`} style={{ color: '#a78bfa', textDecoration: 'underline', fontWeight: 'bold', cursor: 'pointer' }}>
-            {user.username}
+          <Link to={`/profile/${user.user_id}`} style={{ textDecoration: 'none' }}>
+            <PlayerCard
+              username={user.username}
+              playercard={user.playercard}
+              size="small"
+              isCurrentUser={true}
+            />
           </Link>
           <button onClick={handleLogout} style={logoutButtonStyle}>
             Logout

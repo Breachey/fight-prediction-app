@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL } from './config';
 import { Link } from 'react-router-dom';
+import PlayerCard from './components/PlayerCard';
 
 function Leaderboard({ eventId, currentUser }) {
   // State for event-specific leaderboard data
@@ -476,33 +477,20 @@ function Leaderboard({ eventId, currentUser }) {
       const factor = (val - min) / (max - min);
       return interpolateColor('ef4444', '22c55e', factor); // red to green
     };
+    const bgUrl = entry.playercard?.image_url || '';
+    const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
     return (
       <div
         style={{
-          background: '#231b36',
-          borderRadius: 20,
-          padding: 16,
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          color: '#fff',
           position: 'relative',
-          flexWrap: 'wrap',
-          // Card border and glow for top 3 and current user
-          border:
-            isCurrentUser
-              ? '2.5px solid #22d3ee' // blue-cyan for current user
-              : index === 0
-              ? '2.5px solid #FFD700' // gold for champ
-              : index === 1
-              ? '2.5px solid #C0C0C0' // silver for 1
-              : index === 2
-              ? '2.5px solid #CD7F32' // bronze for 2
-              : 'none',
+          background: bgUrl ? `url('${bgUrl}') center/cover no-repeat` : fallbackBg,
+          borderRadius: 20,
+          padding: 0,
+          marginBottom: 16,
+          color: '#fff',
           boxShadow:
             isCurrentUser
-              ? '0 0 16px 2px #22d3ee88, 0 2px 8px rgba(0,0,0,0.15)'
+              ? '0 0 0 3px #22d3ee, 0 2px 8px rgba(34,211,238,0.18)'
               : index === 0
               ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
               : index === 1
@@ -510,97 +498,131 @@ function Leaderboard({ eventId, currentUser }) {
               : index === 2
               ? '0 0 16px 2px #CD7F3288, 0 2px 8px rgba(0,0,0,0.15)'
               : '0 2px 8px rgba(0,0,0,0.15)',
+          border:
+            isCurrentUser
+              ? '2.5px solid #22d3ee'
+              : index === 0
+              ? '2.5px solid #FFD700'
+              : index === 1
+              ? '2.5px solid #C0C0C0'
+              : index === 2
+              ? '2.5px solid #CD7F32'
+              : 'none',
+          overflow: 'hidden',
+          minHeight: 90,
+          display: 'flex',
+          alignItems: 'stretch',
+          flexWrap: 'wrap',
         }}
       >
-        {/* Rank & Medal */}
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 48 }}>
-          <span
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              marginRight: 6,
-              color:
-                isCurrentUser
-                  ? '#22d3ee' // blue-cyan for current user
-                  : index === 0
-                  ? '#FFD700' // gold
-                  : index === 1
-                  ? '#C0C0C0' // silver
-                  : index === 2
-                  ? '#CD7F32' // bronze
-                  : undefined,
-              textShadow:
-                isCurrentUser
-                  ? '0 0 4px #22d3ee88'
-                  : index === 0
-                  ? '0 0 4px #FFD70088'
-                  : index === 1
-                  ? '0 0 4px #C0C0C088'
-                  : index === 2
-                  ? '0 0 4px #CD7F3288'
-                  : undefined,
-            }}
-          >
-            {index === 0 ? 'C' : index}
-          </span>
-        </div>
-        {/* Name & Details */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              minWidth: 0,
-              maxWidth: '100%',
-              flexShrink: 1,
-            }}>
-              <span style={{
-                fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
-                whiteSpace: 'nowrap',
-                overflow: 'visible',
-                lineHeight: 1.1,
-              }}>
-                <Link
-                  to={`/profile/${encodeURIComponent(entry.user_id)}`}
-                  style={{ color: isCurrentUser ? '#ffd700' : '#fff', textDecoration: 'none', fontWeight: 700 }}
-                >
-                  {entry.username}
-                </Link>
-              </span>
-              {entry.is_bot && (
-                <span style={{
-                  background: 'rgba(59,130,246,0.2)',
-                  color: '#60a5fa',
-                  padding: '0px 7px',
-                  borderRadius: 10,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  marginTop: 1,
-                  lineHeight: 1,
-                  height: 16,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  minHeight: 0,
-                  minWidth: 0,
-                }}>
-                  AI
-                </span>
-              )}
+        {/* Overlay for readability */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(90deg, rgba(26,26,26,0.82) 60%, rgba(76,29,149,0.32) 100%)',
+          zIndex: 1,
+          pointerEvents: 'none',
+        }} />
+        {/* Card Content */}
+        <div style={{
+          position: 'relative',
+          zIndex: 2,
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 16,
+          flexWrap: 'wrap',
+        }}>
+          {/* Rank & Medal */}
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 48 }}>
+            <span
+              style={{
+                fontSize: 24,
+                fontWeight: 700,
+                marginRight: 6,
+                color:
+                  isCurrentUser
+                    ? '#22d3ee'
+                    : index === 0
+                    ? '#FFD700'
+                    : index === 1
+                    ? '#C0C0C0'
+                    : index === 2
+                    ? '#CD7F32'
+                    : undefined,
+                textShadow:
+                  isCurrentUser
+                    ? '0 0 4px #22d3ee88'
+                    : index === 0
+                    ? '0 0 4px #FFD70088'
+                    : index === 1
+                    ? '0 0 4px #C0C0C088'
+                    : index === 2
+                    ? '0 0 4px #CD7F3288'
+                    : undefined,
+              }}
+            >
+              {index === 0 ? 'C' : index}
             </span>
           </div>
-        </div>
-        {/* Points (big) and stats (small, no text) */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 70 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, textAlign: 'right', color: getStatColor(entry.total_points, minPoints, maxPoints) }}>{entry.total_points}</div>
-          <div style={{ fontSize: 20, color: '#b0a8c9', fontWeight: 500, marginTop: 4, letterSpacing: 1, display: 'flex', gap: 18 }}>
-            <span>
-              <span style={{ color: getStatColor(entry.correct_predictions, minCorrect, maxCorrect) }}>{entry.correct_predictions}</span>
-              /<span style={{ color: '#b0a8c9' }}>{entry.total_predictions}</span>
-            </span>
-            <span>
-              <span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>{roundedAccuracy}<span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>%</span></span>
-            </span>
+          {/* Name & Details */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                minWidth: 0,
+                maxWidth: '100%',
+                flexShrink: 1,
+              }}>
+                <span style={{
+                  fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  lineHeight: 1.1,
+                  color: '#fff',
+                  textShadow: '0 2px 8px #000a, 0 0 2px #000',
+                  fontWeight: 700,
+                }}>
+                  {entry.username}
+                </span>
+                {entry.is_bot && (
+                  <span style={{
+                    background: 'rgba(59,130,246,0.2)',
+                    color: '#60a5fa',
+                    padding: '0px 7px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    marginTop: 1,
+                    lineHeight: 1,
+                    height: 16,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    minHeight: 0,
+                    minWidth: 0,
+                    marginLeft: 8
+                  }}>
+                    AI
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+          {/* Points (big) and stats (small, no text) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 70 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, textAlign: 'right', color: getStatColor(entry.total_points, minPoints, maxPoints) }}>{entry.total_points}</div>
+            <div style={{ fontSize: 20, color: '#b0a8c9', fontWeight: 500, marginTop: 4, letterSpacing: 1, display: 'flex', gap: 18 }}>
+              <span>
+                <span style={{ color: getStatColor(entry.correct_predictions, minCorrect, maxCorrect) }}>{entry.correct_predictions}</span>
+                /<span style={{ color: '#b0a8c9' }}>{entry.total_predictions}</span>
+              </span>
+              <span>
+                <span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>{roundedAccuracy}<span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>%</span></span>
+              </span>
+            </div>
           </div>
         </div>
         {/* Responsive: stack on mobile */}

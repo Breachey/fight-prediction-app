@@ -1,0 +1,84 @@
+.playercard-root {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  min-width: 0;
+  padding: 0 18px;
+  height: 48px;
+  background: linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%);
+  transition: box-shadow 0.2s, filter 0.18s, background 0.2s;
+  box-shadow: 0 2px 8px rgba(76,29,149,0.10);
+  cursor: pointer;
+  user-select: none;
+}
+
+.playercard-root.playercard-size-small {
+  height: 32px;
+  font-size: 0.95rem;
+  padding: 0 10px;
+}
+.playercard-root.playercard-size-medium {
+  height: 48px;
+  font-size: 1.15rem;
+  padding: 0 18px;
+}
+.playercard-root.playercard-size-large {
+  height: 64px;
+  font-size: 1.35rem;
+  padding: 0 28px;
+}
+
+.playercard-root.playercard-current-user {
+  outline: 2.5px solid #22d3ee;
+  box-shadow: 0 0 0 3px #22d3ee, 0 2px 8px rgba(34,211,238,0.18);
+  z-index: 2;
+}
+
+.playercard-username {
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 8px #000a, 0 0 2px #000;
+  letter-spacing: 0.01em;
+  z-index: 2;
+  position: relative;
+  padding: 0 4px;
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.playercard-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  z-index: 2;
+}
+
+.playercard-root:hover {
+  filter: brightness(1.08) saturate(1.08);
+  box-shadow: 0 4px 16px #a78bfa44, 0 2px 8px rgba(76,29,149,0.18);
+}
+
+@media (max-width: 600px) {
+  .playercard-root.playercard-size-large {
+    height: 48px;
+    font-size: 1.1rem;
+    padding: 0 12px;
+  }
+  .playercard-root.playercard-size-medium {
+    height: 36px;
+    font-size: 1rem;
+    padding: 0 8px;
+  }
+  .playercard-root.playercard-size-small {
+    height: 28px;
+    font-size: 0.85rem;
+    padding: 0 4px;
+  }
+} 

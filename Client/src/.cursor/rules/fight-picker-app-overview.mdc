@@ -16,10 +16,8 @@ This project is a React-based web application for picking, voting, and viewing p
 - [Leaderboard.jsx](mdc:Leaderboard.jsx): Shows both event-specific and overall leaderboards, with options to include/exclude bot votes.
 - [FightVotes.jsx](mdc:FightVotes.jsx): Displays detailed vote breakdowns for a single fight, including user and AI votes.
 - [VotedFights.jsx](mdc:VotedFights.jsx): Shows all fights a user has voted on, leveraging [FightVotes.jsx](mdc:FightVotes.jsx).
-- [FightAdmin.jsx](mdc:FightAdmin.jsx): Admin interface for updating fight results and managing fight data.
 - [EventSelector.jsx](mdc:EventSelector.jsx): Dropdown for selecting the current event, with status badges and error handling.
 - [UserAuth.jsx](mdc:UserAuth.jsx): Handles user login and registration via phone number and username.
-- [AdminPin.jsx](mdc:AdminPin.jsx): Simple PIN-based admin authentication.
 - [components/SplashScreen.jsx](mdc:components/SplashScreen.jsx): Splash/loading screen shown during app initialization.
 
 ## Utility Functions
