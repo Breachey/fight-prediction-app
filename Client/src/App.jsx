@@ -3,10 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import Fights from './Fights'; // Displays fight cards for the selected event
-import FightAdmin from './FightAdmin'; // Admin interface for managing fights
 import Leaderboard from './Leaderboard'; // Displays leaderboard for the event
 import EventSelector from './EventSelector'; // Dropdown to select an event
-import AdminPin from './AdminPin'; // Admin PIN authentication component
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import ProfilePage from './ProfilePage'; // New profile page component
@@ -14,9 +12,8 @@ import logo from './assets/logo_street_500x500.png';
 import './App.css';
 
 function App() {
-  // State for selected event, admin authentication, user info, and loading status
+  // State for selected event, user info, and loading status
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -27,10 +24,16 @@ function App() {
         const savedUsername = localStorage.getItem('username');
         const savedPhoneNumber = localStorage.getItem('phoneNumber');
         const savedUserId = localStorage.getItem('user_id');
+        const savedUserType = localStorage.getItem('user_type');
         // Simulate splash screen minimum time
         await new Promise(resolve => setTimeout(resolve, 2000));
         if (savedUsername && savedPhoneNumber && savedUserId) {
-          setUser({ username: savedUsername, phoneNumber: savedPhoneNumber, user_id: savedUserId });
+          setUser({ 
+            username: savedUsername, 
+            phoneNumber: savedPhoneNumber, 
+            user_id: savedUserId,
+            user_type: savedUserType || 'user'
+          });
         }
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -50,6 +53,8 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('username');
     localStorage.removeItem('phoneNumber');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('user_type');
     setUser(null);
   };
 
@@ -143,22 +148,12 @@ function App() {
             </div>
             {/* Fights list for selected event */}
             <div className="section">
-              <Fights eventId={selectedEventId} username={user.username} user_id={user.user_id} />
+              <Fights eventId={selectedEventId} username={user.username} user_id={user.user_id} user_type={user.user_type} />
             </div>
             {/* Leaderboard for selected event */}
             <div className="section">
               <Leaderboard eventId={selectedEventId} currentUser={user.username} />
             </div>
-            {/* Admin section: show PIN entry or admin panel */}
-            {!isAdminAuthenticated ? (
-              <div className="admin-section">
-                <AdminPin onSuccess={() => setIsAdminAuthenticated(true)} />
-              </div>
-            ) : (
-              <div className="admin-section">
-                <FightAdmin eventId={selectedEventId} />
-              </div>
-            )}
           </>
         } />
         <Route path="/profile/:user_id" element={<ProfilePage user={user} />} />

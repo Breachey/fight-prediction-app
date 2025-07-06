@@ -135,9 +135,9 @@ app.post('/register', async (req, res) => {
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([
-        { phone_number: phoneNumber, username: username }
+        { phone_number: phoneNumber, username: username, user_type: 'user' }
       ])
-      .select('user_id, username, phone_number')
+      .select('user_id, username, phone_number, user_type')
       .single();
 
     if (insertError) {
@@ -157,7 +157,8 @@ app.post('/register', async (req, res) => {
     res.json({
       user_id: newUser.user_id,
       username: newUser.username,
-      phoneNumber: newUser.phone_number
+      phoneNumber: newUser.phone_number,
+      user_type: newUser.user_type || 'user'
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -198,13 +199,74 @@ app.post('/login', async (req, res) => {
     res.json({
       user_id: user.user_id,
       username: user.username,
-      phoneNumber: user.phone_number
+      phoneNumber: user.phone_number,
+      user_type: user.user_type || 'user' // Default to 'user' if no user_type set
     });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Helper function to normalize weightclass strings (case/spacing insensitive)
+function normalizeWeightclass(str) {
+  return (str || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+}
+
+// Helper function to get weightclass mapping
+async function getWeightclassMapping() {
+  try {
+    const { data: weightclasses, error } = await supabase
+      .from('weightclasses')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching weightclasses:', error);
+      return new Map(); // Return empty map on error
+    }
+    
+    // Debug: log the first weightclass to see what columns are available
+    if (weightclasses.length > 0) {
+      console.log('Available weightclass columns:', Object.keys(weightclasses[0]));
+    }
+
+    // Standard UFC weight class limits (in lbs)
+    const standardWeights = {
+      'flyweight': 125,
+      'bantamweight': 135,
+      'featherweight': 145,
+      'lightweight': 155,
+      'welterweight': 170,
+      'middleweight': 185,
+      'lightheavyweight': 205,
+      'heavyweight': 265,
+      'womensatomweight': 105,
+      'womensstrawweight': 115,
+      'womensflyweight': 125,
+      'womensbantamweight': 135,
+      'womensfeatherweight': 145
+    };
+
+    // Create a mapping from official_weightclass to gay_weightclass (case-insensitive)
+    const weightclassMap = new Map();
+    weightclasses.forEach(wc => {
+      // Use lowercase keys for case-insensitive matching
+      const normalizedKey = normalizeWeightclass(wc.official_weightclass);
+      const weightLbs = wc.weight_lbs || standardWeights[normalizedKey] || null;
+      
+      weightclassMap.set(normalizedKey, {
+        gay_weightclass: wc.gay_weightclass,
+        official_weightclass: wc.official_weightclass,
+        weight_lbs: weightLbs
+      });
+    });
+    
+    return weightclassMap;
+  } catch (error) {
+    console.error('Error in getWeightclassMapping:', error);
+    return new Map();
+  }
+}
 
 // Helper function to transform fighter data
 function transformFighterData(fighter) {
@@ -232,7 +294,8 @@ function transformFighterData(fighter) {
     lastName: fighter.LastName,
     nickname: fighter.Nickname || null,
     record: record,
-    style: fighter.Stance || 'N/A',
+    stance: fighter.Stance || 'N/A',
+    style: fighter.Style || 'N/A',
     image: fighter.ImageURL,
     rank: (fighter.Rank !== undefined && fighter.Rank !== null) ? fighter.Rank : null,
     odds: formattedOdds,
@@ -257,7 +320,7 @@ app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
     const { data: latestEvent, error: eventError } = await supabase
-      .from('ufc_events')
+      .from('events')
       .select('*')
       .order('date', { ascending: false })
       .limit(1);
@@ -277,6 +340,9 @@ app.get('/fights', async (req, res) => {
       console.error('Error fetching fights:', fightsError);
       return res.status(500).json({ error: 'Failed to fetch fights' });
     }
+
+    // Get weightclass mapping
+    const weightclassMap = await getWeightclassMapping();
 
     // Debug log for raw fight data
     console.log('Sample fight data from database:', fights.slice(0, 1).map(f => ({
@@ -331,6 +397,10 @@ app.get('/fights', async (req, res) => {
         displayCardTier = 'Early Prelims';
       }
 
+      // Map the weightclass using the weightclasses table
+      const weightclassData = weightclassMap.get(normalizeWeightclass(fighters.red.FighterWeightClass)) || {};
+      const displayWeightclass = weightclassData.gay_weightclass || weightclassData.official_weightclass || fighters.red.FighterWeightClass;
+
       const transformedFight = {
         id: fightId,
         event_id: latestEvent[0].id,
@@ -343,7 +413,7 @@ app.get('/fights', async (req, res) => {
         fighter1_height: redFighter.height,
         fighter1_weight: redFighter.weight,
         fighter1_reach: redFighter.reach,
-        fighter1_stance: redFighter.style,
+        fighter1_stance: redFighter.stance,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
         fighter1_country: redFighter.country,
@@ -360,7 +430,7 @@ app.get('/fights', async (req, res) => {
         fighter2_height: blueFighter.height,
         fighter2_weight: blueFighter.weight,
         fighter2_reach: blueFighter.reach,
-        fighter2_stance: blueFighter.style,
+        fighter2_stance: blueFighter.stance,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
         fighter2_country: blueFighter.country,
@@ -371,7 +441,9 @@ app.get('/fights', async (req, res) => {
         winner: result || null,
         is_completed: result ? true : false,
         card_tier: displayCardTier,
-        weightclass: fighters.weightclass,
+        weightclass: displayWeightclass,
+        weightclass_official: weightclassData.official_weightclass || fighters.red.FighterWeightClass,
+        weightclass_lbs: weightclassData.weight_lbs || fighters.red.Weight_lbs,
         bout_order: fighters.red.FightOrder
       };
 
@@ -578,6 +650,130 @@ app.get('/', (req, res) => {
   res.json({ status: 'API is running' });
 });
 
+// Cancel a fight
+app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log('Received request to cancel fight:', { id });
+
+    // Update the fight status to "Canceled" in ufc_full_fight_card
+    const { error: updateError } = await supabase
+      .from('ufc_full_fight_card')
+      .update({ FightStatus: 'Canceled' })
+      .eq('FightId', id);
+
+    if (updateError) {
+      console.error('Error updating fight status:', updateError);
+      return res.status(500).json({ error: 'Failed to cancel fight' });
+    }
+
+    // Clear any existing fight result since the fight is canceled
+    const { error: deleteResultError } = await supabase
+      .from('fight_results')
+      .delete()
+      .eq('fight_id', id);
+
+    if (deleteResultError) {
+      console.error('Error clearing fight result:', deleteResultError);
+      // Don't fail the request if this fails, just log it
+    }
+
+    // Clear any prediction results for this fight
+    const { error: deletePredictionResultsError } = await supabase
+      .from('prediction_results')
+      .delete()
+      .eq('fight_id', id);
+
+    if (deletePredictionResultsError) {
+      console.error('Error clearing prediction results:', deletePredictionResultsError);
+      // Don't fail the request if this fails, just log it
+    }
+
+    // Get the updated fight data to return
+    const { data: fightData, error: getFightError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('*')
+      .eq('FightId', id);
+
+    if (getFightError) {
+      console.error('Error fetching updated fight data:', getFightError);
+      return res.status(500).json({ error: 'Failed to fetch updated fight data' });
+    }
+
+    if (!fightData || fightData.length === 0) {
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+
+    // Get the event_id and fighter IDs
+    const event_id = fightData[0].EventId;
+    const redFighter = fightData.find(f => f.Corner === 'Red');
+    const blueFighter = fightData.find(f => f.Corner === 'Blue');
+
+    if (!redFighter || !blueFighter) {
+      return res.status(404).json({ error: 'Missing fighter data' });
+    }
+
+    // Get weightclass mapping
+    const weightclassMap = await getWeightclassMapping();
+
+    // Map the weightclass using the weightclasses table
+    const officialWeightclass = redFighter.FighterWeightClass;
+    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
+
+    // Transform the fight data (similar to other endpoints)
+    const transformedFight = {
+      id: id,
+      event_id: event_id,
+      fighter1_id: redFighter.FighterId,
+      fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
+      fighter1_firstName: redFighter.FirstName,
+      fighter1_lastName: redFighter.LastName,
+      fighter1_nickname: redFighter.Nickname,
+      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
+      fighter1_height: redFighter.Height_in,
+      fighter1_weight: redFighter.Weight_lbs,
+      fighter1_reach: redFighter.Reach_in,
+      fighter1_stance: redFighter.Stance,
+      fighter1_style: redFighter.Style,
+      fighter1_image: redFighter.ImageURL,
+      fighter1_country: redFighter.FightingOutOf_Country,
+      fighter1_age: redFighter.Age,
+      fighter1_rank: redFighter.rank,
+      fighter1_odds: redFighter.odds,
+      fighter1_streak: redFighter.Streak,
+      fighter2_id: blueFighter.FighterId,
+      fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
+      fighter2_firstName: blueFighter.FirstName,
+      fighter2_lastName: blueFighter.LastName,
+      fighter2_nickname: blueFighter.Nickname,
+      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
+      fighter2_height: blueFighter.Height_in,
+      fighter2_weight: blueFighter.Weight_lbs,
+      fighter2_reach: blueFighter.Reach_in,
+      fighter2_stance: blueFighter.Stance,
+      fighter2_style: blueFighter.Style,
+      fighter2_image: blueFighter.ImageURL,
+      fighter2_country: blueFighter.FightingOutOf_Country,
+      fighter2_age: blueFighter.Age,
+      winner: null, // No winner for canceled fights
+      is_completed: false, // Canceled fights are not completed
+      is_canceled: true, // Add canceled flag
+      fight_status: 'Canceled',
+      card_tier: redFighter.CardSegment,
+      weightclass: displayWeightclass,
+      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
+      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
+      bout_order: redFighter.FightOrder
+    };
+
+    res.json(transformedFight);
+  } catch (error) {
+    console.error('Error canceling fight:', error);
+    res.status(500).json({ error: 'Failed to cancel fight' });
+  }
+});
+
 app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
   try {
     const { id } = req.params;
@@ -721,6 +917,13 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch updated fight result' });
     }
 
+    // Get weightclass mapping
+    const weightclassMap = await getWeightclassMapping();
+
+    // Map the weightclass using the weightclasses table
+    const officialWeightclass = redFighter.FighterWeightClass;
+    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
+
     // Transform the fight data
     const transformedFight = {
       id: id,
@@ -756,7 +959,9 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       winner: updatedResult.fighter_id,
       is_completed: updatedResult.is_completed,
       card_tier: redFighter.CardSegment,
-      weightclass: redFighter.FighterWeightClass,
+      weightclass: displayWeightclass,
+      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
+      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
       bout_order: redFighter.FightOrder
     };
 
@@ -1038,6 +1243,9 @@ app.get('/events/:id/fights', async (req, res) => {
       }
     });
 
+    // Get weightclass mapping
+    const weightclassMap = await getWeightclassMapping();
+
     // Transform fights into the required format
     const transformedFights = [];
     for (const [fightId, fighters] of fightMap) {
@@ -1058,6 +1266,10 @@ app.get('/events/:id/fights', async (req, res) => {
           displayCardTier = 'Early Prelims';
       }
 
+      // Map the weightclass using the weightclasses table
+      const weightclassData = weightclassMap.get(normalizeWeightclass(fighters.weightclass)) || {};
+      const displayWeightclass = weightclassData.gay_weightclass || weightclassData.official_weightclass || fighters.weightclass;
+
       const transformedFight = {
         id: fightId,
         event_id: id,
@@ -1070,7 +1282,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_height: redFighter.height,
         fighter1_weight: redFighter.weight,
         fighter1_reach: redFighter.reach,
-        fighter1_stance: redFighter.style,
+        fighter1_stance: redFighter.stance,
         fighter1_style: redFighter.style,
         fighter1_image: redFighter.image,
         fighter1_country: redFighter.country,
@@ -1087,7 +1299,7 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_height: blueFighter.height,
         fighter2_weight: blueFighter.weight,
         fighter2_reach: blueFighter.reach,
-        fighter2_stance: blueFighter.style,
+        fighter2_stance: blueFighter.stance,
         fighter2_style: blueFighter.style,
         fighter2_image: blueFighter.image,
         fighter2_country: blueFighter.country,
@@ -1097,8 +1309,12 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_streak: blueFighter.streak,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
+        is_canceled: fighters.red.FightStatus === 'Canceled' || fighters.blue.FightStatus === 'Canceled',
+        fight_status: fighters.red.FightStatus || 'Scheduled',
         card_tier: displayCardTier,
-        weightclass: fighters.weightclass,
+        weightclass: displayWeightclass,
+        weightclass_official: weightclassData.official_weightclass || fighters.weightclass,
+        weightclass_lbs: weightclassData.weight_lbs || fighters.Weight_lbs,
         bout_order: fighters.red.FightOrder
       };
 
@@ -1215,6 +1431,13 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fight result' });
     }
 
+    // Get weightclass mapping
+    const weightclassMap = await getWeightclassMapping();
+
+    // Map the weightclass using the weightclasses table
+    const officialWeightclass = redFighter.FighterWeightClass;
+    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
+
     // Transform the fight data
     const transformedFight = {
       id: id,
@@ -1256,7 +1479,9 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,
-      weightclass: redFighter.FighterWeightClass,
+      weightclass: displayWeightclass,
+      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
+      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
       bout_order: redFighter.FightOrder
     };
 
@@ -1449,6 +1674,50 @@ app.get('/user/by-id/:user_id', async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('User profile by ID error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin endpoint to set user type (for development/setup purposes)
+app.post('/admin/set-user-type', async (req, res) => {
+  try {
+    const { username, user_type, admin_key } = req.body;
+    
+    // Simple admin key check (you should change this in production)
+    if (admin_key !== 'fight_picker_admin_2024') {
+      return res.status(403).json({ error: 'Invalid admin key' });
+    }
+    
+    if (!username || !user_type) {
+      return res.status(400).json({ error: 'Username and user_type are required' });
+    }
+    
+    if (!['user', 'admin'].includes(user_type)) {
+      return res.status(400).json({ error: 'user_type must be either "user" or "admin"' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update({ user_type })
+      .eq('username', username)
+      .select('username, user_type')
+      .single();
+    
+    if (error) {
+      console.error('Error updating user type:', error);
+      return res.status(500).json({ error: 'Failed to update user type' });
+    }
+    
+    if (!data) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ 
+      message: `User ${username} has been set to ${user_type}`,
+      user: data
+    });
+  } catch (error) {
+    console.error('Set user type error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

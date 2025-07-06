@@ -433,12 +433,26 @@
   letter-spacing: 0.05em;
 }
 
+.weight-class-container {
+  text-align: center;
+}
+
 .weight-class {
   font-size: 1.1rem;
   color: #9ca3af;
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.weight-class-details {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 2px 0 0 0;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 .vs-text {
@@ -755,6 +769,11 @@
     color: #a78bfa;
   }
 
+  .weight-class-details {
+    font-size: 0.75rem;
+    margin: 2px 0 0 0;
+  }
+
   .fighter-card.selected:first-child {
     transform: none;
     border-width: 2px;
@@ -898,6 +917,11 @@
 
   .weight-class {
     font-size: 0.9rem;
+  }
+
+  .weight-class-details {
+    font-size: 0.7rem;
+    margin: 2px 0 0 0;
   }
 
   .fight-votes-section {
@@ -1092,4 +1116,258 @@
   line-height: unset;
   text-align: unset;
   vertical-align: unset;
+}
+
+/* Admin Controls */
+.admin-controls {
+  margin-top: 16px;
+}
+
+.admin-result-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.winner-text {
+  color: #a78bfa;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.admin-edit-button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(109, 40, 217, 0.3);
+}
+
+.admin-edit-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(109, 40, 217, 0.4);
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+}
+
+.admin-result-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.admin-winner-button {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+  color: #ffffff;
+  border: 2px solid #4b5563;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.admin-winner-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  border-color: #6b7280;
+}
+
+.admin-winner-button.selected {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+}
+
+.admin-unselect-button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);
+  width: 100%;
+}
+
+.admin-unselect-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 38, 38, 0.4);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* Mobile responsiveness for admin controls */
+@media (max-width: 768px) {
+  .admin-controls {
+    margin-top: 12px;
+  }
+
+  .admin-result-display {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .admin-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .admin-winner-button {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+
+  .admin-edit-button,
+  .admin-unselect-button {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  .expand-admin-button {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
+
+/* Canceled Fight Styles */
+.fight-card.canceled {
+  opacity: 0.6;
+  position: relative;
+  pointer-events: none;
+}
+
+.fight-card.canceled::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  z-index: 1;
+}
+
+.fight-card.canceled .fighter-card {
+  filter: grayscale(0.8);
+  opacity: 0.7;
+}
+
+.fight-canceled {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.canceled-icon {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.admin-action-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-cancel-fight-button {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.admin-cancel-fight-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.admin-canceled-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+}
+
+.canceled-text {
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.expand-admin-button {
+  width: 100%;
+  background: rgba(55, 65, 81, 0.3);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expand-admin-button:hover {
+  background: rgba(75, 85, 99, 0.4);
+  color: #d1d5db;
+  border-color: rgba(107, 114, 128, 0.5);
+}
+
+.admin-controls-content {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(75, 85, 99, 0.3);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
