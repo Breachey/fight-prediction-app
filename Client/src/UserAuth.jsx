@@ -34,6 +34,7 @@ function UserAuth({ onAuthenticate }) {
       localStorage.setItem('user_id', userData.user_id);
       localStorage.setItem('username', userData.username);
       localStorage.setItem('phoneNumber', userData.phoneNumber);
+      localStorage.setItem('user_type', userData.user_type);
       onAuthenticate(userData);
     } catch (err) {
       console.error('Authentication error:', err);

@@ -4,8 +4,8 @@ import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 
-function Fights({ eventId, username, user_id }) {
-  console.log('Fights props:', { eventId, username, user_id });
+function Fights({ eventId, username, user_id, user_type }) {
+  console.log('Fights props:', { eventId, username, user_id, user_type });
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,7 +25,77 @@ function Fights({ eventId, username, user_id }) {
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
   const [expandedFightStats, setExpandedFightStats] = useState({});
+  const [expandedAdminControls, setExpandedAdminControls] = useState({});
   const [editingFight, setEditingFight] = useState(null);
+
+  // Admin function to handle fight result updates
+  const handleResultUpdate = async (fightId, winner) => {
+    try {
+      const response = await fetch(`${API_URL}/ufc_full_fight_card/${fightId}/result`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ winner }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error('Failed to update fight result');
+      }
+
+      const updatedFight = await response.json();
+      
+      // Update local state with the complete updated fight data
+      setFights(fights.map(fight => 
+        fight.id === fightId ? updatedFight : fight
+      ));
+      setEditingFight(null);
+    } catch (err) {
+      console.error('Error updating fight result:', err);
+      setError('Failed to update fight result');
+    }
+  };
+
+  // Admin function to handle fight cancellation
+  const handleFightCancel = async (fightId) => {
+    if (!fightId) {
+      setError('No fight ID provided');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/ufc_full_fight_card/${fightId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Fight cancel error:', response.status, errorText);
+        throw new Error(`Failed to cancel fight: ${response.status}`);
+      }
+
+      const updatedFight = await response.json();
+      
+      // Update local state with the complete updated fight data
+      setFights(fights.map(fight => 
+        fight.id === fightId ? updatedFight : fight
+      ));
+      setEditingFight(null);
+      
+      // Show success message
+      setError('Fight canceled successfully!');
+      setTimeout(() => setError(''), 3000);
+      
+    } catch (err) {
+      console.error('Error canceling fight:', err);
+      setError(`Failed to cancel fight: ${err.message}`);
+    }
+  };
 
   // Fetch both fights and predictions when component mounts or eventId/user_id changes
   useEffect(() => {
@@ -296,6 +366,16 @@ function Fights({ eventId, username, user_id }) {
     }));
   };
 
+  const toggleAdminControls = (fightId, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedAdminControls(prev => ({
+      ...prev,
+      [fightId]: !prev[fightId]
+    }));
+  };
+
   const aiBadge = {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
@@ -379,11 +459,41 @@ function Fights({ eventId, username, user_id }) {
       )}
 
       {fights.map((fight) => (
-        <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''}`}>
-          {(fight.card_tier || fight.weightclass) && (
+        <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''}`}>
+          {(fight.card_tier || fight.weightclass || fight.is_canceled) && (
             <div className="fight-meta">
               {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
-              {fight.weightclass && <p className="weight-class">{fight.weightclass}</p>}
+              {fight.weightclass && (
+                <div className="weight-class-container">
+                  <p className="weight-class">
+                    {fight.weightclass.split(' ').map(word => 
+                      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                    ).join(' ')}
+                  </p>
+                  {(fight.weightclass_official || fight.weightclass_lbs) && (
+                    <p className="weight-class-details">
+                      {fight.weightclass_official && fight.weightclass_lbs 
+                        ? `${fight.weightclass_official.split(' ').map(word => 
+                            word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                          ).join(' ')} (${fight.weightclass_lbs} lbs)`
+                        : fight.weightclass_official 
+                          ? fight.weightclass_official.split(' ').map(word => 
+                              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                            ).join(' ')
+                          : fight.weightclass_lbs 
+                            ? `${fight.weightclass_lbs} lbs`
+                            : ''
+                      }
+                    </p>
+                  )}
+                </div>
+              )}
+              {fight.is_canceled && (
+                <div className="fight-canceled">
+                  <span className="canceled-icon">✕</span>
+                  CANCELED
+                </div>
+              )}
             </div>
           )}
           <div className="fighters-container">
@@ -407,7 +517,7 @@ function Fights({ eventId, username, user_id }) {
                       ? 'unselected'
                       : ''
               }`}
-              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter1_id)}
+              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id)}
             >
               {console.log('Fighter 1 class data:', {
                 fightId: fight.id,
@@ -493,6 +603,10 @@ function Fights({ eventId, username, user_id }) {
                     <span>{fight.fighter1_stance || 'N/A'}</span>
                   </div>
                   <div className="stat-row">
+                    <span className="stat-label">Style</span>
+                    <span>{fight.fighter1_style || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
                     <span className="stat-label">Streak</span>
                     <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
                   </div>
@@ -518,7 +632,7 @@ function Fights({ eventId, username, user_id }) {
                       ? 'unselected'
                       : ''
               }`}
-              onClick={() => !fight.is_completed && handleSelection(fight.id, fight.fighter2_id)}
+              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id)}
             >
               {console.log('Fighter 2 class data:', {
                 fightId: fight.id,
@@ -602,6 +716,10 @@ function Fights({ eventId, username, user_id }) {
                   <div className="stat-row">
                     <span className="stat-label">Stance</span>
                     <span>{fight.fighter2_stance || 'N/A'}</span>
+                  </div>
+                  <div className="stat-row">
+                    <span className="stat-label">Style</span>
+                    <span>{fight.fighter2_style || 'N/A'}</span>
                   </div>
                   <div className="stat-row">
                     <span className="stat-label">Streak</span>
@@ -729,6 +847,81 @@ function Fights({ eventId, username, user_id }) {
               </div>
             )}
           </div>
+
+          {/* Admin Controls - only show for admin users */}
+          {user_type === 'admin' && (
+            <div className="admin-controls">
+              <button 
+                className="expand-admin-button"
+                onClick={(e) => toggleAdminControls(fight.id, e)}
+              >
+                {expandedAdminControls[fight.id] ? '▼' : '▶'} Admin Controls
+              </button>
+              
+              {expandedAdminControls[fight.id] && (
+                <div className="admin-controls-content">
+                  {fight.is_canceled ? (
+                    <div className="admin-canceled-display">
+                      <span className="canceled-text">Fight Canceled</span>
+                    </div>
+                  ) : fight.winner && editingFight !== fight.id ? (
+                    <div className="admin-result-display">
+                      <span className="winner-text">
+                        Winner: {String(fight.winner) === String(fight.fighter1_id) ? fight.fighter1_name : fight.fighter2_name}
+                      </span>
+                      <div className="admin-action-buttons">
+                        <button 
+                          className="admin-edit-button"
+                          onClick={() => setEditingFight(fight.id)}
+                        >
+                          Edit Result
+                        </button>
+                        <button 
+                          className="admin-cancel-fight-button"
+                          onClick={() => handleFightCancel(fight.id)}
+                        >
+                          Cancel Fight
+                        </button>
+                      </div>
+                    </div>
+                  ) : (editingFight === fight.id || !fight.winner) && (
+                    <div className="admin-result-editor">
+                      <div className="admin-buttons">
+                        <button
+                          className={`admin-winner-button ${String(fight.winner) === String(fight.fighter1_id) ? 'selected' : ''}`}
+                          onClick={() => handleResultUpdate(fight.id, fight.fighter1_id)}
+                        >
+                          {fight.fighter1_name} Won
+                        </button>
+                        <button
+                          className={`admin-winner-button ${String(fight.winner) === String(fight.fighter2_id) ? 'selected' : ''}`}
+                          onClick={() => handleResultUpdate(fight.id, fight.fighter2_id)}
+                        >
+                          {fight.fighter2_name} Won
+                        </button>
+                      </div>
+                      <div className="admin-action-buttons">
+                        {fight.winner && (
+                          <button
+                            className="admin-unselect-button"
+                            onClick={() => handleResultUpdate(fight.id, null)}
+                          >
+                            Unselect Winner
+                          </button>
+                        )}
+                        <button 
+                          className="admin-cancel-fight-button"
+                          onClick={() => handleFightCancel(fight.id)}
+                        >
+                          Cancel Fight
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
 
