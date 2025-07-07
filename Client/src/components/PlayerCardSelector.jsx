@@ -59,7 +59,7 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
         throw new Error(data.error || 'Failed to update playercard');
       }
       setSelectedId(id);
-      if (onChange) onChange(id);
+      if (onChange) onChange(card);
     } catch (err) {
       setError(err.message);
     } finally {
