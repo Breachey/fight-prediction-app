@@ -334,7 +334,15 @@ function ProfilePage({ user: loggedInUser }) {
                 <PlayerCardSelector
                   currentPlayercardId={profileUser.playercard?.id}
                   userId={profileUser.user_id}
-                  onChange={() => window.location.reload()} // reload to update preview
+                  onChange={(newCard) => {
+                    // update the displayed card immediately
+                    setProfileUser(prev => ({
+                      ...prev,
+                      playercard: newCard
+                    }));
+
+                    // If the header (App state) needs an update you'll get it on next session refresh; no full reload required here.
+                  }}
                 />
               </div>
             )}
