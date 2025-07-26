@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import PlayerCard from './PlayerCard';
 import { API_URL } from '../config';
 import './PlayerCardSelector.css';
@@ -10,6 +10,22 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
   const [selectedId, setSelectedId] = useState(currentPlayercardId);
   const [saving, setSaving] = useState(false);
   const [events, setEvents] = useState([]);
+
+  // Ref for horizontal scroll container
+  const scrollRef = useRef(null);
+
+  // Scroll handlers for nav buttons
+  const scrollLeft = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({ left: -250, behavior: 'smooth' });
+    }
+  };
+
+  const scrollRight = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({ left: 250, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -77,7 +93,9 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
 
   return (
     <div className="playercard-selector-root">
-      <div className="playercard-selector-grid">
+      {/* Navigation arrows (hidden on small mobile via CSS) */}
+      <button className="playercard-selector-nav left" onClick={scrollLeft} aria-label="Scroll left">‹</button>
+      <div className="playercard-selector-scroll" ref={scrollRef}>
         {playercards.map(card => {
           const isLocked = !card.is_available;
           const isSelected = card.id === selectedId;
@@ -113,6 +131,7 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
           );
         })}
       </div>
+      <button className="playercard-selector-nav right" onClick={scrollRight} aria-label="Scroll right">›</button>
       {saving && <div className="playercard-selector-saving">Saving...</div>}
     </div>
   );

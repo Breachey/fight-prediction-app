@@ -155,4 +155,72 @@
     font-size: 0.8rem;
     max-width: 120px;
   }
+}
+
+/* --- New horizontal carousel styles --- */
+.playercard-selector-root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden; /* prevent child overflow on small screens */
+}
+.playercard-selector-scroll {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  padding: 12px 48px; /* space for nav buttons */
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+.playercard-selector-scroll::-webkit-scrollbar {
+  display: none; /* Hide scrollbar for WebKit */
+}
+.playercard-selector-item {
+  flex: 0 0 auto; /* Prevent shrinking and enable horizontal layout */
+  width: 220px; /* default desktop width */
+  scroll-snap-align: center;
+}
+@media (max-width: 540px) {
+  /* Scale card width to viewport on small phones */
+  .playercard-selector-item {
+    width: 70vw; /* fits nicely within screen */
+  }
+}
+/* Navigation arrows */
+.playercard-selector-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(76, 29, 149, 0.6);
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+  transition: background 0.2s ease;
+}
+.playercard-selector-nav:hover {
+  background: rgba(76, 29, 149, 0.8);
+}
+.playercard-selector-nav.left {
+  left: 4px;
+}
+.playercard-selector-nav.right {
+  right: 4px;
+}
+@media (max-width: 640px) {
+  /* Hide nav arrows on small devices where swipe is easier */
+  .playercard-selector-nav {
+    display: none;
+  }
+  .playercard-selector-scroll {
+    padding: 12px 12px;
+  }
 } 
