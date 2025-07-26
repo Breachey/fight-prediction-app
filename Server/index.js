@@ -335,7 +335,8 @@ function transformFighterData(fighter) {
     nickname: fighter.Nickname || null,
     record: record,
     stance: fighter.Stance || 'N/A',
-    style: fighter.Style || 'N/A',
+    // Use whichever case variant of style is present
+    style: fighter.Style || fighter.style || 'N/A',
     image: fighter.ImageURL,
     rank: (fighter.Rank !== undefined && fighter.Rank !== null) ? fighter.Rank : null,
     odds: formattedOdds,

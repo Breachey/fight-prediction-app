@@ -47,10 +47,21 @@ function Fights({ eventId, username, user_id, user_type }) {
       }
 
       const updatedFight = await response.json();
-      
-      // Update local state with the complete updated fight data
+
+      // Find the existing fight to merge missing fields
+      const existingFight = fights.find(fight => fight.id === fightId);
+
+      // Merge while preserving existing values when updated ones are null/undefined
+      const mergedFight = { ...existingFight };
+      Object.keys(updatedFight).forEach(key => {
+        const val = updatedFight[key];
+        if (val !== null && val !== undefined) {
+          mergedFight[key] = val;
+        }
+      });
+
       setFights(fights.map(fight => 
-        fight.id === fightId ? updatedFight : fight
+        fight.id === fightId ? mergedFight : fight
       ));
       setEditingFight(null);
     } catch (err) {
@@ -464,7 +475,7 @@ function Fights({ eventId, username, user_id, user_type }) {
           {(fight.card_tier || fight.weightclass || fight.is_canceled) && (
             <div className="fight-meta">
               {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
-              {fight.weightclass && (
+              {typeof fight.weightclass === 'string' && fight.weightclass && (
                 <div className="weight-class-container">
                   <p className="weight-class">
                     {fight.weightclass.split(' ').map(word => 
@@ -474,13 +485,13 @@ function Fights({ eventId, username, user_id, user_type }) {
                   {(fight.weightclass_official || fight.weightclass_lbs) && (
                     <p className="weight-class-details">
                       {fight.weightclass_official && fight.weightclass_lbs 
-                        ? `${fight.weightclass_official.split(' ').map(word => 
+                        ? `${typeof fight.weightclass_official === 'string' ? fight.weightclass_official.split(' ').map(word => 
                             word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-                          ).join(' ')} (${fight.weightclass_lbs} lbs)`
+                          ).join(' ') : fight.weightclass_official} (${fight.weightclass_lbs} lbs)`
                         : fight.weightclass_official 
-                          ? fight.weightclass_official.split(' ').map(word => 
+                          ? (typeof fight.weightclass_official === 'string' ? fight.weightclass_official.split(' ').map(word => 
                               word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-                            ).join(' ')
+                            ).join(' ') : fight.weightclass_official)
                           : fight.weightclass_lbs 
                             ? `${fight.weightclass_lbs} lbs`
                             : ''
