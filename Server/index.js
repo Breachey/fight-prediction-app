@@ -1026,6 +1026,62 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
   }
 });
 
+// Helper function to calculate user's current streak
+function calculateUserStreak(userResults) {
+  // Need at least 2 predictions to have a streak
+  if (!userResults || userResults.length < 2) {
+    return null;
+  }
+
+  // Sort by created_at DESC (most recent first)
+  const sortedResults = [...userResults].sort((a, b) => 
+    new Date(b.created_at) - new Date(a.created_at)
+  );
+
+  // Start with the most recent prediction
+  const mostRecent = sortedResults[0];
+  const streakType = mostRecent.predicted_correctly ? 'win' : 'loss';
+  let streakCount = 1;
+
+  // Count consecutive predictions of the same type
+  for (let i = 1; i < sortedResults.length; i++) {
+    const currentPrediction = sortedResults[i];
+    const isWin = currentPrediction.predicted_correctly;
+    
+    if ((streakType === 'win' && isWin) || (streakType === 'loss' && !isWin)) {
+      streakCount++;
+    } else {
+      // Streak broken
+      break;
+    }
+  }
+
+  // Only return streak if count >= 2
+  if (streakCount < 2) {
+    return null;
+  }
+
+  // Debug logging for Breachey
+  const username = userResults[0]?.username || sortedResults[0]?.user_id;
+  if (username && (username.toLowerCase().includes('breachey') || username.toLowerCase().includes('breach'))) {
+    console.log('DEBUG Streak for', username, ':', {
+      type: streakType,
+      count: streakCount,
+      totalResults: sortedResults.length,
+      recentPredictions: sortedResults.slice(0, 5).map(r => ({
+        predicted_correctly: r.predicted_correctly,
+        created_at: r.created_at,
+        fight_id: r.fight_id
+      }))
+    });
+  }
+
+  return {
+    type: streakType,
+    count: streakCount
+  };
+}
+
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
@@ -1055,6 +1111,16 @@ app.get('/leaderboard', async (req, res) => {
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
     const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
 
+    // Group results by user for streak calculation
+    const userResultsMap = {};
+    results.forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!userResultsMap[userIdStr]) {
+        userResultsMap[userIdStr] = [];
+      }
+      userResultsMap[userIdStr].push(result);
+    });
+
     // Process the results to create the leaderboard
     const userStats = {};
     results.forEach(result => {
@@ -1077,6 +1143,26 @@ app.get('/leaderboard', async (req, res) => {
       // Directly sum the points from the table
       userStats[userIdStr].total_points += (result.points || 0);
     });
+
+    // Calculate streak for each user
+    Object.keys(userStats).forEach(userIdStr => {
+      const userResults = userResultsMap[userIdStr];
+      const username = userIdToUsername.get(userIdStr);
+      const streak = calculateUserStreak(userResults);
+      userStats[userIdStr].streak = streak;
+      
+      // Debug logging
+      if (username && (username.toLowerCase().includes('breachey') || username.toLowerCase().includes('breach'))) {
+        console.log('LEADERBOARD DEBUG - Overall:', {
+          username,
+          user_id: userIdStr,
+          streak,
+          totalResults: userResults?.length,
+          results: userResults
+        });
+      }
+    });
+
     // Convert to array and sort to get rankings
     const leaderboard = Object.values(userStats)
       .map(user => ({
@@ -1117,6 +1203,10 @@ app.get('/leaderboard/monthly', async (req, res) => {
       .lt('created_at', nextMonthISO);
     const results = await fetchAllFromSupabase(resultsQuery);
 
+    // Get all-time prediction results for streak calculation
+    const allTimeResultsQuery = supabase.from('prediction_results').select('*');
+    const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
+
     // Get all users with their user_id, username, is_bot, and playercard info
     const usersQuery = supabase
       .from('users')
@@ -1138,6 +1228,16 @@ app.get('/leaderboard/monthly', async (req, res) => {
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
     const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+
+    // Group all-time results by user for streak calculation
+    const allTimeUserResultsMap = {};
+    allTimeResults.forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!allTimeUserResultsMap[userIdStr]) {
+        allTimeUserResultsMap[userIdStr] = [];
+      }
+      allTimeUserResultsMap[userIdStr].push(result);
+    });
 
     // Process the results to create the leaderboard
     const userStats = {};
@@ -1161,6 +1261,13 @@ app.get('/leaderboard/monthly', async (req, res) => {
       // Directly sum the points from the table
       userStats[userIdStr].total_points += (result.points || 0);
     });
+
+    // Calculate all-time streak for each user
+    Object.keys(userStats).forEach(userIdStr => {
+      const allTimeUserResults = allTimeUserResultsMap[userIdStr];
+      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
+    });
+
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
       .map(user => ({
@@ -1424,6 +1531,10 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       .eq('event_id', id);
     const results = await fetchAllFromSupabase(resultsQuery);
 
+    // Get all-time prediction results for streak calculation
+    const allTimeResultsQuery = supabase.from('prediction_results').select('*');
+    const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
+
     // Get all users with their user_id, username, is_bot, and playercard info
     const usersQuery = supabase
       .from('users')
@@ -1444,6 +1555,16 @@ app.get('/events/:id/leaderboard', async (req, res) => {
     const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
     const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
     const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+
+    // Group all-time results by user for streak calculation
+    const allTimeUserResultsMap = {};
+    allTimeResults.forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!allTimeUserResultsMap[userIdStr]) {
+        allTimeUserResultsMap[userIdStr] = [];
+      }
+      allTimeUserResultsMap[userIdStr].push(result);
+    });
 
     // Process the results to create the leaderboard
     const userStats = {};
@@ -1467,6 +1588,13 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       // Directly sum the points from the table
       userStats[userIdStr].total_points += (result.points || 0);
     });
+
+    // Calculate all-time streak for each user
+    Object.keys(userStats).forEach(userIdStr => {
+      const allTimeUserResults = allTimeUserResultsMap[userIdStr];
+      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
+    });
+
     // Convert to array and calculate accuracy
     const leaderboard = Object.values(userStats)
       .map(user => ({

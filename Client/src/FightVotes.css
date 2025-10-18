@@ -7,11 +7,11 @@
 }
 
 .fight-votes-card {
-  background: linear-gradient(135deg, #1a1a1a 0%, #702eb2 100%);
-  border-radius: 14px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #6d28d9 100%);
+  border-radius: 16px;
   padding: 24px;
   color: #ffffff;
-  box-shadow: 0 4px 12px #851ea644;
+  box-shadow: 0 2px 8px rgba(133, 30, 166, 0.15);
   border: 2px solid #ff74ff;
 }
 
@@ -31,7 +31,7 @@
 .vote-distribution {
   display: flex;
   height: 32px;
-  background-color: #2c2c2c;
+  background-color: #1a1a1a;
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 24px;
@@ -65,10 +65,10 @@
 }
 
 .fighter-votes-section {
-  background-color: #242424;
+  background-color: #1a1a1a;
   padding: 20px;
   border-radius: 12px;
-  border: 1px solid #2c2c2c;
+  border: 1px solid #4c1d95;
 }
 
 .fighter-votes-header {
@@ -89,10 +89,10 @@
 
 .votes-count {
   display: inline-block;
-  background-color: #374151;
+  background-color: #2d1f47;
   padding: 4px 12px;
   border-radius: 12px;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: #9ca3af;
 }
 
@@ -111,12 +111,12 @@
 
 .votes-list::-webkit-scrollbar-track {
   background: #1a1a1a;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .votes-list::-webkit-scrollbar-thumb {
   background: #4b5563;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .vote-item {
@@ -174,19 +174,19 @@
   display: inline-block;
   padding: 2px 10px;
   margin-left: 8px;
-  border-radius: 14px;
+  border-radius: 16px;
   font-size: 0.85rem;
   font-weight: 700;
   background: linear-gradient(135deg, #ff74ff 0%, #43ccf3 100%);
   color: #10120a;
   border: none;
-  box-shadow: 0 2px 8px #43ccf344;
-  text-shadow: 0 1px 0 #fff8;
+  box-shadow: 0 2px 6px #43ccf322;
+  text-shadow: 0 1px 0 #fff4;
   transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .rank-badge:hover {
-  box-shadow: 0 4px 16px #ff74ff88;
+  box-shadow: 0 3px 10px #ff74ff44;
   transform: scale(1.07);
 }
 
@@ -263,9 +263,9 @@
 .fighter-votes.fighter1-votes {
   background: linear-gradient(135deg, #3a003a 60%, #ff74ff 100%);
   border: 2px solid #ff74ff;
-  box-shadow: 0 2px 16px 0 #ff74ff55;
+  box-shadow: 0 2px 10px 0 rgba(255, 116, 255, 0.2);
   color: #ffe6fa;
-  border-radius: 22px;
+  border-radius: 20px;
   padding: 36px 18px;
   min-width: 240px;
   position: relative;
@@ -280,9 +280,9 @@
 .fighter-votes.fighter2-votes {
   background: linear-gradient(135deg, #002a3a 60%, #43ccf3 100%);
   border: 2px solid #43ccf3;
-  box-shadow: 0 2px 16px 0 #43ccf355;
+  box-shadow: 0 2px 10px 0 rgba(67, 204, 243, 0.2);
   color: #e6faff;
-  border-radius: 22px;
+  border-radius: 20px;
   padding: 36px 18px;
   min-width: 240px;
   position: relative;

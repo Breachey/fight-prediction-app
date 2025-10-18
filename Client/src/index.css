@@ -1,5 +1,42 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* Design System - Border Radius */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Design System - Colors */
+  --color-primary: #6d28d9;
+  --color-primary-dark: #4c1d95;
+  --color-primary-light: #a78bfa;
+  --color-accent-pink: #ff74ff;
+  --color-accent-cyan: #43ccf3;
+  --color-bg-primary: #10120a;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-tertiary: #2d1f47;
+
+  /* Design System - Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+
+  /* Design System - Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+
+  /* Base Styles */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -38,16 +75,16 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   color: #ff74ff;
-  text-shadow: 0 2px 8px #851ea644;
+  text-shadow: 0 1px 4px rgba(133, 30, 166, 0.15);
 }
 
 button {
-  border-radius: 8px;
+  border-radius: 12px;
   border: none;
   padding: 0.6em 1.2em;
-  font-size: 1em;
+  font-size: 1rem;
   font-weight: 500;
-  font-family: inherit;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%);
   cursor: pointer;
   transition: border-color 0.25s;
@@ -79,4 +116,15 @@ button:focus-visible {
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
+}
+
+/* Mobile Responsive - Scale down border radius */
+@media (max-width: 768px) {
+  :root {
+    --radius-xs: 2px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+  }
 }

@@ -3,49 +3,49 @@
   align-items: center;
   justify-content: flex-start;
   position: relative;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   min-width: 0;
   padding: 0 18px;
   height: 48px;
   background: linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%);
   transition: box-shadow 0.2s, filter 0.18s, background 0.2s;
-  box-shadow: 0 2px 8px rgba(76,29,149,0.10);
+  box-shadow: 0 2px 8px rgba(76, 29, 149, 0.1);
   cursor: pointer;
   user-select: none;
 }
 
 .playercard-root.playercard-size-small {
   height: 32px;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   padding: 0 10px;
 }
 .playercard-root.playercard-size-medium {
   height: 48px;
-  font-size: 1.15rem;
+  font-size: 1.125rem;
   padding: 0 18px;
 }
 .playercard-root.playercard-size-large {
   height: 64px;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   padding: 0 28px;
 }
 
 .playercard-root.playercard-current-user {
-  outline: 2.5px solid #22d3ee;
-  box-shadow: 0 0 0 3px #22d3ee, 0 2px 8px rgba(34,211,238,0.18);
+  outline: 1px solid rgba(167, 139, 250, 0.3);
+  box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
   z-index: 2;
 }
 
 .playercard-username {
   font-weight: 700;
   color: #fff;
-  text-shadow: 0 2px 8px #000a, 0 0 2px #000;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 1px #000;
   letter-spacing: 0.01em;
   z-index: 2;
   position: relative;
   padding: 0 4px;
-  border-radius: 6px;
+  border-radius: 8px;
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
@@ -62,13 +62,13 @@
 
 .playercard-root:hover {
   filter: brightness(1.08) saturate(1.08);
-  box-shadow: 0 4px 16px #a78bfa44, 0 2px 8px rgba(76,29,149,0.18);
+  box-shadow: 0 3px 10px rgba(167, 139, 250, 0.15), 0 1px 4px rgba(76, 29, 149, 0.1);
 }
 
 @media (max-width: 600px) {
   .playercard-root.playercard-size-large {
     height: 48px;
-    font-size: 1.1rem;
+    font-size: 1.125rem;
     padding: 0 12px;
   }
   .playercard-root.playercard-size-medium {
@@ -78,7 +78,7 @@
   }
   .playercard-root.playercard-size-small {
     height: 28px;
-    font-size: 0.85rem;
+    font-size: 0.875rem;
     padding: 0 4px;
   }
 } 

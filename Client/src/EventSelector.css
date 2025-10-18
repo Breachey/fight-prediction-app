@@ -10,7 +10,7 @@
 .dropdown {
   width: 100%;
   padding: 12px 16px;
-  background: linear-gradient(135deg, #1a1a1a 0%, #702eb2 100%);
+  background: linear-gradient(135deg, #1a1a1a 0%, #6d28d9 100%);
   border: 2px solid #ff74ff;
   color: #ffffff;
   border-radius: 12px;
@@ -29,7 +29,7 @@
 }
 
 .dropdown.open {
-  box-shadow: 0 0 0 3px #43ccf3;
+  box-shadow: 0 0 0 2px #43ccf3;
 }
 
 .options-container {
@@ -43,7 +43,7 @@
   overflow: hidden;
   z-index: 10;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 20px #851ea633;
+  box-shadow: 0 2px 12px rgba(133, 30, 166, 0.12);
 }
 
 .options-container.hidden {
@@ -89,15 +89,15 @@
 
 .status-badge {
   padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.8rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
   color: #ffffff;
   margin-left: 8px;
   flex-shrink: 0;
 }
 
 .status-badge.completed {
-  background-color: #851ea6;
+  background-color: #6d28d9;
 }
 
 .status-badge.active {
@@ -154,7 +154,7 @@
   justify-content: center;
   position: relative;
   background: linear-gradient(135deg, rgba(26, 26, 26, 0.8) 0%, rgba(45, 31, 71, 0.6) 100%);
-  border-radius: 24px;
+  border-radius: 20px;
   border: 1px solid rgba(255, 116, 255, 0.2);
   backdrop-filter: blur(20px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -163,7 +163,7 @@
 }
 
 .carousel-arrow {
-  background: linear-gradient(135deg, #702eb2 0%, #43ccf3 100%);
+  background: linear-gradient(135deg, #6d28d9 0%, #43ccf3 100%);
   border: none;
   color: #ff74ff;
   font-size: 2.2rem;
@@ -176,7 +176,7 @@
   cursor: pointer;
   margin: 0 12px;
   transition: background 0.2s, color 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 12px #43ccf344;
+  box-shadow: 0 2px 8px rgba(67, 204, 243, 0.15);
 }
 .carousel-arrow:disabled {
   opacity: 0.3;
@@ -229,14 +229,14 @@
   transform: translateY(-4px) scale(1.02);
   border: 1px solid rgba(67, 204, 243, 0.6);
   background: linear-gradient(135deg, rgba(45, 31, 71, 0.9) 0%, rgba(67, 204, 243, 0.1) 100%);
-  box-shadow: 0 8px 32px rgba(67, 204, 243, 0.3);
+  box-shadow: 0 4px 16px rgba(67, 204, 243, 0.2);
   z-index: 2;
 }
 
 .event-card:hover {
   transform: translateY(-2px) scale(1.01);
   border: 1px solid rgba(255, 116, 255, 0.4);
-  box-shadow: 0 6px 24px rgba(255, 116, 255, 0.2);
+  box-shadow: 0 3px 12px rgba(255, 116, 255, 0.15);
 }
 
 .event-image-container {
@@ -245,7 +245,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* background: rgba(255, 255, 255, 0.05); */
   border-radius: 8px;
   overflow: visible;
   position: relative;
@@ -301,15 +300,13 @@
 
 /* SVG-specific effects */
 .event-image[src$=".svg"] {
-  filter: drop-shadow(0 0 8px rgba(255, 116, 255, 0.4)) 
-          drop-shadow(0 0 16px rgba(67, 204, 243, 0.3))
-          drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 0 4px rgba(255, 116, 255, 0.2)) 
+          drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
 }
 
 .event-card.has-image:hover .event-image[src$=".svg"] {
-  filter: drop-shadow(0 0 16px rgba(255, 116, 255, 0.7)) 
-          drop-shadow(0 0 32px rgba(67, 204, 243, 0.5))
-          drop-shadow(0 6px 20px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 0 6px rgba(255, 116, 255, 0.3)) 
+          drop-shadow(0 3px 8px rgba(0, 0, 0, 0.2));
   transform: scale(1.05);
 }
 
@@ -449,7 +446,7 @@
     min-width: 180px;
     max-width: 200px;
     padding: 24px 20px 20px 20px;
-    border-radius: 14px;
+    border-radius: 16px;
   }
 
   .event-image-container {
