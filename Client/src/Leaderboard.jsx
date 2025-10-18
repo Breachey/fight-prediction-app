@@ -1,7 +1,7 @@
 // Leaderboard.jsx
 // This component displays a leaderboard for an event and/or overall, with options to toggle between them and show/hide AI users.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
@@ -26,8 +26,8 @@ function Leaderboard({ eventId, currentUser }) {
   // Fetch leaderboard data when component mounts or eventId changes
   useEffect(() => {
     fetchLeaderboards();
-    // Refresh leaderboard data every 30 seconds
-    const refreshInterval = setInterval(fetchLeaderboards, 30000);
+    // Refresh leaderboard data every 60 seconds (reduced from 30s for performance)
+    const refreshInterval = setInterval(fetchLeaderboards, 60000);
     // Reset selected leaderboard if eventId changes
     setSelectedLeaderboard(eventId ? 'event' : 'overall');
     return () => clearInterval(refreshInterval);
@@ -159,7 +159,7 @@ function Leaderboard({ eventId, currentUser }) {
     boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1)',
     '@media (max-width: 768px)': {
       margin: '0 -10px',
-      borderRadius: '10px'
+      borderRadius: '12px'
     }
   };
 
@@ -355,7 +355,7 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     padding: '20px',
     background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-    borderRadius: '12px',
+      borderRadius: '12px',
     marginBottom: '20px',
     border: '1px solid rgba(239, 68, 68, 0.3)',
     boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)'
@@ -367,7 +367,7 @@ function Leaderboard({ eventId, currentUser }) {
     textAlign: 'center',
     color: '#9ca3af',
     background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-    borderRadius: '12px',
+      borderRadius: '12px',
     marginBottom: '20px',
     border: '1px solid #4c1d95'
   };
@@ -385,7 +385,7 @@ function Leaderboard({ eventId, currentUser }) {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
     color: '#a78bfa',
     padding: '2px 8px',
-    borderRadius: '12px',
+      borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: '500',
     border: '1px solid rgba(139, 92, 246, 0.3)',
@@ -400,7 +400,7 @@ function Leaderboard({ eventId, currentUser }) {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
     padding: '2px 8px',
-    borderRadius: '12px',
+      borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: '500',
     border: '1px solid rgba(59, 130, 246, 0.3)',
@@ -437,12 +437,13 @@ function Leaderboard({ eventId, currentUser }) {
   };
 
   // Helper to interpolate between two colors (hex strings, e.g. '22c55e' and 'ef4444')
-  function interpolateColor(color1, color2, factor) {
+  // Memoize this function to avoid recomputation
+  const interpolateColor = useCallback((color1, color2, factor) => {
     const c1 = color1.match(/\w\w/g).map(x => parseInt(x, 16));
     const c2 = color2.match(/\w\w/g).map(x => parseInt(x, 16));
     const result = c1.map((v, i) => Math.round(v + (c2[i] - v) * factor));
     return '#' + result.map(x => x.toString(16).padStart(2, '0')).join('');
-  }
+  }, []);
 
   // Style for points cell, interpolates color from green to red based on rank
   const pointsStyle = (index, total) => {
@@ -588,26 +589,50 @@ function Leaderboard({ eventId, currentUser }) {
                 }}>
                   {entry.username}
                 </span>
-                {entry.is_bot && (
-                  <span style={{
-                    background: 'rgba(59,130,246,0.2)',
-                    color: '#60a5fa',
-                    padding: '0px 7px',
-                    borderRadius: 10,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    marginTop: 1,
-                    lineHeight: 1,
-                    height: 16,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    minHeight: 0,
-                    minWidth: 0,
-                    marginLeft: 8
-                  }}>
-                    AI
-                  </span>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                  {entry.is_bot && (
+                    <span style={{
+                      background: 'rgba(59,130,246,0.2)',
+                      color: '#60a5fa',
+                      padding: '0px 7px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      height: 16,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      minHeight: 0,
+                      minWidth: 0,
+                    }}>
+                      AI
+                    </span>
+                  )}
+                  {entry.streak && entry.streak.count >= 2 && (
+                    <span style={{
+                      background: entry.streak.type === 'win' 
+                        ? 'rgba(34, 197, 94, 0.15)' 
+                        : 'rgba(59, 130, 246, 0.15)',
+                      color: entry.streak.type === 'win' ? '#22c55e' : '#60a5fa',
+                      padding: '0px 7px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      height: 16,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      minHeight: 0,
+                      minWidth: 0,
+                      border: entry.streak.type === 'win'
+                        ? '1px solid rgba(34, 197, 94, 0.3)'
+                        : '1px solid rgba(59, 130, 246, 0.3)',
+                    }}>
+                      {entry.streak.type === 'win' ? '🔥' : '❄️'}{entry.streak.count}
+                    </span>
+                  )}
+                </div>
               </span>
             </div>
           </div>
@@ -638,7 +663,8 @@ function Leaderboard({ eventId, currentUser }) {
 
   // --- LeaderboardCardsList subcomponent ---
   // Renders a list of leaderboard cards for the given data and title
-  const LeaderboardCardsList = ({ data, title }) => {
+  // Memoize this component to prevent unnecessary re-renders
+  const LeaderboardCardsList = useCallback(({ data, title }) => {
     if (!data.length) {
       return (
         <div style={emptyStyle}>
@@ -700,7 +726,7 @@ function Leaderboard({ eventId, currentUser }) {
         </div>
       </>
     );
-  };
+  }, [showBots, sortConfig, currentUser, interpolateColor]);
 
   // --- Main render logic ---
 

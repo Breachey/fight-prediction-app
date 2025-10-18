@@ -15,7 +15,7 @@
 }
 
 .fights-title {
-  font-size: 1.8rem;
+  font-size: 1.875rem;
   font-weight: 600;
   margin-bottom: 16px;
   background: linear-gradient(to right, #e9d5ff, #ffffff);
@@ -54,11 +54,11 @@
 
 .fight-card {
   background: linear-gradient(135deg, #1a1a1a 0%, #2d1f47 100%);
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 24px;
   margin-bottom: 20px;
   border: 2px solid #ff74ff;
-  box-shadow: 0 4px 24px #851ea633;
+  box-shadow: 0 2px 12px rgba(133, 30, 166, 0.12);
   transition: transform 0.3s, box-shadow 0.3s, border 0.3s;
   width: 100%;
   box-sizing: border-box;
@@ -76,12 +76,12 @@
 .fighter-card {
   flex: 1;
   min-width: 250px;
-  background: linear-gradient(135deg, #1a1a1a 0%, #702eb2 100%);
-  border-radius: 14px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #6d28d9 100%);
+  border-radius: 16px;
   padding: 20px;
   color: #ffffff;
-  box-shadow: 0 4px 12px #851ea644;
-  border: 2px solid #bc96f8;
+  box-shadow: 0 4px 12px rgba(133, 30, 166, 0.27);
+  border: 2px solid #a78bfa;
   transition: all 0.3s;
   position: relative;
   overflow: visible;
@@ -117,22 +117,22 @@
 
 .fighter-card:hover:not(.completed):not(.unselected) {
   transform: translateY(-3px) scale(1.03);
-  box-shadow: 0 6px 24px #ff74ff88;
+  box-shadow: 0 3px 12px rgba(255, 116, 255, 0.25);
   border-color: #ff74ff;
 }
 
 .fighter-card.selected:first-child {
   border: 2.5px solid #ff74ff;
-  box-shadow: 0 0 18px #ff74ff99;
-  background: linear-gradient(135deg, #1a1a1a 0%, #ff74ff22 100%);
+  box-shadow: 0 0 8px rgba(255, 116, 255, 0.3);
+  background: linear-gradient(135deg, #1a1a1a 0%, rgba(255, 116, 255, 0.13) 100%);
   opacity: 1;
   filter: none;
 }
 
 .fighter-card.selected:last-child {
   border: 2.5px solid #43ccf3;
-  box-shadow: 0 0 18px #43ccf399;
-  background: linear-gradient(135deg, #1a1a1a 0%, #43ccf322 100%);
+  box-shadow: 0 0 8px rgba(67, 204, 243, 0.3);
+  background: linear-gradient(135deg, #1a1a1a 0%, rgba(67, 204, 243, 0.13) 100%);
   opacity: 1;
   filter: none;
 }
@@ -160,7 +160,7 @@
   filter: none;
   overflow: visible;
   border: 2.5px solid #FFD700;
-  box-shadow: 0 0 24px #FFD70088;
+  box-shadow: 0 0 12px #FFD70044;
   background: none;
   animation: winnerGlow 2s infinite;
 }
@@ -188,9 +188,9 @@
 }
 
 @keyframes winnerGlow {
-  0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.7); }
-  100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
+  0% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.2); }
+  50% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.4); }
+  100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.2); }
 }
 
 .fighter-image-container {
@@ -210,7 +210,7 @@
   height: 100%;
   border-radius: 8px;
   overflow: hidden;
-  background-color: #2d1f4700;
+  background-color: transparent;
 }
 
 .fighter-image {
@@ -264,15 +264,15 @@
   display: flex;
   height: 32px;
   background-color: #1a1a1a;
-  border-radius: 12px; /* Matches fighter cards */
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid #4c1d95;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Enhanced shadow for depth */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   transition: box-shadow 0.2s, border 0.2s;
 }
 
 .vote-distribution:hover {
-  box-shadow: 0 6px 24px #ff74ff88;
+  box-shadow: 0 3px 12px rgba(255, 116, 255, 0.25);
   border-color: #ff74ff;
 }
 
@@ -289,12 +289,12 @@
   padding: 10px;
   background: linear-gradient(135deg, #ff74ff 0%, #43ccf3 100%);
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   color: #10120a;
   font-weight: 700;
   cursor: pointer;
   font-size: 1rem;
-  box-shadow: 0 2px 8px #43ccf344;
+  box-shadow: 0 2px 6px rgba(67, 204, 243, 0.15);
   transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
   margin-bottom: 18px;
 }
@@ -302,7 +302,7 @@
 .expand-votes-button:hover {
   background: linear-gradient(135deg, #43ccf3 0%, #ff74ff 100%);
   color: #10120a;
-  box-shadow: 0 4px 16px #ff74ff88;
+  box-shadow: 0 3px 10px rgba(255, 116, 255, 0.25);
   transform: translateY(-2px) scale(1.04);
 }
 
@@ -351,11 +351,11 @@
 }
 
 .fighter1-bar {
-  background: linear-gradient(90deg, #ff74ff 0%, #bc96f8 100%);
+  background: linear-gradient(90deg, #ff74ff 0%, #a78bfa 100%);
 }
 
 .fighter2-bar {
-  background: linear-gradient(90deg, #43ccf3 0%, #702eb2 100%);
+  background: linear-gradient(90deg, #43ccf3 0%, #6d28d9 100%);
 }
 
 .votes-list-container {
@@ -390,18 +390,18 @@
 
 .votes-list::-webkit-scrollbar-track {
   background: #1a1a1a;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .votes-list::-webkit-scrollbar-thumb {
   background: #4c1d95;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .vote-item {
   padding: 8px 12px;
   background-color: #2d1f47;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 8px;
   font-size: 0.9rem;
   color: #e9d5ff;
@@ -578,17 +578,17 @@
   background: linear-gradient(135deg, #ff74ff 0%, #43ccf3 100%);
   color: #10120a;
   padding: 3px 6px;
-  border-radius: 14px;
+  border-radius: 16px;
   font-size: 0.75rem;
   font-weight: bold;
-  box-shadow: 0 2px 8px #43ccf344;
+  box-shadow: 0 2px 6px rgba(67, 204, 243, 0.15);
   z-index: 2;
   opacity: 1;
   transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .vote-badge:hover {
-  box-shadow: 0 4px 16px #ff74ff88;
+  box-shadow: 0 3px 10px rgba(255, 116, 255, 0.25);
   transform: scale(1.07);
 }
 
@@ -624,19 +624,7 @@
   border: 1px solid rgba(255, 215, 0, 0.2);
   margin: 4px 0;
   display: inline-block;
-  animation: nicknameGlow 2s ease-in-out infinite alternate;
   min-height: 24px;
-}
-
-@keyframes nicknameGlow {
-  from {
-    text-shadow: 0 0 4px rgba(255, 215, 0, 0.4);
-    box-shadow: 0 0 4px rgba(255, 215, 0, 0.2);
-  }
-  to {
-    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
-    box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
-  }
 }
 
 .fighter-name-text {
@@ -684,7 +672,7 @@
     align-items: center;
     justify-content: flex-start;
     gap: 12px;
-    border-radius: 10px;
+    border-radius: 12px;
     width: calc(50% - 5px);
     box-sizing: border-box;
   }
@@ -697,11 +685,11 @@
   }
 
   .fighter-image {
-    border-radius: 10px;
+    border-radius: 12px;
   }
 
   .fighter-image-background {
-    border-radius: 10px;
+    border-radius: 12px;
   }
 
   .vs-text {
@@ -863,11 +851,11 @@
   }
 
   .fighter-image {
-    border-radius: 10px;
+    border-radius: 12px;
   }
 
   .fighter-image-background {
-    border-radius: 10px;
+    border-radius: 12px;
   }
 
   .fighter-name {
@@ -983,7 +971,7 @@
 
 .expanded-stats {
   background: rgba(26, 26, 26, 0.6);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 8px;
   margin-top: 4px;
   border: 1px solid rgba(76, 29, 149, 0.2);
@@ -1032,13 +1020,13 @@
 .fighter-votes.fighter1-votes {
   background: linear-gradient(135deg, #3a003a 60%, #ff74ff 100%);
   border: 2px solid #ff74ff;
-  box-shadow: 0 2px 16px 0 #ff74ff55;
+  box-shadow: 0 2px 10px 0 #ff74ff33;
   color: #ffe6fa;
 }
 .fighter-votes.fighter2-votes {
   background: linear-gradient(135deg, #002a3a 60%, #43ccf3 100%);
   border: 2px solid #43ccf3;
-  box-shadow: 0 2px 16px 0 #43ccf355;
+  box-shadow: 0 2px 10px 0 #43ccf333;
   color: #e6faff;
 }
 .fighter-votes.fighter1-votes h4,
@@ -1143,7 +1131,7 @@
   color: #ffffff;
   border: none;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.3s ease;
   box-shadow: 0 2px 4px rgba(109, 40, 217, 0.3);
@@ -1274,7 +1262,7 @@
   background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   color: white;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1301,7 +1289,7 @@
   color: white;
   border: none;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -1320,7 +1308,7 @@
   padding: 12px;
   background: rgba(220, 38, 38, 0.1);
   border: 1px solid #dc2626;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .canceled-text {
@@ -1337,7 +1325,7 @@
   color: #9ca3af;
   border: 1px solid rgba(107, 114, 128, 0.3);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;

@@ -1,12 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 import PlayerCard from './components/PlayerCard';
+import VoteCard from './components/VoteCard';
+
+// Move static styles outside component to prevent recreation on every render
+const aiBadge = {
+  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+  color: '#60a5fa',
+  padding: '2px 8px',
+  borderRadius: '12px',
+  fontSize: '0.75rem',
+  fontWeight: '500',
+  border: '1px solid rgba(59, 130, 246, 0.3)',
+  marginLeft: '4px'
+};
+
+const toggleButtonStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '8px 12px',
+  borderRadius: '8px',
+  background: 'transparent',
+  border: '1px solid rgba(139, 92, 246, 0.1)',
+  cursor: 'pointer',
+  fontSize: '0.875rem',
+  transition: 'all 0.2s ease',
+  marginBottom: '10px',
+  width: 'fit-content',
+  margin: '0 auto 20px auto',
+  opacity: 0.7
+};
 
 function Fights({ eventId, username, user_id, user_type }) {
-  console.log('Fights props:', { eventId, username, user_id, user_type });
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -127,31 +156,11 @@ function Fights({ eventId, username, user_id, user_type }) {
             predictionsResponse.json()
           ]);
 
-          // Add debug logging
-          console.log('API Response:', {
-            fights: fightsData.map(fight => ({
-              id: fight.id,
-              fighter1_id: fight.fighter1_id,
-              fighter2_id: fight.fighter2_id,
-              fighter1_streak: fight.fighter1_streak,
-              fighter2_streak: fight.fighter2_streak,
-              is_completed: fight.is_completed
-            })),
-            predictions: predictionsData
-          });
-
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
           predictionsData.forEach(pred => {
-            console.log('Processing prediction:', {
-              fight_id: pred.fight_id,
-              fighter_id: pred.fighter_id,
-              stringified_fighter_id: String(pred.fighter_id)
-            });
             submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
           });
-
-          console.log('Final submitted votes:', submittedVotes);
 
           setFights(fightsData.map(fight => ({
             ...fight,
@@ -316,14 +325,6 @@ function Fights({ eventId, username, user_id, user_type }) {
     // Fetch votes if expanding and we don't have them yet
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
-        console.log('Fetching votes for fight:', {
-          fightId,
-          fighter1: fight.fighter1_name,
-          fighter2: fight.fighter2_name,
-          encodedFighter1: encodeURIComponent(fight.fighter1_name),
-          encodedFighter2: encodeURIComponent(fight.fighter2_name)
-        });
-
         const [fighter1Response, fighter2Response] = await Promise.all([
           fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
           fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
@@ -342,17 +343,6 @@ function Fights({ eventId, username, user_id, user_type }) {
           fighter1Response.json(),
           fighter2Response.json()
         ]);
-
-        console.log('Received votes:', {
-          fighter1: {
-            name: fight.fighter1_name,
-            votes: fighter1Votes
-          },
-          fighter2: {
-            name: fight.fighter2_name,
-            votes: fighter2Votes
-          }
-        });
 
         setFightVotes(prev => ({
           ...prev,
@@ -388,64 +378,12 @@ function Fights({ eventId, username, user_id, user_type }) {
     }));
   };
 
-  const aiBadge = {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    color: '#60a5fa',
-    padding: '2px 8px',
-    borderRadius: '12px',
-    fontSize: '0.75rem',
-    fontWeight: '500',
-    border: '1px solid rgba(59, 130, 246, 0.3)',
-    marginLeft: '4px'
-  };
-
-  const toggleButtonStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '6px 12px',
-    borderRadius: '6px',
-    background: 'transparent',
+  // Dynamic toggle button style based on showAIVotes state
+  const dynamicToggleStyle = useMemo(() => ({
+    ...toggleButtonStyle,
     color: showAIVotes ? '#60a5fa80' : '#a78bfa80',
     border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
-    cursor: 'pointer',
-    fontSize: '0.8rem',
-    transition: 'all 0.2s ease',
-    marginBottom: '10px',
-    width: 'fit-content',
-    margin: '0 auto 20px auto',
-    opacity: 0.7,
-    '&:hover': {
-      opacity: 1,
-      background: showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(76, 29, 149, 0.1)'
-    }
-  };
-
-  // Fetch votes for all eligible fights on mount or when fights/submittedFights change
-  useEffect(() => {
-    if (!fights.length) return;
-    fights.forEach(fight => {
-      const eligible = submittedFights[fight.id] || fight.is_completed;
-      if (eligible && !fightVotes[fight.id]) {
-        Promise.all([
-          fetch(`${API_URL}/predictions/filter?fight_id=${fight.id}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-          fetch(`${API_URL}/predictions/filter?fight_id=${fight.id}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-        ])
-          .then(async ([fighter1Response, fighter2Response]) => {
-            if (!fighter1Response.ok || !fighter2Response.ok) return;
-            const [fighter1Votes, fighter2Votes] = await Promise.all([
-              fighter1Response.json(),
-              fighter2Response.json()
-            ]);
-            setFightVotes(prev => ({
-              ...prev,
-              [fight.id]: { fighter1Votes, fighter2Votes }
-            }));
-          })
-          .catch(() => {});
-      }
-    });
-  }, [fights, submittedFights, showAIVotes]);
+  }), [showAIVotes]);
 
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
@@ -458,7 +396,7 @@ function Fights({ eventId, username, user_id, user_type }) {
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
         <button 
-          style={toggleButtonStyle}
+          style={dynamicToggleStyle}
           onClick={() => setShowAIVotes(!showAIVotes)}
         >
           {showAIVotes ? '○ AI Votes' : '● AI Votes'}
@@ -510,13 +448,6 @@ function Fights({ eventId, username, user_id, user_type }) {
           )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
-            {console.log('Fight data:', {
-              id: fight.id,
-              winner: fight.winner,
-              fighter1_id: fight.fighter1_id,
-              fighter2_id: fight.fighter2_id,
-              is_completed: fight.is_completed
-            })}
             <div
               className={`fighter-card ${
                 fight.is_completed
@@ -531,13 +462,6 @@ function Fights({ eventId, username, user_id, user_type }) {
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id)}
             >
-              {console.log('Fighter 1 class data:', {
-                fightId: fight.id,
-                fighter1Id: fight.fighter1_id,
-                submittedVote: submittedFights[fight.id],
-                isSelected: submittedFights[fight.id] === fight.fighter1_id,
-                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id
-              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
@@ -581,19 +505,8 @@ function Fights({ eventId, username, user_id, user_type }) {
                   </span>
                 </div>
               </div>
-              {console.log('Rank debug:', {
-                fighter1_rank: fight.fighter1_rank,
-                fighter1_rank_type: typeof fight.fighter1_rank,
-                fighter2_rank: fight.fighter2_rank,
-                fighter2_rank_type: typeof fight.fighter2_rank
-              })}
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
-                  {console.log('Fighter 1 Streak Debug:', {
-                    raw: fight.fighter1_streak,
-                    type: typeof fight.fighter1_streak,
-                    formatted: formatStreak(fight.fighter1_streak)
-                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter1_age || 'N/A'}</span>
@@ -646,13 +559,6 @@ function Fights({ eventId, username, user_id, user_type }) {
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id)}
             >
-              {console.log('Fighter 2 class data:', {
-                fightId: fight.id,
-                fighter2Id: fight.fighter2_id,
-                submittedVote: submittedFights[fight.id],
-                isSelected: submittedFights[fight.id] === fight.fighter2_id,
-                isUnselected: submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id
-              })}
               <div className="fighter-image-container">
                 <div className="fighter-image-background">
                   <ReactCountryFlag 
@@ -696,19 +602,8 @@ function Fights({ eventId, username, user_id, user_type }) {
                   </span>
                 </div>
               </div>
-              {console.log('Rank debug:', {
-                fighter1_rank: fight.fighter1_rank,
-                fighter1_rank_type: typeof fight.fighter1_rank,
-                fighter2_rank: fight.fighter2_rank,
-                fighter2_rank_type: typeof fight.fighter2_rank
-              })}
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
-                  {console.log('Fighter 2 Streak Debug:', {
-                    raw: fight.fighter2_streak,
-                    type: typeof fight.fighter2_streak,
-                    formatted: formatStreak(fight.fighter2_streak)
-                  })}
                   <div className="stat-row">
                     <span className="stat-label">Age</span>
                     <span>{fight.fighter2_age || 'N/A'}</span>
@@ -830,65 +725,9 @@ function Fights({ eventId, username, user_id, user_type }) {
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter1Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
-                        .map((vote, index) => {
-                          const bgUrl = vote.playercard?.image_url || '';
-                          const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
-                          return (
-                            <div
-                              key={index}
-                              className="vote-username-on-bg"
-                              style={{
-                                position: 'relative',
-                                background: bgUrl ? `url('${bgUrl}') center/cover no-repeat` : fallbackBg,
-                                borderRadius: 12,
-                                overflow: 'hidden',
-                                minHeight: 40,
-                                marginBottom: 12,
-                                boxShadow: vote.username === username ? '0 0 0 2.5px #22d3ee, 0 2px 8px #22d3ee44' : '0 2px 8px rgba(76,29,149,0.10)',
-                                border: vote.username === username ? '2.5px solid #22d3ee' : 'none',
-                              }}
-                            >
-                              <div style={{
-                                position: 'absolute',
-                                inset: 0,
-                                background: 'linear-gradient(90deg, rgba(26,26,26,0.82) 60%, rgba(76,29,149,0.32) 100%)',
-                                zIndex: 1,
-                                pointerEvents: 'none',
-                              }} />
-                              <div style={{
-                                position: 'relative',
-                                zIndex: 2,
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: '8px 16px',
-                                minHeight: 40,
-                              }}>
-                                <span style={{
-                                  fontWeight: 700,
-                                  color: '#fff',
-                                  textShadow: '0 2px 8px #000a, 0 0 2px #000',
-                                  fontSize: '1.1rem',
-                                  letterSpacing: 0.01,
-                                  borderRadius: 6,
-                                  padding: '0 6px',
-                                  marginRight: 8,
-                                }}>
-                                  {vote.username}{vote.username === username && ' (You)'}
-                                </span>
-                                {vote.is_bot && <span style={{
-                                  background: 'rgba(59,130,246,0.2)',
-                                  color: '#60a5fa',
-                                  padding: '2px 8px',
-                                  borderRadius: 12,
-                                  fontSize: '0.85rem',
-                                  fontWeight: 500,
-                                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                                  marginLeft: 4,
-                                }}>AI</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                        .map((vote, index) => (
+                          <VoteCard key={index} vote={vote} username={username} />
+                        ))}
                     </div>
                   </div>
                   <div className="fighter-votes fighter2-votes">
@@ -896,65 +735,9 @@ function Fights({ eventId, username, user_id, user_type }) {
                     <div className="votes-list">
                       {fightVotes[fight.id].fighter2Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
-                        .map((vote, index) => {
-                          const bgUrl = vote.playercard?.image_url || '';
-                          const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
-                          return (
-                            <div
-                              key={index}
-                              className="vote-username-on-bg"
-                              style={{
-                                position: 'relative',
-                                background: bgUrl ? `url('${bgUrl}') center/cover no-repeat` : fallbackBg,
-                                borderRadius: 12,
-                                overflow: 'hidden',
-                                minHeight: 40,
-                                marginBottom: 12,
-                                boxShadow: vote.username === username ? '0 0 0 2.5px #22d3ee, 0 2px 8px #22d3ee44' : '0 2px 8px rgba(76,29,149,0.10)',
-                                border: vote.username === username ? '2.5px solid #22d3ee' : 'none',
-                              }}
-                            >
-                              <div style={{
-                                position: 'absolute',
-                                inset: 0,
-                                background: 'linear-gradient(90deg, rgba(26,26,26,0.82) 60%, rgba(76,29,149,0.32) 100%)',
-                                zIndex: 1,
-                                pointerEvents: 'none',
-                              }} />
-                              <div style={{
-                                position: 'relative',
-                                zIndex: 2,
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: '8px 16px',
-                                minHeight: 40,
-                              }}>
-                                <span style={{
-                                  fontWeight: 700,
-                                  color: '#fff',
-                                  textShadow: '0 2px 8px #000a, 0 0 2px #000',
-                                  fontSize: '1.1rem',
-                                  letterSpacing: 0.01,
-                                  borderRadius: 6,
-                                  padding: '0 6px',
-                                  marginRight: 8,
-                                }}>
-                                  {vote.username}{vote.username === username && ' (You)'}
-                                </span>
-                                {vote.is_bot && <span style={{
-                                  background: 'rgba(59,130,246,0.2)',
-                                  color: '#60a5fa',
-                                  padding: '2px 8px',
-                                  borderRadius: 12,
-                                  fontSize: '0.85rem',
-                                  fontWeight: 500,
-                                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                                  marginLeft: 4,
-                                }}>AI</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                        .map((vote, index) => (
+                          <VoteCard key={index} vote={vote} username={username} />
+                        ))}
                     </div>
                   </div>
                 </div>

@@ -113,7 +113,9 @@ function EventSelector({ onEventSelect, selectedEventId }) {
             // Format date (exclude time)
             let dateStr = '';
             if (event.date) {
-              const dateObj = new Date(event.date);
+              // Parse date as local time to avoid timezone offset issues
+              const [year, month, day] = event.date.split('T')[0].split('-');
+              const dateObj = new Date(year, month - 1, day); // month is 0-indexed
               dateStr = dateObj.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
             }
             // Format location
