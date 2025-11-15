@@ -16,6 +16,7 @@ function Leaderboard({ eventId, currentUser }) {
   // Loading and error state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   // Whether to show AI users in the leaderboard
   const [showBots, setShowBots] = useState(false);
   // Which leaderboard is currently selected ('event' or 'overall' or 'monthly')
@@ -23,20 +24,29 @@ function Leaderboard({ eventId, currentUser }) {
   // Add state for sorting
   const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
 
-  // Fetch leaderboard data when component mounts or eventId changes
-  useEffect(() => {
-    fetchLeaderboards();
-    // Refresh leaderboard data every 60 seconds (reduced from 30s for performance)
-    const refreshInterval = setInterval(fetchLeaderboards, 60000);
-    // Reset selected leaderboard if eventId changes
-    setSelectedLeaderboard(eventId ? 'event' : 'overall');
-    return () => clearInterval(refreshInterval);
-  }, [eventId]);
-
   // Fetch both event, overall, and monthly leaderboards from the API
-  const fetchLeaderboards = async () => {
+  const fetchLeaderboards = useCallback(async ({ skipGlobalLoading = false, showManualIndicator = false } = {}) => {
+    const startLoading = () => {
+      if (!skipGlobalLoading) {
+        setIsLoading(true);
+      }
+      if (showManualIndicator) {
+        setIsRefreshing(true);
+      }
+    };
+
+    const stopLoading = () => {
+      if (!skipGlobalLoading) {
+        setIsLoading(false);
+      }
+      if (showManualIndicator) {
+        setIsRefreshing(false);
+      }
+    };
+
+    startLoading();
+
     try {
-      setIsLoading(true);
       setError('');
 
       // Fetch all leaderboards in parallel
@@ -104,17 +114,29 @@ function Leaderboard({ eventId, currentUser }) {
         setEventLeaderboard([]);
       }
 
-      setIsLoading(false);
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
       setError(error.message || 'An unexpected error occurred. Please try again later.');
-      setIsLoading(false);
       // Set empty arrays to prevent undefined errors
       setEventLeaderboard([]);
       setOverallLeaderboard([]);
       setMonthlyLeaderboard([]);
+    } finally {
+      stopLoading();
     }
-  };
+  }, [eventId]);
+
+  // Fetch leaderboard data when component mounts or eventId changes
+  useEffect(() => {
+    fetchLeaderboards();
+    // Refresh leaderboard data every 60 seconds (reduced from 30s for performance)
+    const refreshInterval = setInterval(() => {
+      fetchLeaderboards({ skipGlobalLoading: true });
+    }, 60000);
+    // Reset selected leaderboard if eventId changes
+    setSelectedLeaderboard(eventId ? 'event' : 'overall');
+    return () => clearInterval(refreshInterval);
+  }, [eventId, fetchLeaderboards]);
 
   // --- Styling objects ---
   // These objects define the inline styles for the leaderboard UI
@@ -421,20 +443,62 @@ function Leaderboard({ eventId, currentUser }) {
     marginBottom: '20px'
   };
 
-  // Style for toggle buttons (leaderboard selection and AI toggle)
+  // Style for toggle buttons (leaderboard selection)
   const toggleButtonStyle = {
     padding: '8px 16px',
     borderRadius: '8px',
-    background: showBots ? 'rgba(59, 130, 246, 0.2)' : 'rgba(76, 29, 149, 0.2)',
-    color: showBots ? '#60a5fa' : '#a78bfa',
-    border: `1px solid ${showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+    background: selectedLeaderboard === 'event' || selectedLeaderboard === 'overall' || selectedLeaderboard === 'monthly' 
+      ? 'rgba(76, 29, 149, 0.2)' 
+      : 'rgba(76, 29, 149, 0.2)',
+    color: '#a78bfa',
+    border: '1px solid rgba(139, 92, 246, 0.3)',
     cursor: 'pointer',
     fontSize: '0.9rem',
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      background: showBots ? 'rgba(59, 130, 246, 0.3)' : 'rgba(76, 29, 149, 0.3)'
-    }
+    transition: 'all 0.2s ease'
   };
+
+  // Style for AI users toggle button (matches Fights.jsx style)
+  const aiToggleButtonStyle = useMemo(() => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    background: 'transparent',
+    border: `1px solid ${showBots ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
+    cursor: 'pointer',
+    fontSize: '0.875rem',
+    transition: 'all 0.2s ease',
+    margin: '0 auto 20px auto',
+    width: 'fit-content',
+    opacity: 0.7,
+    color: showBots ? '#60a5fa80' : '#a78bfa80',
+  }), [showBots]);
+
+  const refreshButtonStyle = (disabled) => ({
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    margin: 0,
+    outline: 'none',
+    boxShadow: 'none',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: disabled ? 0.5 : 1,
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+  });
+
+  const refreshIconStyle = (spinning) => ({
+    display: 'inline-block',
+    fontSize: '2.5rem',
+    color: '#e5e7eb',
+    transformOrigin: '50% 50%',
+    animation: spinning ? 'leaderboard-refresh-spin 0.8s linear infinite' : 'none',
+    transition: 'opacity 0.2s ease',
+  });
 
   // Helper to interpolate between two colors (hex strings, e.g. '22c55e' and 'ef4444')
   // Memoize this function to avoid recomputation
@@ -797,10 +861,40 @@ function Leaderboard({ eventId, currentUser }) {
       {/* AI users toggle */}
       <div style={filterToggleStyle}>
         <button 
-          style={toggleButtonStyle}
+          style={aiToggleButtonStyle}
           onClick={() => setShowBots(!showBots)}
         >
-          {showBots ? 'Hide AI Users' : 'Show AI Users'}
+          {showBots ? '● Show AI Users' : '○ Show AI Users'}
+        </button>
+      </div>
+      <div style={filterToggleStyle}>
+        <style>
+          {`@keyframes leaderboard-refresh-spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+            .refresh-button,
+            .refresh-button:hover,
+            .refresh-button:focus,
+            .refresh-button:active,
+            .refresh-button:focus-visible {
+              background: transparent !important;
+              border: none !important;
+              outline: none !important;
+              box-shadow: none !important;
+              -webkit-box-shadow: none !important;
+              -moz-box-shadow: none !important;
+            }`}
+        </style>
+        <button
+          className="refresh-button"
+          style={refreshButtonStyle(isRefreshing)}
+          onClick={() => fetchLeaderboards({ skipGlobalLoading: true, showManualIndicator: true })}
+          disabled={isRefreshing}
+          aria-label="Refresh leaderboard"
+          title="Refresh leaderboard"
+        >
+          <span style={refreshIconStyle(isRefreshing)}>⟳</span>
         </button>
       </div>
       {/* Show only the selected leaderboard */}
