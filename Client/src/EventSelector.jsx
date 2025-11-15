@@ -23,9 +23,18 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
   // Scroll selected card into view when currentIndex or events change
   useEffect(() => {
-    if (cardRefs.current[currentIndex]) {
-      cardRefs.current[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
+    // Use a small delay to ensure DOM is fully rendered
+    const timer = setTimeout(() => {
+      if (cardRefs.current[currentIndex]) {
+        cardRefs.current[currentIndex].scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'nearest', 
+          inline: 'center' 
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [currentIndex, events]);
 
   const fetchEvents = async () => {
@@ -41,8 +50,11 @@ function EventSelector({ onEventSelect, selectedEventId }) {
       setIsLoading(false);
       // Auto-select first upcoming or first event
       if (!selectedEventId && sortedEvents.length > 0) {
-        const upcoming = sortedEvents.find(e => e.status === 'Upcoming');
-        onEventSelect(upcoming ? upcoming.id : sortedEvents[0].id);
+        const upcomingIndex = sortedEvents.findIndex(e => e.status === 'Upcoming');
+        const targetIndex = upcomingIndex !== -1 ? upcomingIndex : 0;
+        const targetEvent = sortedEvents[targetIndex];
+        setCurrentIndex(targetIndex);
+        onEventSelect(targetEvent.id);
       }
     } catch (err) {
       console.error('Error fetching events:', err);
