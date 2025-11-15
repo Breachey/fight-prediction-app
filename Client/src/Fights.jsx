@@ -52,6 +52,7 @@ function Fights({ eventId, username, user_id, user_type }) {
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
+  const [voteCounts, setVoteCounts] = useState({}); // Store vote counts for button ratio
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
   const [expandedFightStats, setExpandedFightStats] = useState({});
@@ -162,11 +163,13 @@ function Fights({ eventId, username, user_id, user_type }) {
             submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
           });
 
-          setFights(fightsData.map(fight => ({
+          const fightsWithStringIds = fightsData.map(fight => ({
             ...fight,
             fighter1_id: String(fight.fighter1_id), // Ensure fighter IDs are strings
             fighter2_id: String(fight.fighter2_id)
-          })));
+          }));
+
+          setFights(fightsWithStringIds);
           setSubmittedFights(submittedVotes);
           setLoading(false);
         })
@@ -199,6 +202,55 @@ function Fights({ eventId, username, user_id, user_type }) {
     localStorage.removeItem(`selectedFights_${eventId}_${username}`);
     localStorage.removeItem(`submittedFights_${eventId}_${username}`);
   }, [username, eventId]);
+
+  // Function to fetch vote counts for a fight (lightweight - just for button ratio)
+  const fetchVoteCounts = useCallback(async (fightId) => {
+    const fightKey = String(fightId);
+    const fight = fights.find(f => String(f.id) === fightKey);
+    if (!fight) return;
+
+    try {
+      const [fighter1Response, fighter2Response] = await Promise.all([
+        fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+        fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+      ]);
+
+      if (!fighter1Response.ok || !fighter2Response.ok) return;
+
+      const [fighter1Votes, fighter2Votes] = await Promise.all([
+        fighter1Response.json(),
+        fighter2Response.json()
+      ]);
+
+      // Filter out bot votes if needed (for count calculation)
+      const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
+      const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
+
+      setVoteCounts(prev => ({
+        ...prev,
+        [fightKey]: {
+          fighter1: fighter1Filtered.length,
+          fighter2: fighter2Filtered.length
+        }
+      }));
+    } catch (err) {
+      console.error('Error fetching vote counts:', err);
+    }
+  }, [fights, showAIVotes]);
+
+  // Fetch vote counts for fights the user has already voted on
+  useEffect(() => {
+    if (fights.length > 0 && Object.keys(submittedFights).length > 0) {
+      const votedFightIds = Object.keys(submittedFights);
+      votedFightIds.forEach(fightId => {
+        const fight = fights.find(f => String(f.id) === String(fightId));
+        if (fight) {
+          // Only fetch if we don't have counts yet, or if showAIVotes changed
+          fetchVoteCounts(fightId);
+        }
+      });
+    }
+  }, [fights, submittedFights, fetchVoteCounts, showAIVotes]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
@@ -273,6 +325,28 @@ function Fights({ eventId, username, user_id, user_type }) {
         return newState;
       });
 
+      // Optimistically update vote counts immediately for instant UI feedback
+      const fightKey = String(fightId);
+      const fight = fights.find(f => String(f.id) === fightKey);
+      if (fight) {
+        setVoteCounts(prev => {
+          const current = prev[fightKey] || { fighter1: 0, fighter2: 0 };
+          const isFighter1 = String(selectedFighter) === String(fight.fighter1_id);
+          return {
+            ...prev,
+            [fightKey]: {
+              fighter1: isFighter1 ? current.fighter1 + 1 : current.fighter1,
+              fighter2: isFighter1 ? current.fighter2 : current.fighter2 + 1
+            }
+          };
+        });
+      }
+
+      // Fetch actual vote counts after a short delay to ensure API has processed the vote
+      setTimeout(() => {
+        fetchVoteCounts(fightId);
+      }, 500);
+
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
         const fight = fights.find(f => f.id === fightId);
@@ -287,11 +361,24 @@ function Fights({ eventId, username, user_id, user_type }) {
             fighter2Response.json()
           ]);
 
+          // Filter votes based on AI visibility setting
+          const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
+          const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
+
           setFightVotes(prev => ({
             ...prev,
             [fightId]: {
               fighter1Votes,
               fighter2Votes
+            }
+          }));
+
+          // Update vote counts from the fetched data
+          setVoteCounts(prev => ({
+            ...prev,
+            [fightId]: {
+              fighter1: fighter1Filtered.length,
+              fighter2: fighter2Filtered.length
             }
           }));
         }
@@ -344,11 +431,24 @@ function Fights({ eventId, username, user_id, user_type }) {
           fighter2Response.json()
         ]);
 
+        // Filter votes based on AI visibility setting
+        const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
+        const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
+
         setFightVotes(prev => ({
           ...prev,
           [fightId]: {
             fighter1Votes,
             fighter2Votes
+          }
+        }));
+
+        // Update vote counts from the fetched data
+        setVoteCounts(prev => ({
+          ...prev,
+          [fightId]: {
+            fighter1: fighter1Filtered.length,
+            fighter2: fighter2Filtered.length
           }
         }));
       } catch (err) {
@@ -673,10 +773,30 @@ function Fights({ eventId, username, user_id, user_type }) {
               aria-label={expandedFights[fight.id] ? 'Hide Votes' : 'Show Votes'}
             >
               {(() => {
-                const fighter1FilteredVotes = fightVotes[fight.id]?.fighter1Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
-                const fighter2FilteredVotes = fightVotes[fight.id]?.fighter2Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
-                const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
-                const split = totalVotes ? Math.round((fighter1FilteredVotes.length / totalVotes) * 100) : 50;
+                // Use vote counts if available (user has voted), otherwise show 50/50
+                let split = 50;
+                
+                if (submittedFights[fight.id] || fight.is_completed) {
+                  // User has voted or fight is completed - show actual ratio
+                  if (voteCounts[fight.id]) {
+                    // Use vote counts (lightweight, always available after voting)
+                    const total = voteCounts[fight.id].fighter1 + voteCounts[fight.id].fighter2;
+                    if (total > 0) {
+                      split = Math.round((voteCounts[fight.id].fighter1 / total) * 100);
+                    }
+                  } else if (fightVotes[fight.id]) {
+                    // Fallback to full vote data if available (user clicked "Show Votes")
+                    const fighter1FilteredVotes = fightVotes[fight.id]?.fighter1Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
+                    const fighter2FilteredVotes = fightVotes[fight.id]?.fighter2Votes?.filter(vote => showAIVotes || !vote.is_bot) || [];
+                    const totalVotes = fighter1FilteredVotes.length + fighter2FilteredVotes.length;
+                    if (totalVotes > 0) {
+                      split = Math.round((fighter1FilteredVotes.length / totalVotes) * 100);
+                    }
+                  }
+                } else {
+                  // User hasn't voted yet - show 50/50 (locked state)
+                  split = 50;
+                }
                 return (
                   <>
                     <div
