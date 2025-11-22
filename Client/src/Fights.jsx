@@ -499,7 +499,7 @@ function Fights({ eventId, username, user_id, user_type }) {
           style={dynamicToggleStyle}
           onClick={() => setShowAIVotes(!showAIVotes)}
         >
-          {showAIVotes ? '○ AI Votes' : '● AI Votes'}
+          {showAIVotes ? '● Show AI Users' : '○ Show AI Users'}
         </button>
       </div>
 

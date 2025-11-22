@@ -15,8 +15,9 @@
 }
 
 .fights-title {
+  font-family: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
   font-size: 1.875rem;
-  font-weight: 600;
+  font-weight: 800;
   margin-bottom: 16px;
   background: linear-gradient(to right, #e9d5ff, #ffffff);
   background: -webkit-linear-gradient(left, #e9d5ff, #ffffff);
@@ -24,6 +25,8 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .username-container {
@@ -534,9 +537,9 @@
 .fight-card.completed::before {
   content: 'FIGHT COMPLETED';
   position: absolute;
-  top: -20px;
+  top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   background: linear-gradient(to right, #4c1d95, #6d28d9);
   padding: 8px 16px;
   border-radius: 4px;
@@ -794,7 +797,8 @@
   }
 
   .fight-card.completed::before {
-    top: -28px;
+    top: 0;
+    transform: translate(-50%, -50%);
   }
 
   .fighter-card.winner::after {
@@ -921,7 +925,8 @@
   }
 
   .fight-card.completed::before {
-    top: -32px;
+    top: 0;
+    transform: translate(-50%, -50%);
     font-size: 0.8rem;
     padding: 6px 12px;
   }

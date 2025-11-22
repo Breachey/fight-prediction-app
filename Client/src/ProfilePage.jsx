@@ -40,6 +40,13 @@ function ProfilePage({ user: loggedInUser }) {
   const [accountCreatedAt, setAccountCreatedAt] = useState(null);
   const [accountAgeLoading, setAccountAgeLoading] = useState(true);
   const [accountAgeError, setAccountAgeError] = useState(null);
+  const normalizedLoggedInUserId = loggedInUser?.user_id != null ? String(loggedInUser.user_id) : null;
+  const normalizedProfileUserId = profileUser?.user_id != null ? String(profileUser.user_id) : null;
+  const isOwnProfile = Boolean(
+    normalizedLoggedInUserId &&
+    normalizedProfileUserId &&
+    normalizedLoggedInUserId === normalizedProfileUserId
+  );
 
   // Animations
   useEffect(() => {
@@ -263,157 +270,170 @@ function ProfilePage({ user: loggedInUser }) {
     <>
       <style>{keyframes}</style>
       <div
-        ref={cardRef}
         style={{
-          maxWidth: 800,
-          margin: '0 auto',
-          padding: '20px',
-          background: 'linear-gradient(135deg, #1a1a1a 80%, #2d1f47 100%)',
-          borderRadius: 20,
-          border: '1px solid #4c1d95',
-          color: '#fff',
-          boxShadow: '0 8px 32px 0 rgba(76,29,149,0.18)',
-          opacity: 0,
+          width: '100%',
+          padding: '0 clamp(12px, 4vw, 28px)',
+          boxSizing: 'border-box'
         }}
       >
         {/* Profile Title */}
-        <h1 style={{ 
-          color: '#a78bfa', 
-          marginBottom: 32, 
-          letterSpacing: 2, 
-          fontWeight: 700, 
-          fontSize: '2.5rem',
-          textAlign: 'center',
-          textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
-        }}>
-          Profile
-        </h1>
-
-        {/* Current Playercard with Username Overlay */}
-        {profileUser && (
-          <div style={{ 
-            marginBottom: 40, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center',
-            position: 'relative'
+        <div
+          ref={cardRef}
+          style={{
+            width: '100%',
+            maxWidth: 800,
+            margin: '0 auto',
+            padding: 'clamp(16px, 4vw, 28px)',
+            background: 'linear-gradient(135deg, #1a1a1a 80%, #2d1f47 100%)',
+            borderRadius: 20,
+            border: '1px solid #4c1d95',
+            color: '#fff',
+            boxShadow: '0 8px 32px 0 rgba(76,29,149,0.18)',
+            opacity: 0,
+            boxSizing: 'border-box',
+            overflow: 'hidden'
+          }}
+        >
+          {/* Profile Title */}
+          <h1 style={{ 
+            color: '#a78bfa', 
+            marginBottom: 32, 
+            letterSpacing: 2, 
+            fontWeight: 700, 
+            fontSize: '2.5rem',
+            textAlign: 'center',
+            textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
           }}>
-            <div style={{ position: 'relative', marginBottom: 16 }}>
-              <PlayerCard
-                username={profileUser.username}
-                playercard={profileUser.playercard}
-                size="large"
-                isCurrentUser={loggedInUser.user_id === profileUser.user_id}
-              />
-            </div>
+            Profile
+          </h1>
 
-            {/* Account Age */}
-            <div style={{ fontSize: '1rem', color: '#a78bfa', marginBottom: 20, textAlign: 'center' }}>
-              {accountAgeLoading ? (
-                <span style={{ color: '#a78bfa' }}>Loading account age...</span>
-              ) : accountAgeError ? (
-                <span style={{ color: '#ff6b6b' }}>{accountAgeError}</span>
-              ) : accountCreatedAt ? (
-                <span>{formatAccountAge(accountCreatedAt)}</span>
-              ) : null}
-            </div>
-
-            {/* Playercard Selector for Current User */}
-            {loggedInUser.user_id === profileUser.user_id && (
-              <div style={{ width: '100%', maxWidth: 600 }}>
-                <h3 style={{ 
-                  color: '#a78bfa', 
-                  marginBottom: 16, 
-                  fontWeight: 600, 
-                  fontSize: '1.3rem', 
-                  letterSpacing: 1,
-                  textAlign: 'center'
-                }}>
-                  Change Your Playercard
-                </h3>
-                <PlayerCardSelector
-                  currentPlayercardId={profileUser.playercard?.id}
-                  userId={profileUser.user_id}
-                  onChange={(newCard) => {
-                    // update the displayed card immediately
-                    setProfileUser(prev => ({
-                      ...prev,
-                      playercard: newCard
-                    }));
-
-                    // If the header (App state) needs an update you'll get it on next session refresh; no full reload required here.
-                  }}
+          {/* Current Playercard with Username Overlay */}
+          {profileUser && (
+            <div style={{ 
+              marginBottom: 40, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center',
+              position: 'relative',
+              width: '100%'
+            }}>
+              <div style={{ position: 'relative', marginBottom: 16, width: '100%' }}>
+                <PlayerCard
+                  username={profileUser.username}
+                  playercard={profileUser.playercard}
+                  size="large"
+                  isCurrentUser={isOwnProfile}
                 />
+              </div>
+
+              {/* Account Age */}
+              <div style={{ fontSize: '1rem', color: '#a78bfa', marginBottom: 20, textAlign: 'center', width: '100%' }}>
+                {accountAgeLoading ? (
+                  <span style={{ color: '#a78bfa' }}>Loading account age...</span>
+                ) : accountAgeError ? (
+                  <span style={{ color: '#ff6b6b' }}>{accountAgeError}</span>
+                ) : accountCreatedAt ? (
+                  <span>{formatAccountAge(accountCreatedAt)}</span>
+                ) : null}
+              </div>
+
+              {/* Playercard Selector for Current User */}
+              {isOwnProfile && (
+                <div style={{ width: '100%', maxWidth: 600 }}>
+                  <h3 style={{ 
+                    color: '#a78bfa', 
+                    marginBottom: 16, 
+                    fontWeight: 600, 
+                    fontSize: '1.3rem', 
+                    letterSpacing: 1,
+                    textAlign: 'center'
+                  }}>
+                    Change Your Playercard
+                  </h3>
+                  <PlayerCardSelector
+                    currentPlayercardId={profileUser.playercard?.id}
+                    userId={profileUser.user_id}
+                    onChange={(newCard) => {
+                      // update the displayed card immediately
+                      setProfileUser(prev => ({
+                        ...prev,
+                        playercard: newCard
+                      }));
+
+                      // If the header (App state) needs an update you'll get it on next session refresh; no full reload required here.
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Badges Section */}
+          <div style={{ marginBottom: 40 }}>
+            <h3 style={{ 
+              color: '#FFD700', 
+              marginBottom: 20, 
+              fontWeight: 700, 
+              fontSize: '1.4rem', 
+              letterSpacing: 1,
+              textAlign: 'center',
+              textShadow: '0 2px 8px rgba(255, 215, 0, 0.3)'
+            }}>
+              Badges
+            </h3>
+            {loading ? (
+              <div style={{ color: '#a78bfa', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
+            ) : badges.length === 0 ? (
+              <div style={{ 
+                color: '#ccc', 
+                fontStyle: 'italic', 
+                textAlign: 'center',
+                padding: 20,
+                background: 'rgba(76, 29, 149, 0.1)',
+                borderRadius: 12,
+                border: '1px dashed #4c1d95'
+              }}>
+                No badges yet. Get to the top of the leaderboard to earn some!
+              </div>
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                gap: 24, 
+                flexWrap: 'wrap', 
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {badges.map((badge, i) => (
+                  <div 
+                    key={badge.key} 
+                    style={{ 
+                      textAlign: 'center', 
+                      animation: 'badgePop 0.7s cubic-bezier(.61,1.42,.41,.99) both', 
+                      animationDelay: `${0.2 + i * 0.15}s`,
+                      padding: 16,
+                      background: 'rgba(255, 215, 0, 0.1)',
+                      borderRadius: 16,
+                      border: '1px solid rgba(255, 215, 0, 0.3)'
+                    }}
+                  >
+                    <div style={{ marginBottom: 8 }}>{badge.svg}</div>
+                    <div style={{ 
+                      color: '#FFD700', 
+                      fontWeight: 600, 
+                      fontSize: '1rem', 
+                      letterSpacing: 0.5 
+                    }}>
+                      {badge.label}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        )}
-        
-        {/* Badges Section */}
-        <div style={{ marginBottom: 40 }}>
-          <h3 style={{ 
-            color: '#FFD700', 
-            marginBottom: 20, 
-            fontWeight: 700, 
-            fontSize: '1.4rem', 
-            letterSpacing: 1,
-            textAlign: 'center',
-            textShadow: '0 2px 8px rgba(255, 215, 0, 0.3)'
-          }}>
-            Badges
-          </h3>
-          {loading ? (
-            <div style={{ color: '#a78bfa', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
-          ) : badges.length === 0 ? (
-            <div style={{ 
-              color: '#ccc', 
-              fontStyle: 'italic', 
-              textAlign: 'center',
-              padding: 20,
-              background: 'rgba(76, 29, 149, 0.1)',
-              borderRadius: 12,
-              border: '1px dashed #4c1d95'
-            }}>
-              No badges yet. Get to the top of the leaderboard to earn some!
-            </div>
-          ) : (
-            <div style={{ 
-              display: 'flex', 
-              gap: 24, 
-              flexWrap: 'wrap', 
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              {badges.map((badge, i) => (
-                <div 
-                  key={badge.key} 
-                  style={{ 
-                    textAlign: 'center', 
-                    animation: 'badgePop 0.7s cubic-bezier(.61,1.42,.41,.99) both', 
-                    animationDelay: `${0.2 + i * 0.15}s`,
-                    padding: 16,
-                    background: 'rgba(255, 215, 0, 0.1)',
-                    borderRadius: 16,
-                    border: '1px solid rgba(255, 215, 0, 0.3)'
-                  }}
-                >
-                  <div style={{ marginBottom: 8 }}>{badge.svg}</div>
-                  <div style={{ 
-                    color: '#FFD700', 
-                    fontWeight: 600, 
-                    fontSize: '1rem', 
-                    letterSpacing: 0.5 
-                  }}>
-                    {badge.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          
+          {/* User Event Stats Section */}
+          <UserEventStats userId={profileUser.user_id} username={profileUser.username} />
         </div>
-        
-        {/* User Event Stats Section */}
-        <UserEventStats userId={profileUser.user_id} username={profileUser.username} />
       </div>
     </>
   );

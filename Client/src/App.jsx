@@ -1,6 +1,6 @@
 // client/src/App.js
 // Main App component for Fight Picker application
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
@@ -20,6 +20,8 @@ function App() {
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     // On mount: show splash, check for saved user in localStorage, set user if found
@@ -85,7 +87,24 @@ function App() {
     localStorage.removeItem('user_id');
     localStorage.removeItem('user_type');
     setUser(null);
+    setIsMenuOpen(false);
   };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isMenuOpen]);
 
   // Inline styles for layout and UI
   const headerStyle = {
@@ -101,11 +120,6 @@ function App() {
     alignItems: 'center',
     padding: '20px',
     marginBottom: '40px'
-  };
-  const userInfoStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
   };
 
   // Show splash screen while loading
@@ -135,38 +149,67 @@ function App() {
         <Link to="/">
           <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
         </Link>
-        <div style={userInfoStyle}>
-          <span>Welcome, </span>
-          <Link to={`/profile/${user.user_id}`} style={{ textDecoration: 'none' }}>
-            <PlayerCard
-              username={user.username}
-              playercard={user.playercard}
-              size="small"
-              isCurrentUser={true}
-            />
-          </Link>
-          <button onClick={handleLogout} className="logout-button">
-            Logout
+        <div className="hamburger-menu-container" ref={menuRef}>
+          <button 
+            className="hamburger-menu-button" 
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label="Menu"
+          >
+            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
+            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
+            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
           </button>
+          {isMenuOpen && (
+            <div className="hamburger-menu-dropdown">
+              <Link 
+                to={`/profile/${user.user_id}`} 
+                className="hamburger-menu-item"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Customize
+              </Link>
+              <button 
+                className="hamburger-menu-item hamburger-menu-logout"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </header>
       <Suspense fallback={<div className="loading-message">Loading...</div>}>
         <Routes>
           <Route path="/" element={
             <>
+              {/* Greeting message */}
+              <div style={{
+                textAlign: 'center',
+                fontSize: '1.5rem',
+                color: '#e9d5ff',
+                marginBottom: '20px',
+                fontFamily: 'cursive, "Brush Script MT", "Lucida Handwriting", serif',
+                fontStyle: 'italic',
+                letterSpacing: '0.05em'
+              }}>
+                Hi, {user.username}
+              </div>
               {/* Event selection dropdown */}
-              <div className="section">
+              <div className="section event-selector-section">
                 <EventSelector 
                   onEventSelect={setSelectedEventId} 
                   selectedEventId={selectedEventId}
+                  userType={user.user_type}
                 />
               </div>
+              <div className="section-divider" aria-hidden="true"></div>
               {/* Fights list for selected event */}
-              <div className="section">
+              <div className="section fights-section">
                 <Fights eventId={selectedEventId} username={user.username} user_id={user.user_id} user_type={user.user_type} />
               </div>
+              <div className="section-divider" aria-hidden="true"></div>
               {/* Leaderboard for selected event */}
-              <div className="section">
+              <div className="section leaderboard-section">
                 <Leaderboard eventId={selectedEventId} currentUser={user.username} />
               </div>
             </>
