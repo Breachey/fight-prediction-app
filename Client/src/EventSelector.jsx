@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './EventSelector.css';
 import { API_URL } from './config';
 
-function EventSelector({ onEventSelect, selectedEventId }) {
+function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -10,6 +10,8 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   const carouselRef = useRef(null);
   const cardRefs = useRef([]);
   const touchStartX = useRef(null);
+  const [finalizingEventId, setFinalizingEventId] = useState(null);
+  const [finalizeFeedback, setFinalizeFeedback] = useState(null);
 
   useEffect(() => {
     fetchEvents();
@@ -63,6 +65,49 @@ function EventSelector({ onEventSelect, selectedEventId }) {
     }
   };
 
+  const selectedEvent = events[currentIndex] || null;
+
+  const handleFinalizeEvent = async (event) => {
+    if (!event || !event.id) return;
+    setFinalizeFeedback(null);
+    setFinalizingEventId(event.id);
+    try {
+      const response = await fetch(`${API_URL}/events/${event.id}/finalize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: 'Final' })
+      });
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(errorPayload.error || 'Failed to finalize event');
+      }
+
+      const data = await response.json();
+      const winnerCount = data.winners?.length || 0;
+      setFinalizeFeedback({
+        type: 'success',
+        message: winnerCount > 0
+          ? `Event finalized! Crowned ${winnerCount} winner${winnerCount === 1 ? '' : 's'}.`
+          : 'Event finalized, but no eligible winners were found.'
+      });
+      await fetchEvents();
+    } catch (err) {
+      setFinalizeFeedback({
+        type: 'error',
+        message: err.message || 'Failed to finalize event'
+      });
+    } finally {
+      setFinalizingEventId(null);
+    }
+  };
+
+  useEffect(() => {
+    setFinalizeFeedback(null);
+  }, [selectedEventId]);
+
   const handleSelect = (idx) => {
     setCurrentIndex(idx);
     onEventSelect(events[idx].id);
@@ -96,7 +141,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   if (isLoading) {
     return (
       <div className="event-selector-carousel-container">
-        <div className="event-selector-heading">Event Selector</div>
+        <div className="event-selector-heading">Choose an Event</div>
         <div className="loading-message">Loading events...</div>
       </div>
     );
@@ -105,7 +150,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
   if (error) {
     return (
       <div className="event-selector-carousel-container">
-        <div className="event-selector-heading">Event Selector</div>
+        <div className="event-selector-heading">Choose an Event</div>
         <div className="error-message">{error}</div>
       </div>
     );
@@ -113,7 +158,7 @@ function EventSelector({ onEventSelect, selectedEventId }) {
 
   return (
     <>
-      <div className="event-selector-heading">Event Selector</div>
+      <div className="event-selector-heading">Choose an Event</div>
       <div className="event-selector-carousel-container">
         <div
           className="event-carousel"
@@ -181,6 +226,37 @@ function EventSelector({ onEventSelect, selectedEventId }) {
           })}
         </div>
       </div>
+      {userType === 'admin' && selectedEvent && (
+        <div className="event-admin-panel">
+          <div className="event-admin-panel__content">
+            <div className="event-admin-panel__text">
+              <span className="event-admin-panel__label">Admin</span>
+              <span className="event-admin-panel__title">{selectedEvent.name}</span>
+              <p className="event-admin-panel__hint">
+                Mark the event as Final once scores are verified to award crowns automatically.
+              </p>
+            </div>
+            <div className="event-admin-panel__actions">
+              {finalizeFeedback && (
+                <div className={`event-admin-feedback ${finalizeFeedback.type}`}>
+                  {finalizeFeedback.message}
+                </div>
+              )}
+              <button
+                className="event-admin-finalize-button"
+                onClick={() => handleFinalizeEvent(selectedEvent)}
+                disabled={finalizingEventId === selectedEvent.id}
+              >
+                {finalizingEventId === selectedEvent.id
+                  ? 'Finalizing...'
+                  : selectedEvent.is_completed
+                  ? 'Recalculate Winners'
+                  : 'Mark Final & Crown Winners'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

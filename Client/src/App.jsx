@@ -182,11 +182,24 @@ function App() {
         <Routes>
           <Route path="/" element={
             <>
+              {/* Greeting message */}
+              <div style={{
+                textAlign: 'center',
+                fontSize: '1.5rem',
+                color: '#e9d5ff',
+                marginBottom: '20px',
+                fontFamily: 'cursive, "Brush Script MT", "Lucida Handwriting", serif',
+                fontStyle: 'italic',
+                letterSpacing: '0.05em'
+              }}>
+                Hi, {user.username}
+              </div>
               {/* Event selection dropdown */}
               <div className="section event-selector-section">
                 <EventSelector 
                   onEventSelect={setSelectedEventId} 
                   selectedEventId={selectedEventId}
+                  userType={user.user_type}
                 />
               </div>
               <div className="section-divider" aria-hidden="true"></div>

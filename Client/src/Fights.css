@@ -537,9 +537,9 @@
 .fight-card.completed::before {
   content: 'FIGHT COMPLETED';
   position: absolute;
-  top: -20px;
+  top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   background: linear-gradient(to right, #4c1d95, #6d28d9);
   padding: 8px 16px;
   border-radius: 4px;
@@ -797,7 +797,8 @@
   }
 
   .fight-card.completed::before {
-    top: -28px;
+    top: 0;
+    transform: translate(-50%, -50%);
   }
 
   .fighter-card.winner::after {
@@ -924,7 +925,8 @@
   }
 
   .fight-card.completed::before {
-    top: -32px;
+    top: 0;
+    transform: translate(-50%, -50%);
     font-size: 0.8rem;
     padding: 6px 12px;
   }

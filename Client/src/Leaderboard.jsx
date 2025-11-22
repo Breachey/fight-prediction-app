@@ -550,6 +550,22 @@ function Leaderboard({ eventId, currentUser }) {
     };
     const bgUrl = entry.playercard?.image_url || '';
     const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
+    const crownCount = Number(entry.event_win_count) || 0;
+    const crownBadgeStyle = {
+      background: 'rgba(251, 191, 36, 0.2)',
+      color: '#fcd34d',
+      padding: '0px 7px',
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 600,
+      lineHeight: 1,
+      height: 16,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      border: '1px solid rgba(251, 191, 36, 0.4)',
+      minWidth: 0
+    };
     return (
       <div
         style={{
@@ -700,6 +716,11 @@ function Leaderboard({ eventId, currentUser }) {
                         : '1px solid rgba(59, 130, 246, 0.3)',
                     }}>
                       {entry.streak.type === 'win' ? '🔥' : '❄️'}{entry.streak.count}
+                    </span>
+                  )}
+                  {crownCount > 0 && (
+                    <span style={crownBadgeStyle}>
+                      👑 {crownCount}
                     </span>
                   )}
                 </div>
