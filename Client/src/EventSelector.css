@@ -153,13 +153,13 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  background: linear-gradient(135deg, rgba(26, 26, 26, 0.8) 0%, rgba(45, 31, 71, 0.6) 100%);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 116, 255, 0.2);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  min-height: 160px;
-  padding: 8px;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  min-height: 0;
+  padding: 0;
 }
 
 .carousel-arrow {
@@ -193,9 +193,32 @@
   padding: 24px 20px;
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
+  position: relative;
 }
 .event-carousel::-webkit-scrollbar {
   display: none;
+}
+
+.event-carousel::before,
+.event-carousel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 140px;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.3s ease;
+}
+
+.event-carousel::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(9, 10, 13, 0.95) 0%, rgba(9, 10, 13, 0) 100%);
+}
+
+.event-carousel::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(9, 10, 13, 0.95) 0%, rgba(9, 10, 13, 0) 100%);
 }
 
 .event-card {
@@ -367,15 +390,20 @@
 
 @media (max-width: 768px) {
   .event-selector-carousel-container {
-    min-height: 140px;
     margin: 0 auto 24px auto;
-    border-radius: 20px;
-    padding: 6px;
+    border-radius: 0;
+    padding: 0;
   }
 
   .event-carousel {
     padding: 20px 16px;
     gap: 20px;
+    position: relative;
+  }
+
+  .event-carousel::before,
+  .event-carousel::after {
+    width: 90px;
   }
 
   .event-card {
@@ -401,8 +429,9 @@
   }
 
   .event-selector-heading {
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     margin-bottom: 16px;
+    text-align: center;
   }
 
   .event-title {
@@ -427,13 +456,19 @@
 @media (max-width: 480px) {
   .event-selector-carousel-container {
     margin: 0 auto 20px auto;
-    border-radius: 16px;
-    padding: 4px;
+    border-radius: 0;
+    padding: 0;
   }
 
   .event-carousel {
     padding: 16px 12px;
     gap: 16px;
+    position: relative;
+  }
+
+  .event-carousel::before,
+  .event-carousel::after {
+    width: 60px;
   }
 
   .event-card {
@@ -459,8 +494,9 @@
   }
 
   .event-selector-heading {
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     margin-bottom: 14px;
+    text-align: center;
   }
 
   .event-title {
@@ -484,16 +520,19 @@
 }
 
 .event-selector-heading {
-  font-size: 1.5rem;
+  font-family: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
+  font-size: 1.875rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #a78bfa 0%, #ff74ff 50%, #43ccf3 100%);
-  background-clip: text;
+  margin-bottom: 16px;
+  background: linear-gradient(to right, #e9d5ff, #ffffff);
+  background: -webkit-linear-gradient(left, #e9d5ff, #ffffff);
+  color: transparent;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
-  letter-spacing: 0.02em;
-  margin-bottom: 20px;
   text-align: center;
-  text-shadow: 0 4px 16px rgba(76, 29, 149, 0.3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .event-date {

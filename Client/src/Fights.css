@@ -15,8 +15,9 @@
 }
 
 .fights-title {
+  font-family: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
   font-size: 1.875rem;
-  font-weight: 600;
+  font-weight: 800;
   margin-bottom: 16px;
   background: linear-gradient(to right, #e9d5ff, #ffffff);
   background: -webkit-linear-gradient(left, #e9d5ff, #ffffff);
@@ -24,6 +25,8 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .username-container {

@@ -153,12 +153,18 @@ function Leaderboard({ eventId, currentUser }) {
   };
 
   const titleStyle = {
-    fontSize: '2.5rem',
+    fontFamily: "'Space Grotesk', 'Inter', 'Segoe UI', sans-serif",
+    fontSize: '2.25rem',
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: '30px',
-    color: '#ffffff',
-    letterSpacing: '-0.02em'
+    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+    WebkitTextFillColor: 'transparent',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase'
   };
 
   const sectionTitleStyle = {

@@ -53,6 +53,39 @@
   box-shadow: 0 2px 12px 0 rgba(133, 30, 166, 0.1);
 }
 
+.section.event-selector-section {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.section.fights-section {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.section.leaderboard-section {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.section-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(167, 139, 250, 0), rgba(167, 139, 250, 0.6), rgba(67, 204, 243, 0));
+  margin: 30px auto;
+  opacity: 0.8;
+  border: none;
+}
+
 .admin-section {
   background: linear-gradient(145deg, #1a1a1a 0%, #6d28d9 100%);
   border-radius: 20px;
@@ -89,7 +122,133 @@ button:hover, .logout-button:hover {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   letter-spacing: 0.05em;
   margin-top: auto;
-  background: linear-gradient(to bottom, transparent, rgba(133, 30, 166, 0.05));
+  background: none;
+}
+
+/* Hamburger Menu Styles */
+.hamburger-menu-container {
+  position: relative;
+}
+
+.hamburger-menu-button {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 32px;
+  height: 32px;
+  background: none;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 100;
+  gap: 5px;
+  box-shadow: none;
+}
+
+.hamburger-line {
+  width: 100%;
+  height: 3px;
+  background: #a78bfa;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+  transform-origin: center;
+}
+
+.hamburger-line.open:nth-child(1) {
+  transform: rotate(45deg) translate(8px, 8px);
+}
+
+.hamburger-line.open:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-line.open:nth-child(3) {
+  transform: rotate(-45deg) translate(8px, -8px);
+}
+
+.hamburger-menu-button:hover {
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.hamburger-menu-button:hover .hamburger-line {
+  background: #ff74ff;
+}
+
+.hamburger-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d1f47 100%);
+  border: 2px solid #4c1d95;
+  border-radius: 12px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(76, 29, 149, 0.3);
+  z-index: 99;
+  animation: slideDown 0.2s ease;
+  overflow: hidden;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hamburger-menu-item {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease, color 0.2s ease;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  border-radius: 8px;
+  margin: 2px 0;
+  box-sizing: border-box;
+}
+
+.hamburger-menu-item:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.hamburger-menu-item:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.hamburger-menu-item:only-child {
+  border-radius: 8px;
+}
+
+.hamburger-menu-item:hover {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.hamburger-menu-item.hamburger-menu-logout {
+  border-top: 1px solid rgba(76, 29, 149, 0.3);
+  color: #ff6b6b;
+  margin-top: 4px;
+}
+
+.hamburger-menu-item.hamburger-menu-logout:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ff6b6b;
 }
 
 @media (max-width: 768px) {
@@ -114,6 +273,22 @@ button:hover, .logout-button:hover {
   .section {
     padding: 16px;
     margin-bottom: 20px;
+  }
+
+  .section.event-selector-section {
+    padding: 0;
+  }
+
+  .section.fights-section {
+    padding: 0;
+  }
+
+  .section.leaderboard-section {
+    padding: 0;
+  }
+
+  .section-divider {
+    margin: 20px auto;
   }
 
   .admin-section {
