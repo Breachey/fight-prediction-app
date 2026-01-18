@@ -12,15 +12,17 @@ function Leaderboard({ eventId, currentUser }) {
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
   // State for overall leaderboard data
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
-  // State for monthly leaderboard data
-  const [monthlyLeaderboard, setMonthlyLeaderboard] = useState([]);
+  // State for 2025 season leaderboard data
+  const [season2025Leaderboard, setSeason2025Leaderboard] = useState([]);
+  // State for current season (2026) leaderboard data
+  const [seasonLeaderboard, setSeasonLeaderboard] = useState([]);
   // Loading and error state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Whether to show AI users in the leaderboard
   const [showBots, setShowBots] = useState(false);
-  // Which leaderboard is currently selected ('event' or 'overall' or 'monthly')
+  // Which leaderboard is currently selected ('event' or 'overall' or 'season' or '2025')
   const [selectedLeaderboard, setSelectedLeaderboard] = useState(eventId ? 'event' : 'overall');
   // Add state for sorting
   const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
@@ -51,7 +53,7 @@ function Leaderboard({ eventId, currentUser }) {
       setError('');
 
       // Fetch all leaderboards in parallel
-      const [eventResponse, overallResponse, monthlyResponse] = await Promise.all([
+      const [eventResponse, overallResponse, season2025Response, seasonResponse] = await Promise.all([
         eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`, {
           headers: {
             'Accept': 'application/json',
@@ -70,13 +72,22 @@ function Leaderboard({ eventId, currentUser }) {
           console.error('Overall leaderboard fetch error:', error);
           return { ok: false, error };
         }),
-        fetch(`${API_URL}/leaderboard/monthly`, {
+        fetch(`${API_URL}/leaderboard/2025`, {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           }
         }).catch(error => {
-          console.error('Monthly leaderboard fetch error:', error);
+          console.error('2025 leaderboard fetch error:', error);
+          return { ok: false, error };
+        }),
+        fetch(`${API_URL}/leaderboard/season`, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.error('Season leaderboard fetch error:', error);
           return { ok: false, error };
         })
       ]);
@@ -91,15 +102,25 @@ function Leaderboard({ eventId, currentUser }) {
       const overallData = await overallResponse.json();
       setOverallLeaderboard(overallData || []);
 
-      // Check monthly leaderboard response
-      if (!monthlyResponse.ok) {
-        const errorMessage = monthlyResponse.error 
-          ? `Failed to load monthly leaderboard: ${monthlyResponse.error.message}`
-          : 'Failed to load monthly leaderboard. Please try again later.';
+      // Check 2025 leaderboard response
+      if (!season2025Response.ok) {
+        const errorMessage = season2025Response.error 
+          ? `Failed to load 2025 leaderboard: ${season2025Response.error.message}`
+          : 'Failed to load 2025 leaderboard. Please try again later.';
         throw new Error(errorMessage);
       }
-      const monthlyData = await monthlyResponse.json();
-      setMonthlyLeaderboard(monthlyData || []);
+      const season2025Data = await season2025Response.json();
+      setSeason2025Leaderboard(season2025Data || []);
+
+      // Check season leaderboard response
+      if (!seasonResponse.ok) {
+        const errorMessage = seasonResponse.error 
+          ? `Failed to load season leaderboard: ${seasonResponse.error.message}`
+          : 'Failed to load season leaderboard. Please try again later.';
+        throw new Error(errorMessage);
+      }
+      const seasonData = await seasonResponse.json();
+      setSeasonLeaderboard(seasonData || []);
 
       // Check event leaderboard response if we have an event ID
       if (eventId && eventResponse) {
@@ -121,7 +142,8 @@ function Leaderboard({ eventId, currentUser }) {
       // Set empty arrays to prevent undefined errors
       setEventLeaderboard([]);
       setOverallLeaderboard([]);
-      setMonthlyLeaderboard([]);
+      setSeason2025Leaderboard([]);
+      setSeasonLeaderboard([]);
     } finally {
       stopLoading();
     }
@@ -507,6 +529,21 @@ function Leaderboard({ eventId, currentUser }) {
       border: '1px solid rgba(251, 191, 36, 0.4)',
       minWidth: 0
     };
+    const seasonWinnerBadgeStyle = {
+      background: 'rgba(255, 215, 0, 0.2)',
+      color: '#FFD700',
+      padding: '0px 7px',
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 600,
+      lineHeight: 1,
+      height: 16,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      border: '1px solid rgba(255, 215, 0, 0.4)',
+      minWidth: 0
+    };
     return (
       <div
         style={{
@@ -664,6 +701,11 @@ function Leaderboard({ eventId, currentUser }) {
                       👑 {crownCount}
                     </span>
                   )}
+                  {entry.season_2025_winner && (
+                    <span style={seasonWinnerBadgeStyle}>
+                      🏆
+                    </span>
+                  )}
                 </div>
               </span>
             </div>
@@ -806,24 +848,35 @@ function Leaderboard({ eventId, currentUser }) {
         <button
           style={{
             ...toggleButtonStyle,
+            background: selectedLeaderboard === 'season' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+            color: 'rgba(255, 255, 255, 0.95)',
+            fontWeight: selectedLeaderboard === 'season' ? '700' : '500'
+          }}
+          onClick={() => setSelectedLeaderboard('season')}
+        >
+          Season
+        </button>
+        <button
+          style={{
+            ...toggleButtonStyle,
             background: selectedLeaderboard === 'overall' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
             color: 'rgba(255, 255, 255, 0.95)',
             fontWeight: selectedLeaderboard === 'overall' ? '700' : '500'
           }}
           onClick={() => setSelectedLeaderboard('overall')}
         >
-          Overall
+          All Time
         </button>
         <button
           style={{
             ...toggleButtonStyle,
-            background: selectedLeaderboard === 'monthly' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+            background: selectedLeaderboard === '2025' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
             color: 'rgba(255, 255, 255, 0.95)',
-            fontWeight: selectedLeaderboard === 'monthly' ? '700' : '500'
+            fontWeight: selectedLeaderboard === '2025' ? '700' : '500'
           }}
-          onClick={() => setSelectedLeaderboard('monthly')}
+          onClick={() => setSelectedLeaderboard('2025')}
         >
-          Monthly
+          2025
         </button>
       </div>
       {/* AI users toggle */}
@@ -872,16 +925,22 @@ function Leaderboard({ eventId, currentUser }) {
           title="Event Leaderboard"
         />
       )}
+      {selectedLeaderboard === 'season' && (
+        <LeaderboardCardsList
+          data={seasonLeaderboard}
+          title="Season Leaderboard"
+        />
+      )}
       {selectedLeaderboard === 'overall' && (
         <LeaderboardCardsList
           data={overallLeaderboard}
-          title="Overall Leaderboard"
+          title="All Time Leaderboard"
         />
       )}
-      {selectedLeaderboard === 'monthly' && (
+      {selectedLeaderboard === '2025' && (
         <LeaderboardCardsList
-          data={monthlyLeaderboard}
-          title="Monthly Leaderboard"
+          data={season2025Leaderboard}
+          title="2025 Leaderboard"
         />
       )}
     </div>
