@@ -28,7 +28,8 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
     // Use a small delay to ensure DOM is fully rendered
     const timer = setTimeout(() => {
       if (cardRefs.current[currentIndex]) {
-        cardRefs.current[currentIndex].scrollIntoView({ 
+        const card = cardRefs.current[currentIndex];
+        card.scrollIntoView({ 
           behavior: 'smooth', 
           block: 'nearest', 
           inline: 'center' 
