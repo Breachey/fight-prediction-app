@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import PlayerCard from './PlayerCard';
 import { API_URL } from '../config';
 import './PlayerCardSelector.css';
@@ -10,34 +10,11 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
   const [selectedId, setSelectedId] = useState(currentPlayercardId);
   const [saving, setSaving] = useState(false);
   const [events, setEvents] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollAnimationFrame = useRef(null);
-  // Ref for horizontal scroll container
-  const scrollRef = useRef(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  const scrollToIndex = useCallback((index, behavior = 'smooth') => {
-    if (!scrollRef.current || index < 0) return;
-    const child = scrollRef.current.children[index];
-    if (child?.scrollIntoView) {
-      child.scrollIntoView({
-        behavior,
-        inline: 'center',
-        block: 'nearest'
-      });
-    }
-  }, []);
-
-  const handleArrow = useCallback((direction) => {
-    if (!playercards.length) return;
-    let nextIndex = currentIndex + direction;
-    if (nextIndex < 0) {
-      nextIndex = playercards.length - 1;
-    } else if (nextIndex >= playercards.length) {
-      nextIndex = 0;
-    }
-    setCurrentIndex(nextIndex);
-    scrollToIndex(nextIndex);
-  }, [currentIndex, playercards.length, scrollToIndex]);
+  const toggleExpanded = () => {
+    setIsExpanded(prev => !prev);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -88,11 +65,6 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
       }
       setSelectedId(id);
       if (onChange) onChange(card);
-      const index = playercards.findIndex(c => c.id === id);
-      if (index !== -1) {
-        setCurrentIndex(index);
-        scrollToIndex(index);
-      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -105,111 +77,69 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
     return event ? event.name : `Event ${requiredEventId}`;
   };
 
-  useEffect(() => {
-    if (!playercards.length) return;
-    const index = playercards.findIndex(card => card.id === selectedId);
-    const safeIndex = index === -1 ? 0 : index;
-    setCurrentIndex(safeIndex);
-    scrollToIndex(safeIndex, 'auto');
-  }, [playercards, selectedId, scrollToIndex]);
-
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      if (scrollAnimationFrame.current) {
-        cancelAnimationFrame(scrollAnimationFrame.current);
-      }
-      scrollAnimationFrame.current = requestAnimationFrame(() => {
-        if (!scrollRef.current) return;
-        const center = scrollRef.current.scrollLeft + scrollRef.current.offsetWidth / 2;
-        let closestIndex = 0;
-        let closestDistance = Number.POSITIVE_INFINITY;
-        playercards.forEach((_, idx) => {
-          const child = scrollRef.current?.children[idx];
-          if (!child) return;
-          const childCenter = child.offsetLeft + child.offsetWidth / 2;
-          const distance = Math.abs(center - childCenter);
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestIndex = idx;
-          }
-        });
-        setCurrentIndex(prev => (prev === closestIndex ? prev : closestIndex));
-      });
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
-      if (scrollAnimationFrame.current) {
-        cancelAnimationFrame(scrollAnimationFrame.current);
-      }
-    };
-  }, [playercards]);
-
-  const isAtStart = currentIndex === 0;
-  const isAtEnd = currentIndex === playercards.length - 1;
-
   if (loading) return <div className="playercard-selector-loading">Loading playercards...</div>;
-  if (error) return <div className="playercard-selector-error">{error}</div>;
+  if (error && !playercards.length) return <div className="playercard-selector-error">{error}</div>;
 
   return (
     <div className="playercard-selector-root">
-      {/* Navigation arrows (hidden on small mobile via CSS) */}
+      {/* Accordion Header */}
       <button 
-        className="playercard-selector-nav left" 
-        onClick={() => handleArrow(-1)} 
-        aria-label="Scroll left"
-        data-edge={isAtStart ? 'true' : 'false'}
+        className="playercard-selector-header"
+        onClick={toggleExpanded}
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? 'Collapse playercard selector' : 'Expand playercard selector'}
       >
-        ‹
+        <span className="playercard-selector-header-text">Change Your Playercard</span>
+        <span className={`playercard-selector-chevron ${isExpanded ? 'expanded' : ''}`}>
+          ▼
+        </span>
       </button>
-      <div className="playercard-selector-scroll" ref={scrollRef}>
-        {playercards.map(card => {
-          const isLocked = !card.is_available;
-          const isSelected = card.id === selectedId;
-          
-          return (
-            <div
-              key={card.id}
-              className={`playercard-selector-item${isSelected ? ' selected' : ''}${isLocked ? ' locked' : ''}`}
-              onClick={() => handleSelect(card.id)}
-              tabIndex={0}
-              aria-label={`Select playercard: ${card.name}${isLocked ? ' (Locked)' : ''}`}
-              style={{ 
-                pointerEvents: saving ? 'none' : 'auto', 
-                opacity: saving && !isSelected ? 0.6 : (isLocked ? 0.7 : 1)
-              }}
-            >
-              <PlayerCard
-                username=""
-                playercard={card}
-                size="large"
-                isCurrentUser={isSelected}
-              />
-              <div className="playercard-selector-label">{card.name}</div>
-              {isLocked && card.required_event_id != null && (
-                <div className="playercard-selector-locked-overlay">
-                  <div className="playercard-selector-lock-icon">🔒</div>
-                  <div className="playercard-selector-lock-text">
-                    Vote in {getRequiredEventName(card.required_event_id)} to unlock
+
+      {/* Error message (shown when expanded) */}
+      {error && playercards.length > 0 && (
+        <div className="playercard-selector-error">{error}</div>
+      )}
+
+      {/* Accordion Content */}
+      <div className={`playercard-selector-content ${isExpanded ? 'expanded' : ''}`}>
+        <div className="playercard-selector-grid">
+          {playercards.map(card => {
+            const isLocked = !card.is_available;
+            const isSelected = card.id === selectedId;
+            
+            return (
+              <div
+                key={card.id}
+                className={`playercard-selector-item${isSelected ? ' selected' : ''}${isLocked ? ' locked' : ''}`}
+                onClick={() => handleSelect(card.id)}
+                tabIndex={0}
+                aria-label={`Select playercard: ${card.name}${isLocked ? ' (Locked)' : ''}`}
+                style={{ 
+                  pointerEvents: saving ? 'none' : 'auto', 
+                  opacity: saving && !isSelected ? 0.6 : (isLocked ? 0.7 : 1)
+                }}
+              >
+                <PlayerCard
+                  username=""
+                  playercard={card}
+                  size="large"
+                  isCurrentUser={isSelected}
+                />
+                <div className="playercard-selector-label">{card.name}</div>
+                {isLocked && card.required_event_id != null && (
+                  <div className="playercard-selector-locked-overlay">
+                    <div className="playercard-selector-lock-icon">🔒</div>
+                    <div className="playercard-selector-lock-text">
+                      Vote in {getRequiredEventName(card.required_event_id)} to unlock
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-      <button 
-        className="playercard-selector-nav right" 
-        onClick={() => handleArrow(1)} 
-        aria-label="Scroll right"
-        data-edge={isAtEnd ? 'true' : 'false'}
-      >
-        ›
-      </button>
+
       {saving && <div className="playercard-selector-saving">Saving...</div>}
     </div>
   );

@@ -25,7 +25,7 @@ const toggleButtonStyle = {
   padding: '8px 12px',
   borderRadius: '8px',
   background: 'transparent',
-  border: '1px solid rgba(139, 92, 246, 0.1)',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
   cursor: 'pointer',
   fontSize: '0.875rem',
   transition: 'all 0.2s ease',
@@ -481,8 +481,8 @@ function Fights({ eventId, username, user_id, user_type }) {
   // Dynamic toggle button style based on showAIVotes state
   const dynamicToggleStyle = useMemo(() => ({
     ...toggleButtonStyle,
-    color: showAIVotes ? '#60a5fa80' : '#a78bfa80',
-    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
+    color: showAIVotes ? '#60a5fa80' : 'rgba(255, 255, 255, 0.5)',
+    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.2)'}`,
   }), [showAIVotes]);
 
   if (loading) {
@@ -562,24 +562,24 @@ function Fights({ eventId, username, user_id, user_type }) {
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id)}
             >
+              <div className="fighter-card-flag-background">
+                <ReactCountryFlag 
+                  countryCode={getCountryCode(fight.fighter1_country)} 
+                  svg 
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0.3,
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    borderRadius: '16px',
+                    filter: 'blur(2px) brightness(1.1)',
+                    objectFit: 'cover'
+                  }}
+                />
+              </div>
               <div className="fighter-image-container">
-                <div className="fighter-image-background">
-                  <ReactCountryFlag 
-                    countryCode={getCountryCode(fight.fighter1_country)} 
-                    svg 
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      opacity: 0.5,
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      borderRadius: '8px',
-                      filter: 'blur(1px) brightness(1.2)',
-                      transform: 'scale(1.1)'
-                    }}
-                  />
-                </div>
                 <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
               </div>
               <h3 className="fighter-name">
@@ -659,24 +659,24 @@ function Fights({ eventId, username, user_id, user_type }) {
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id)}
             >
+              <div className="fighter-card-flag-background">
+                <ReactCountryFlag 
+                  countryCode={getCountryCode(fight.fighter2_country)} 
+                  svg 
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0.3,
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    borderRadius: '16px',
+                    filter: 'blur(2px) brightness(1.1)',
+                    objectFit: 'cover'
+                  }}
+                />
+              </div>
               <div className="fighter-image-container">
-                <div className="fighter-image-background">
-                  <ReactCountryFlag 
-                    countryCode={getCountryCode(fight.fighter2_country)} 
-                    svg 
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      opacity: 0.5,
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      borderRadius: '8px',
-                      filter: 'blur(1px) brightness(1.2)',
-                      transform: 'scale(1.1)'
-                    }}
-                  />
-                </div>
                 <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
               </div>
               <h3 className="fighter-name">
@@ -804,7 +804,7 @@ function Fights({ eventId, username, user_id, user_type }) {
                       style={{
                         width: '100%',
                         height: '100%',
-                        background: `linear-gradient(90deg, #ff74ff ${split}%, #43ccf3 ${split}%)`,
+                        background: `linear-gradient(90deg, rgba(239, 68, 68, 0.8) ${split}%, rgba(59, 130, 246, 0.8) ${split}%)`,
                         borderRadius: 'inherit',
                         transition: 'background 0.3s',
                         position: 'absolute',

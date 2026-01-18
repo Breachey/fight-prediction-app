@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { API_URL } from './config';
+import './UserAuth.css';
 
 function UserAuth({ onAuthenticate }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [username, setUsername] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
+  const [isButtonHovered, setIsButtonHovered] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,11 +61,13 @@ function UserAuth({ onAuthenticate }) {
   };
 
   const formStyle = {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
     padding: '30px',
     borderRadius: '16px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #4c1d95',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -76,12 +80,14 @@ function UserAuth({ onAuthenticate }) {
     padding: '12px',
     marginBottom: '15px',
     borderRadius: '8px',
-    backgroundColor: '#2c2c2c',
-    border: '1px solid #6d28d9',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
     color: '#ffffff',
     fontSize: '1rem',
     outline: 'none',
-    transition: 'border-color 0.3s ease',
+    transition: 'all 0.3s ease',
     boxSizing: 'border-box'
   };
 
@@ -89,19 +95,25 @@ function UserAuth({ onAuthenticate }) {
     width: '100%',
     padding: '12px',
     borderRadius: '8px',
-    background: 'linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%)',
-    color: '#ffffff',
-    border: 'none',
+    background: isButtonHovered 
+      ? 'rgba(255, 255, 255, 0.95)' 
+      : 'rgba(255, 255, 255, 0.9)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    color: '#000000',
+    border: '1px solid rgba(255, 255, 255, 0.5)',
     fontSize: '1rem',
+    fontWeight: '600',
     cursor: 'pointer',
     marginBottom: '15px',
-    transition: 'opacity 0.2s ease'
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
   };
 
   const toggleStyle = {
     background: 'none',
     border: 'none',
-    color: '#6d28d9',
+    color: '#ffffff',
     cursor: 'pointer',
     fontSize: '0.9rem',
     textDecoration: 'underline'
@@ -125,6 +137,7 @@ function UserAuth({ onAuthenticate }) {
           pattern="[0-9]{10}"
           title="Please enter a valid 10-digit phone number"
           style={inputStyle}
+          className="user-auth-input"
           required
         />
         
@@ -135,13 +148,19 @@ function UserAuth({ onAuthenticate }) {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username"
             style={inputStyle}
+            className="user-auth-input"
             required
           />
         )}
 
         {error && <div style={errorStyle}>{error}</div>}
 
-        <button type="submit" style={buttonStyle}>
+        <button 
+          type="submit" 
+          style={buttonStyle}
+          onMouseEnter={() => setIsButtonHovered(true)}
+          onMouseLeave={() => setIsButtonHovered(false)}
+        >
           {isRegistering ? 'Register' : 'Login'}
         </button>
 

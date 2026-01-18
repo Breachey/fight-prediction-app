@@ -5,6 +5,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
+import './Leaderboard.css';
 
 function Leaderboard({ eventId, currentUser }) {
   // State for event-specific leaderboard data
@@ -146,10 +147,7 @@ function Leaderboard({ eventId, currentUser }) {
     maxWidth: '900px',
     margin: '0 auto',
     boxSizing: 'border-box',
-    fontFamily: 'Inter, system-ui, sans-serif',
-    '@media (max-width: 768px)': {
-      padding: '10px'
-    }
+    fontFamily: 'Inter, system-ui, sans-serif'
   };
 
   const titleStyle = {
@@ -158,11 +156,7 @@ function Leaderboard({ eventId, currentUser }) {
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: '30px',
-    background: 'linear-gradient(to right, #e9d5ff, #ffffff)',
-    WebkitBackgroundClip: 'text',
-    backgroundClip: 'text',
-    color: 'transparent',
-    WebkitTextFillColor: 'transparent',
+    color: 'rgba(255, 255, 255, 1)',
     letterSpacing: '0.08em',
     textTransform: 'uppercase'
   };
@@ -179,16 +173,13 @@ function Leaderboard({ eventId, currentUser }) {
   const tableContainerStyle = {
     overflowX: 'auto',
     borderRadius: '20px',
-    background: 'rgba(26, 26, 26, 0.7)',
-    backdropFilter: 'blur(10px)',
+    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
     marginBottom: '40px',
     WebkitOverflowScrolling: 'touch',
-    border: '1px solid rgba(76, 29, 149, 0.2)',
-    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1)',
-    '@media (max-width: 768px)': {
-      margin: '0 -10px',
-      borderRadius: '12px'
-    }
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
   };
 
   const tableStyle = {
@@ -201,9 +192,10 @@ function Leaderboard({ eventId, currentUser }) {
 
   // --- Table header and cell styles ---
   const headerStyle = {
-    background: 'rgba(76, 29, 149, 0.3)',
-    backdropFilter: 'blur(5px)',
-    color: '#ffffff',
+    background: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    color: 'rgba(255, 255, 255, 0.9)',
     padding: '15px 10px',
     textAlign: 'left',
     whiteSpace: 'nowrap',
@@ -211,12 +203,7 @@ function Leaderboard({ eventId, currentUser }) {
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    '@media (max-width: 768px)': {
-      padding: '8px 2px',
-      fontSize: '0.65rem',
-      letterSpacing: '0',
-      textAlign: 'center'
-    }
+    borderBottom: '1px solid rgba(255, 255, 255, 0.2)'
   };
 
   // First column (rank) header style
@@ -224,35 +211,20 @@ function Leaderboard({ eventId, currentUser }) {
     ...headerStyle,
     borderTopLeftRadius: '20px',
     width: '10%',
-    textAlign: 'center',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '15%',
-      padding: '8px 0'
-    }
+    textAlign: 'center'
   };
 
   // User column header style
   const userHeaderStyle = {
     ...headerStyle,
-    width: '45%',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '35%',
-      padding: '8px 0'
-    }
+    width: '45%'
   };
 
   // Stats columns header style
   const statsHeaderStyle = {
     ...headerStyle,
     width: '15%',
-    textAlign: 'center',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '15%',
-      padding: '8px 0'
-    }
+    textAlign: 'center'
   };
 
   // Last column (accuracy) header style
@@ -260,48 +232,31 @@ function Leaderboard({ eventId, currentUser }) {
     ...headerStyle,
     borderTopRightRadius: '20px',
     width: '15%',
-    textAlign: 'center',
-    '@media (max-width: 768px)': {
-      ...headerStyle['@media (max-width: 768px)'],
-      width: '20%',
-      padding: '8px 0'
-    }
+    textAlign: 'center'
   };
 
   // Row style, highlights current user and alternates row colors
   const rowStyle = (index, isCurrentUser) => ({
     backgroundColor: isCurrentUser
-      ? 'rgba(139, 92, 246, 0.15)'
+      ? 'rgba(255, 255, 255, 0.15)'
       : index % 2 === 0 
-        ? 'rgba(26, 26, 26, 0.4)' 
-        : 'rgba(76, 29, 149, 0.1)',
+        ? 'rgba(255, 255, 255, 0.03)' 
+        : 'rgba(255, 255, 255, 0.05)',
     transition: 'all 0.3s ease',
     cursor: 'default',
     position: 'relative',
-    border: isCurrentUser ? '1px solid rgba(139, 92, 246, 0.3)' : 'none',
-    '&:hover': {
-      backgroundColor: isCurrentUser
-        ? 'rgba(139, 92, 246, 0.2)'
-        : 'rgba(76, 29, 149, 0.2)',
-      transform: 'translateY(-1px)',
-      boxShadow: isCurrentUser
-        ? '0 4px 20px rgba(139, 92, 246, 0.3)'
-        : '0 4px 20px rgba(76, 29, 149, 0.2)'
-    }
+    border: isCurrentUser ? '1px solid rgba(255, 255, 255, 0.4)' : 'none',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   });
 
   // Table cell style
   const cellStyle = {
     padding: '15px 10px',
-    color: '#ffffff',
-    borderBottom: '1px solid rgba(76, 29, 149, 0.1)',
+    color: 'rgba(255, 255, 255, 0.9)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
     fontSize: '1rem',
     letterSpacing: '0.02em',
-    textAlign: 'center',
-    '@media (max-width: 768px)': {
-      padding: '8px 4px',
-      fontSize: '0.85rem'
-    }
+    textAlign: 'center'
   };
 
   // User cell style, highlights current user
@@ -309,14 +264,10 @@ function Leaderboard({ eventId, currentUser }) {
     ...cellStyle,
     textAlign: 'left',
     fontWeight: isCurrentUser ? '600' : '500',
-    color: isCurrentUser ? '#a78bfa' : '#ffffff',
+    color: isCurrentUser ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.9)',
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    '@media (max-width: 768px)': {
-      ...cellStyle['@media (max-width: 768px)'],
-      gap: '2px'
-    }
+    gap: '4px'
   });
 
   // Returns the rank badge (C for champ, otherwise index)
@@ -382,22 +333,23 @@ function Leaderboard({ eventId, currentUser }) {
     color: '#ef4444',
     textAlign: 'center',
     padding: '20px',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-      borderRadius: '12px',
+    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+    borderRadius: '12px',
     marginBottom: '20px',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
-    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)'
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
   };
 
   // Empty leaderboard style
   const emptyStyle = {
     padding: '30px',
     textAlign: 'center',
-    color: '#9ca3af',
-    background: 'linear-gradient(145deg, #1a1a1a 0%, #2d1f47 100%)',
-      borderRadius: '12px',
+    color: 'rgba(255, 255, 255, 0.9)',
+    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+    borderRadius: '12px',
     marginBottom: '20px',
-    border: '1px solid #4c1d95'
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
   };
 
   // Loading message style
@@ -410,17 +362,13 @@ function Leaderboard({ eventId, currentUser }) {
 
   // Badge for current user
   const currentUserBadge = {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    color: '#a78bfa',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    color: 'rgba(255, 255, 255, 0.9)',
     padding: '2px 8px',
-      borderRadius: '12px',
+    borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: '500',
-    border: '1px solid rgba(139, 92, 246, 0.3)',
-    '@media (max-width: 768px)': {
-      padding: '1px 4px',
-      fontSize: '0.65rem'
-    }
+    border: '1px solid rgba(255, 255, 255, 0.3)'
   };
 
   // Badge for AI users
@@ -428,16 +376,11 @@ function Leaderboard({ eventId, currentUser }) {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
     padding: '2px 8px',
-      borderRadius: '12px',
+    borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: '500',
     border: '1px solid rgba(59, 130, 246, 0.3)',
-    marginLeft: '4px',
-    '@media (max-width: 768px)': {
-      padding: '1px 4px',
-      fontSize: '0.65rem',
-      marginLeft: '2px'
-    }
+    marginLeft: '4px'
   };
 
   // Style for the filter/toggle button containers
@@ -453,11 +396,9 @@ function Leaderboard({ eventId, currentUser }) {
   const toggleButtonStyle = {
     padding: '8px 16px',
     borderRadius: '8px',
-    background: selectedLeaderboard === 'event' || selectedLeaderboard === 'overall' || selectedLeaderboard === 'monthly' 
-      ? 'rgba(76, 29, 149, 0.2)' 
-      : 'rgba(76, 29, 149, 0.2)',
-    color: '#a78bfa',
-    border: '1px solid rgba(139, 92, 246, 0.3)',
+    background: 'rgba(255, 255, 255, 0.08)',
+    color: 'rgba(255, 255, 255, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
     cursor: 'pointer',
     fontSize: '0.9rem',
     transition: 'all 0.2s ease'
@@ -470,15 +411,15 @@ function Leaderboard({ eventId, currentUser }) {
     justifyContent: 'center',
     padding: '8px 12px',
     borderRadius: '8px',
-    background: 'transparent',
-    border: `1px solid ${showBots ? 'rgba(59, 130, 246, 0.1)' : 'rgba(139, 92, 246, 0.1)'}`,
+    background: showBots ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
     cursor: 'pointer',
     fontSize: '0.875rem',
     transition: 'all 0.2s ease',
     margin: '0 auto 20px auto',
     width: 'fit-content',
-    opacity: 0.7,
-    color: showBots ? '#60a5fa80' : '#a78bfa80',
+    opacity: 0.8,
+    color: 'rgba(255, 255, 255, 0.9)',
   }), [showBots]);
 
   const refreshButtonStyle = (disabled) => ({
@@ -549,7 +490,7 @@ function Leaderboard({ eventId, currentUser }) {
       return interpolateColor('ef4444', '22c55e', factor); // red to green
     };
     const bgUrl = entry.playercard?.image_url || '';
-    const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
+    const fallbackBg = 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%)';
     const crownCount = Number(entry.event_win_count) || 0;
     const crownBadgeStyle = {
       background: 'rgba(251, 191, 36, 0.2)',
@@ -577,7 +518,7 @@ function Leaderboard({ eventId, currentUser }) {
           color: '#fff',
           boxShadow:
             isCurrentUser
-              ? '0 0 0 3px #22d3ee, 0 2px 8px rgba(34,211,238,0.18)'
+              ? '0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(255, 255, 255, 0.2)'
               : index === 0
               ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
               : index === 1
@@ -587,14 +528,14 @@ function Leaderboard({ eventId, currentUser }) {
               : '0 2px 8px rgba(0,0,0,0.15)',
           border:
             isCurrentUser
-              ? '2.5px solid #22d3ee'
+              ? '2.5px solid rgba(255, 255, 255, 0.6)'
               : index === 0
               ? '2.5px solid #FFD700'
               : index === 1
               ? '2.5px solid #C0C0C0'
               : index === 2
               ? '2.5px solid #CD7F32'
-              : 'none',
+              : '1px solid rgba(255, 255, 255, 0.2)',
           overflow: 'hidden',
           minHeight: 90,
           display: 'flex',
@@ -606,7 +547,7 @@ function Leaderboard({ eventId, currentUser }) {
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(90deg, rgba(26,26,26,0.82) 60%, rgba(76,29,149,0.32) 100%)',
+          background: 'linear-gradient(90deg, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.4) 100%)',
           zIndex: 1,
           pointerEvents: 'none',
         }} />
@@ -630,17 +571,17 @@ function Leaderboard({ eventId, currentUser }) {
                 marginRight: 6,
                 color:
                   isCurrentUser
-                    ? '#22d3ee'
+                    ? 'rgba(255, 255, 255, 1)'
                     : index === 0
                     ? '#FFD700'
                     : index === 1
                     ? '#C0C0C0'
                     : index === 2
                     ? '#CD7F32'
-                    : undefined,
+                    : 'rgba(255, 255, 255, 0.8)',
                 textShadow:
                   isCurrentUser
-                    ? '0 0 4px #22d3ee88'
+                    ? '0 0 4px rgba(255, 255, 255, 0.5)'
                     : index === 0
                     ? '0 0 4px #FFD70088'
                     : index === 1
@@ -845,7 +786,7 @@ function Leaderboard({ eventId, currentUser }) {
 
   // Main leaderboard UI
   return (
-    <div style={containerStyle}>
+    <div style={containerStyle} className="leaderboard-container">
       <h1 style={titleStyle}>Leaderboard</h1>
       {/* Leaderboard selection toggle */}
       <div style={filterToggleStyle}>
@@ -853,8 +794,8 @@ function Leaderboard({ eventId, currentUser }) {
           <button
             style={{
               ...toggleButtonStyle,
-              background: selectedLeaderboard === 'event' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
-              color: selectedLeaderboard === 'event' ? '#fff' : '#a78bfa',
+              background: selectedLeaderboard === 'event' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+              color: 'rgba(255, 255, 255, 0.95)',
               fontWeight: selectedLeaderboard === 'event' ? '700' : '500'
             }}
             onClick={() => setSelectedLeaderboard('event')}
@@ -865,8 +806,8 @@ function Leaderboard({ eventId, currentUser }) {
         <button
           style={{
             ...toggleButtonStyle,
-            background: selectedLeaderboard === 'overall' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
-            color: selectedLeaderboard === 'overall' ? '#fff' : '#a78bfa',
+            background: selectedLeaderboard === 'overall' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+            color: 'rgba(255, 255, 255, 0.95)',
             fontWeight: selectedLeaderboard === 'overall' ? '700' : '500'
           }}
           onClick={() => setSelectedLeaderboard('overall')}
@@ -876,8 +817,8 @@ function Leaderboard({ eventId, currentUser }) {
         <button
           style={{
             ...toggleButtonStyle,
-            background: selectedLeaderboard === 'monthly' ? '#a78bfa' : 'rgba(76, 29, 149, 0.2)',
-            color: selectedLeaderboard === 'monthly' ? '#fff' : '#a78bfa',
+            background: selectedLeaderboard === 'monthly' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+            color: 'rgba(255, 255, 255, 0.95)',
             fontWeight: selectedLeaderboard === 'monthly' ? '700' : '500'
           }}
           onClick={() => setSelectedLeaderboard('monthly')}

@@ -1,0 +1,59 @@
+/* Leaderboard responsive styles */
+@media (max-width: 768px) {
+  .leaderboard-container {
+    padding: 10px !important;
+  }
+
+  .leaderboard-table-container {
+    margin: 0 -10px !important;
+    border-radius: 12px !important;
+  }
+
+  .leaderboard-header {
+    padding: 8px 2px !important;
+    font-size: 0.65rem !important;
+    letter-spacing: 0 !important;
+    text-align: center !important;
+  }
+
+  .leaderboard-header-first {
+    width: 15% !important;
+    padding: 8px 0 !important;
+  }
+
+  .leaderboard-header-user {
+    width: 35% !important;
+    padding: 8px 0 !important;
+  }
+
+  .leaderboard-header-stats {
+    width: 15% !important;
+    padding: 8px 0 !important;
+  }
+
+  .leaderboard-header-last {
+    width: 20% !important;
+    padding: 8px 0 !important;
+  }
+
+  .leaderboard-cell {
+    padding: 8px 4px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .leaderboard-user-cell {
+    gap: 2px !important;
+  }
+
+  .leaderboard-badge {
+    padding: 1px 4px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .leaderboard-ai-badge {
+    padding: 1px 4px !important;
+    font-size: 0.65rem !important;
+    margin-left: 2px !important;
+  }
+}
+

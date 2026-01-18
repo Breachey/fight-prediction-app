@@ -5,8 +5,7 @@ import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
-import PlayerCard from './components/PlayerCard'; // PlayerCard component for header
-import logo from './assets/logo_street_500x500.png';
+import logo from './assets/2026.png';
 import { API_URL } from './config';
 import './App.css';
 
@@ -129,15 +128,33 @@ function App() {
 
   // If not logged in, show login/signup screen
   if (!user) {
+    const loginBackgroundStyle = {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      backgroundImage: 'url(/izzy_alex.jpeg)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      filter: 'blur(8px) brightness(0.3)',
+      zIndex: 0,
+      transform: 'scale(1.1)' // Slight scale to prevent blur edge artifacts
+    };
+
     return (
-      <div className="app">
-        <header className="header" style={loginHeaderStyle}>
-          <Link to="/">
-            <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
-          </Link>
-        </header>
-        <UserAuth onAuthenticate={handleAuthentication} />
-        <footer className="footer">Made by Scrap & Screach</footer>
+      <div className="app" style={{ position: 'relative', overflow: 'hidden' }}>
+        <div style={loginBackgroundStyle}></div>
+        <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          <header className="header" style={loginHeaderStyle}>
+            <Link to="/">
+              <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
+            </Link>
+          </header>
+          <UserAuth onAuthenticate={handleAuthentication} />
+          <footer className="footer">Made by Scrap & Screach</footer>
+        </div>
       </div>
     );
   }
