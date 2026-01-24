@@ -28,7 +28,7 @@
 .loading-bar {
   width: 200px;
   height: 4px;
-  background: #6d28d9;
+  background: #1e40af;
   border-radius: 8px;
   overflow: hidden;
   position: relative;
@@ -40,10 +40,10 @@
   left: 0;
   height: 100%;
   width: 30%;
-  background: linear-gradient(90deg, #ff74ff, #43ccf3);
+  background: linear-gradient(90deg, #3b82f6, #ef4444);
   border-radius: 8px;
   animation: loading 1.5s infinite;
-  box-shadow: 0 0 6px rgba(67, 204, 243, 0.25);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.25);
 }
 
 @keyframes pulse {

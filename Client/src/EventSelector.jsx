@@ -28,7 +28,8 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
     // Use a small delay to ensure DOM is fully rendered
     const timer = setTimeout(() => {
       if (cardRefs.current[currentIndex]) {
-        cardRefs.current[currentIndex].scrollIntoView({ 
+        const card = cardRefs.current[currentIndex];
+        card.scrollIntoView({ 
           behavior: 'smooth', 
           block: 'nearest', 
           inline: 'center' 
@@ -158,6 +159,47 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
 
   return (
     <>
+      {/* SVG Filter for electric border effect */}
+      <svg className="electric-border-svg" style={{ position: 'absolute', width: 0, height: 0 }}>
+        <defs>
+          <filter
+            id="electric-border-filter"
+            colorInterpolationFilters="sRGB"
+            filterUnits="objectBoundingBox"
+            x="0"
+            y="0"
+            width="1"
+            height="1"
+          >
+            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise1" seed="1" />
+            <feOffset in="noise1" dx="0" dy="0" result="offsetNoise1">
+              <animate attributeName="dy" values="250; 0" dur="4s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise2" seed="1" />
+            <feOffset in="noise2" dx="0" dy="0" result="offsetNoise2">
+              <animate attributeName="dy" values="0; -250" dur="4s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise3" seed="2" />
+            <feOffset in="noise3" dx="0" dy="0" result="offsetNoise3">
+              <animate attributeName="dx" values="180; 0" dur="4s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise4" seed="2" />
+            <feOffset in="noise4" dx="0" dy="0" result="offsetNoise4">
+              <animate attributeName="dx" values="0; -180" dur="4s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feComposite in="offsetNoise1" in2="offsetNoise2" result="part1" />
+            <feComposite in="offsetNoise3" in2="offsetNoise4" result="part2" />
+            <feBlend in="part1" in2="part2" mode="color-dodge" result="combinedNoise" />
+
+            <feDisplacementMap in="SourceGraphic" in2="combinedNoise" scale="8" xChannelSelector="R" yChannelSelector="B" />
+          </filter>
+        </defs>
+      </svg>
+
       <div className="event-selector-heading">Choose an Event</div>
       <div className="event-selector-carousel-container">
         <div
@@ -178,16 +220,29 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
             // Format location
             const locationParts = [event.venue, event.location_city, event.location_state].filter(Boolean);
             const locationStr = locationParts.join(', ');
+            const isSelected = idx === currentIndex;
             return (
               <div
                 key={event.id}
-                className={`event-card${event.image_url ? ' has-image' : ''}${idx === currentIndex ? ' selected' : ''}${event.status === 'Complete' ? ' completed' : ''}`}
+                className={`event-card${event.image_url ? ' has-image' : ''}${isSelected ? ' selected' : ''}${event.status === 'Complete' ? ' completed' : ''}`}
                 onClick={() => handleSelect(idx)}
                 tabIndex={0}
                 role="button"
-                aria-pressed={idx === currentIndex}
+                aria-pressed={isSelected}
                 ref={el => cardRefs.current[idx] = el}
               >
+                {/* Electric border layers for selected card */}
+                {isSelected && (
+                  <>
+                    <div className="electric-border-outer">
+                      <div className="electric-border-inner"></div>
+                    </div>
+                    <div className="electric-glow-1"></div>
+                    <div className="electric-glow-2"></div>
+                    <div className="electric-background-glow"></div>
+                  </>
+                )}
+                
                 {event.image_url ? (
                   <div className="event-image-container">
                     <img 

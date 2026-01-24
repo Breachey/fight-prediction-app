@@ -14,12 +14,15 @@
   display: block;
   will-change: transform;
   transition: transform 0.3s ease-in-out, filter 0.3s;
-  filter: drop-shadow(0 0 8px rgba(255, 116, 255, 0.25));
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.3)) drop-shadow(0 0 12px rgba(59, 130, 246, 0.2));
 }
 
 .logo:hover {
   transform: scale(1.07) rotate(-2deg);
-  filter: drop-shadow(0 0 12px rgba(67, 204, 243, 0.4));
+  filter: drop-shadow(-4px -4px 16px rgba(239, 68, 68, 0.8)) 
+          drop-shadow(4px 4px 20px rgba(59, 130, 246, 0.8))
+          drop-shadow(0 0 12px rgba(239, 68, 68, 0.4))
+          drop-shadow(0 0 12px rgba(59, 130, 246, 0.4));
 }
 
 .app {
@@ -59,6 +62,7 @@
   border-radius: 0;
   padding: 0;
   box-shadow: none;
+  overflow: visible;
 }
 
 .section.fights-section {
@@ -80,7 +84,7 @@
 .section-divider {
   width: 100%;
   height: 1px;
-  background: linear-gradient(90deg, rgba(167, 139, 250, 0), rgba(167, 139, 250, 0.6), rgba(67, 204, 243, 0));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
   margin: 30px auto;
   opacity: 0.8;
   border: none;
@@ -117,7 +121,7 @@ button:hover, .logout-button:hover {
 .footer {
   text-align: center;
   padding: 20px;
-  color: #a78bfa;
+  color: #ffffff;
   font-size: 0.875rem;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   letter-spacing: 0.05em;
@@ -149,7 +153,7 @@ button:hover, .logout-button:hover {
 .hamburger-line {
   width: 100%;
   height: 3px;
-  background: #a78bfa;
+  background: rgba(255, 255, 255, 0.8);
   border-radius: 2px;
   transition: all 0.3s ease;
   transform-origin: center;
@@ -175,19 +179,22 @@ button:hover, .logout-button:hover {
 }
 
 .hamburger-menu-button:hover .hamburger-line {
-  background: #ff74ff;
+  background: rgba(255, 255, 255, 1);
 }
 
 .hamburger-menu-dropdown {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  background: linear-gradient(135deg, #1a1a1a 0%, #2d1f47 100%);
-  border: 2px solid #4c1d95;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), 
+              rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
   padding: 4px;
   min-width: 160px;
-  box-shadow: 0 8px 24px rgba(76, 29, 149, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   z-index: 99;
   animation: slideDown 0.2s ease;
   overflow: hidden;
@@ -236,19 +243,19 @@ button:hover, .logout-button:hover {
 }
 
 .hamburger-menu-item:hover {
-  background: rgba(167, 139, 250, 0.15);
-  color: #a78bfa;
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 1);
 }
 
 .hamburger-menu-item.hamburger-menu-logout {
-  border-top: 1px solid rgba(76, 29, 149, 0.3);
-  color: #ff6b6b;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
   margin-top: 4px;
 }
 
 .hamburger-menu-item.hamburger-menu-logout:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ff6b6b;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 1);
 }
 
 @media (max-width: 768px) {

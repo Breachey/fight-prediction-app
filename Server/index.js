@@ -1201,12 +1201,14 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
 
 /**
  * Returns a map of user_id -> number of event wins.
+ * @param {Array|undefined} userIds - Optional array of user IDs to filter by
+ * @param {number|undefined} year - Optional year to filter event wins by
  */
-async function fetchEventWinCounts(userIds) {
+async function fetchEventWinCounts(userIds, year) {
   try {
     let query = supabase
       .from('event_winners')
-      .select('user_id');
+      .select('user_id, event_id');
 
     if (Array.isArray(userIds)) {
       if (userIds.length === 0) {
@@ -1216,7 +1218,34 @@ async function fetchEventWinCounts(userIds) {
       query = query.in('user_id', uniqueIds);
     }
 
+    // If year is specified, we need to filter by event date
+    // We'll fetch all winners first, then filter by year via events table
     const winners = await fetchAllFromSupabase(query);
+    
+    // If year is specified, filter winners by events from that year
+    if (year !== undefined && winners && winners.length > 0) {
+      const eventIds = [...new Set(winners.map(w => Number(w.event_id)))];
+      const eventsQuery = supabase
+        .from('events')
+        .select('id')
+        .in('id', eventIds)
+        .gte('date', `${year}-01-01`)
+        .lt('date', `${year + 1}-01-01`);
+      const eventsForYear = await fetchAllFromSupabase(eventsQuery);
+      const eventIdsForYear = new Set((eventsForYear || []).map(e => Number(e.id)));
+      
+      // Filter winners to only those from events in the specified year
+      const filteredWinners = winners.filter(w => eventIdsForYear.has(Number(w.event_id)));
+      
+      const counts = {};
+      filteredWinners.forEach(row => {
+        const key = String(row.user_id);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return counts;
+    }
+    
+    // No year filter - count all wins
     const counts = {};
     (winners || []).forEach(row => {
       const key = String(row.user_id);
@@ -1342,6 +1371,246 @@ app.get('/leaderboard', async (req, res) => {
     console.error('Error processing leaderboard:', error);
     res.status(500).json({ 
       error: 'Failed to process leaderboard',
+      details: error.message 
+    });
+  }
+});
+
+// Get 2025 season leaderboard
+app.get('/leaderboard/2025', async (req, res) => {
+  try {
+    // Get all events from 2025
+    const events2025Query = supabase
+      .from('events')
+      .select('id')
+      .gte('date', '2025-01-01')
+      .lt('date', '2026-01-01');
+    const events2025 = await fetchAllFromSupabase(events2025Query);
+    const eventIds2025 = new Set((events2025 || []).map(e => Number(e.id)));
+
+    // Get all prediction results for 2025 events
+    const allResultsQuery = supabase.from('prediction_results').select('*');
+    const allResults = await fetchAllFromSupabase(allResultsQuery);
+    
+    // Filter results to only 2025 events
+    const results = (allResults || []).filter(result => {
+      const eventId = Number(result.event_id);
+      return eventIds2025.has(eventId);
+    });
+
+    // Get all-time prediction results for streak calculation (streaks continue from past)
+    const allTimeResults = await fetchAllFromSupabase(
+      supabase.from('prediction_results').select('*')
+    );
+
+    // Get all users with their user_id, username, is_bot, and playercard info
+    const usersQuery = supabase
+      .from('users')
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
+    const users = await fetchAllFromSupabase(usersQuery);
+
+    // Map user_id to username, is_bot, and playercard info
+    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
+    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+
+    // Group all-time results by user for streak calculation
+    const allTimeUserResultsMap = {};
+    (allTimeResults || []).forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!allTimeUserResultsMap[userIdStr]) {
+        allTimeUserResultsMap[userIdStr] = [];
+      }
+      allTimeUserResultsMap[userIdStr].push(result);
+    });
+
+    // Process the results to create the leaderboard
+    const userStats = {};
+    results.forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
+          username: userIdToUsername.get(userIdStr) || 'Unknown',
+          is_bot: userIdToIsBot.get(userIdStr) || false,
+          playercard: userIdToPlayercard.get(userIdStr) || null,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        };
+      }
+      userStats[userIdStr].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[userIdStr].correct_predictions++;
+      }
+      userStats[userIdStr].total_points += (result.points || 0);
+    });
+
+    // Calculate all-time streak for each user
+    Object.keys(userStats).forEach(userIdStr => {
+      const allTimeUserResults = allTimeUserResultsMap[userIdStr] || [];
+      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
+    });
+
+    // Convert to array and calculate accuracy
+    let leaderboard = Object.values(userStats)
+      .map(user => ({
+        ...user,
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: user.total_points,
+      }))
+      .sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.correct_predictions - a.correct_predictions ||
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+      );
+
+    // Get event win counts for 2025 events only
+    const eventWinCounts2025 = await fetchEventWinCounts(leaderboard.map(user => user.user_id), 2025);
+    leaderboard = addEventWinCounts(leaderboard, eventWinCounts2025);
+
+    // Mark season winner (user with highest points from 2025)
+    if (leaderboard.length > 0) {
+      const topPoints = leaderboard[0].total_points;
+      leaderboard.forEach(entry => {
+        entry.season_2025_winner = entry.total_points === topPoints && topPoints > 0;
+      });
+    }
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('Error processing 2025 leaderboard:', error);
+    res.status(500).json({ 
+      error: 'Failed to process 2025 leaderboard',
+      details: error.message 
+    });
+  }
+});
+
+// Get current season (2026) leaderboard
+app.get('/leaderboard/season', async (req, res) => {
+  try {
+    // Get all events from 2026
+    const events2026Query = supabase
+      .from('events')
+      .select('id')
+      .gte('date', '2026-01-01')
+      .lt('date', '2027-01-01');
+    const events2026 = await fetchAllFromSupabase(events2026Query);
+    const eventIds2026 = new Set((events2026 || []).map(e => Number(e.id)));
+
+    // Get all prediction results for 2026 events
+    const allResultsQuery = supabase.from('prediction_results').select('*');
+    const allResults = await fetchAllFromSupabase(allResultsQuery);
+    
+    // Filter results to only 2026 events
+    const results = (allResults || []).filter(result => {
+      const eventId = Number(result.event_id);
+      return eventIds2026.has(eventId);
+    });
+
+    // Get all-time prediction results for streak calculation (streaks continue from past)
+    const allTimeResults = await fetchAllFromSupabase(
+      supabase.from('prediction_results').select('*')
+    );
+
+    // Get all users with their user_id, username, is_bot, and playercard info
+    const usersQuery = supabase
+      .from('users')
+      .select(`
+        user_id, 
+        username, 
+        is_bot, 
+        selected_playercard_id,
+        playercards!selected_playercard_id (
+          id,
+          name,
+          image_url,
+          category
+        )
+      `);
+    const users = await fetchAllFromSupabase(usersQuery);
+
+    // Map user_id to username, is_bot, and playercard info
+    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
+    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
+    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+
+    // Group all-time results by user for streak calculation
+    const allTimeUserResultsMap = {};
+    (allTimeResults || []).forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!allTimeUserResultsMap[userIdStr]) {
+        allTimeUserResultsMap[userIdStr] = [];
+      }
+      allTimeUserResultsMap[userIdStr].push(result);
+    });
+
+    // Process the results to create the leaderboard
+    const userStats = {};
+    results.forEach(result => {
+      const userIdStr = String(result.user_id);
+      if (!userStats[userIdStr]) {
+        userStats[userIdStr] = {
+          user_id: userIdStr,
+          username: userIdToUsername.get(userIdStr) || 'Unknown',
+          is_bot: userIdToIsBot.get(userIdStr) || false,
+          playercard: userIdToPlayercard.get(userIdStr) || null,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        };
+      }
+      userStats[userIdStr].total_predictions++;
+      if (result.predicted_correctly) {
+        userStats[userIdStr].correct_predictions++;
+      }
+      userStats[userIdStr].total_points += (result.points || 0);
+    });
+
+    // Calculate all-time streak for each user
+    Object.keys(userStats).forEach(userIdStr => {
+      const allTimeUserResults = allTimeUserResultsMap[userIdStr] || [];
+      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
+    });
+
+    // Convert to array and calculate accuracy
+    let leaderboard = Object.values(userStats)
+      .map(user => ({
+        ...user,
+        accuracy: user.total_predictions > 0 
+          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+          : '0.00',
+        total_points: user.total_points,
+      }))
+      .sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.correct_predictions - a.correct_predictions ||
+        parseFloat(b.accuracy) - parseFloat(a.accuracy)
+      );
+
+    // Set event win counts to 0 for season leaderboard (no events have happened yet for 2026)
+    leaderboard = leaderboard.map(entry => ({
+      ...entry,
+      event_win_count: 0
+    }));
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('Error processing season leaderboard:', error);
+    res.status(500).json({ 
+      error: 'Failed to process season leaderboard',
       details: error.message 
     });
   }

@@ -77,15 +77,15 @@ function ProfilePage({ user: loggedInUser }) {
   const keyframes = `
     @keyframes usernameGlow {
       0% {
-        text-shadow: 0 0 8px #a78bfa, 0 0 16px #4c1d95;
+        text-shadow: 0 0 8px rgba(255, 255, 255, 0.5), 0 0 16px rgba(255, 255, 255, 0.3);
         color: #fff;
       }
       50% {
-        text-shadow: 0 0 24px #a78bfa, 0 0 48px #4c1d95;
-        color: #e0c3fc;
+        text-shadow: 0 0 24px rgba(255, 255, 255, 0.8), 0 0 48px rgba(255, 255, 255, 0.5);
+        color: #fff;
       }
       100% {
-        text-shadow: 0 0 8px #a78bfa, 0 0 16px #4c1d95;
+        text-shadow: 0 0 8px rgba(255, 255, 255, 0.5), 0 0 16px rgba(255, 255, 255, 0.3);
         color: #fff;
       }
     }
@@ -235,10 +235,22 @@ function ProfilePage({ user: loggedInUser }) {
 
   if (error) {
     return (
-      <div style={{ color: '#fff', textAlign: 'center', marginTop: 80, fontSize: '1.3rem', background: '#2d1f47', padding: 32, borderRadius: 16 }}>
+      <div style={{ 
+        color: '#fff', 
+        textAlign: 'center', 
+        marginTop: 80, 
+        fontSize: '1.3rem', 
+        background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        padding: 32, 
+        borderRadius: 16,
+        border: '1px solid rgba(255, 255, 255, 0.3)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+      }}>
         <span style={{ fontSize: '2rem', color: '#ff6b6b' }}>🚫</span><br />
         <strong>{error === 'User not found' ? 'User not found' : 'Error loading profile'}</strong><br />
-        <div style={{ marginTop: 24, fontSize: '1rem', color: '#a78bfa' }}>
+        <div style={{ marginTop: 24, fontSize: '1rem', color: 'rgba(255, 255, 255, 0.9)' }}>
           {error === 'User not found' 
             ? 'Please check the username and try again.' 
             : error}
@@ -250,13 +262,13 @@ function ProfilePage({ user: loggedInUser }) {
   // Loading state
   if (!profileUser) {
     return (
-      <div style={{ color: '#a78bfa', textAlign: 'center', marginTop: 80, fontSize: '1.5rem' }}>
+      <div style={{ color: 'rgba(255, 255, 255, 0.9)', textAlign: 'center', marginTop: 80, fontSize: '1.5rem' }}>
         <div className="spinner" style={{ 
           margin: '0 auto 16px', 
           width: 40, 
           height: 40, 
-          border: '4px solid #a78bfa', 
-          borderTop: '4px solid #fff', 
+          border: '4px solid rgba(255, 255, 255, 0.3)', 
+          borderTop: '4px solid rgba(255, 255, 255, 0.9)', 
           borderRadius: '50%', 
           animation: 'spin 1s linear infinite' 
         }} />
@@ -284,11 +296,13 @@ function ProfilePage({ user: loggedInUser }) {
             maxWidth: 800,
             margin: '0 auto',
             padding: 'clamp(16px, 4vw, 28px)',
-            background: 'linear-gradient(135deg, #1a1a1a 80%, #2d1f47 100%)',
+            background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
             borderRadius: 20,
-            border: '1px solid #4c1d95',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
             color: '#fff',
-            boxShadow: '0 8px 32px 0 rgba(76,29,149,0.18)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
             opacity: 0,
             boxSizing: 'border-box',
             overflow: 'hidden'
@@ -296,13 +310,13 @@ function ProfilePage({ user: loggedInUser }) {
         >
           {/* Profile Title */}
           <h1 style={{ 
-            color: '#a78bfa', 
+            color: 'rgba(255, 255, 255, 1)', 
             marginBottom: 32, 
             letterSpacing: 2, 
             fontWeight: 700, 
             fontSize: '2.5rem',
             textAlign: 'center',
-            textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
+            textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
           }}>
             Profile
           </h1>
@@ -327,9 +341,9 @@ function ProfilePage({ user: loggedInUser }) {
               </div>
 
               {/* Account Age */}
-              <div style={{ fontSize: '1rem', color: '#a78bfa', marginBottom: 20, textAlign: 'center', width: '100%' }}>
+              <div style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.8)', marginBottom: 20, textAlign: 'center', width: '100%' }}>
                 {accountAgeLoading ? (
-                  <span style={{ color: '#a78bfa' }}>Loading account age...</span>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.8)' }}>Loading account age...</span>
                 ) : accountAgeError ? (
                   <span style={{ color: '#ff6b6b' }}>{accountAgeError}</span>
                 ) : accountCreatedAt ? (
@@ -341,7 +355,7 @@ function ProfilePage({ user: loggedInUser }) {
               {isOwnProfile && (
                 <div style={{ width: '100%', maxWidth: 600 }}>
                   <h3 style={{ 
-                    color: '#a78bfa', 
+                    color: 'rgba(255, 255, 255, 0.9)', 
                     marginBottom: 16, 
                     fontWeight: 600, 
                     fontSize: '1.3rem', 
@@ -382,16 +396,18 @@ function ProfilePage({ user: loggedInUser }) {
               Badges
             </h3>
             {loading ? (
-              <div style={{ color: '#a78bfa', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
             ) : badges.length === 0 ? (
               <div style={{ 
-                color: '#ccc', 
+                color: 'rgba(255, 255, 255, 0.7)', 
                 fontStyle: 'italic', 
                 textAlign: 'center',
                 padding: 20,
-                background: 'rgba(76, 29, 149, 0.1)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
                 borderRadius: 12,
-                border: '1px dashed #4c1d95'
+                border: '1px dashed rgba(255, 255, 255, 0.3)'
               }}>
                 No badges yet. Get to the top of the leaderboard to earn some!
               </div>
@@ -520,18 +536,20 @@ function UserEventStats({ userId, username }) {
     return () => { isMounted = false; };
   }, [userId]);
 
-  if (loading) return <div style={{ color: '#a78bfa', marginBottom: 24, textAlign: 'center' }}>Loading event stats...</div>;
+  if (loading) return <div style={{ color: 'rgba(255, 255, 255, 0.8)', marginBottom: 24, textAlign: 'center' }}>Loading event stats...</div>;
   if (error) return <div style={{ color: '#ff6b6b', marginBottom: 24, textAlign: 'center' }}>{error}</div>;
   if (!eventStats.length) return (
     <div style={{ 
-      color: '#ccc', 
+      color: 'rgba(255, 255, 255, 0.7)', 
       fontStyle: 'italic', 
       marginBottom: 24, 
       textAlign: 'center',
       padding: 20,
-      background: 'rgba(76, 29, 149, 0.1)',
+      background: 'rgba(255, 255, 255, 0.05)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
       borderRadius: 12,
-      border: '1px dashed #4c1d95'
+      border: '1px dashed rgba(255, 255, 255, 0.3)'
     }}>
       No event stats yet. Vote in some fights to see your stats!
     </div>
@@ -541,13 +559,13 @@ function UserEventStats({ userId, username }) {
   return (
     <div style={{ marginBottom: 32 }}>
       <h3 style={{ 
-        color: '#a78bfa', 
+        color: 'rgba(255, 255, 255, 0.9)', 
         marginBottom: 20, 
         fontWeight: 700, 
         fontSize: '1.4rem', 
         letterSpacing: 1,
         textAlign: 'center',
-        textShadow: '0 2px 8px rgba(167, 139, 250, 0.3)'
+        textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
       }}>
         Your Event Stats
       </h3>
@@ -559,29 +577,31 @@ function UserEventStats({ userId, username }) {
           const roundedAccuracy = Math.round(parseFloat(stat.accuracy));
           return (
             <div key={stat.event.id} style={{
-              background: 'linear-gradient(135deg, #231b36 0%, #2d1f47 100%)',
+              background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%), rgba(255, 255, 255, 0.05)',
+              backdropFilter: 'blur(15px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(15px) saturate(180%)',
               borderRadius: 16,
               padding: 20,
               color: '#fff',
               display: 'flex',
               flexDirection: 'column',
               gap: 8,
-              boxShadow: '0 4px 16px rgba(76,29,149,0.15)',
-              border: '1px solid #4c1d95',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
               transition: 'transform 0.2s, box-shadow 0.2s',
               cursor: 'pointer'
             }}
             onMouseEnter={(e) => {
               e.target.style.transform = 'translateY(-2px)';
-              e.target.style.boxShadow = '0 8px 24px rgba(76,29,149,0.25)';
+              e.target.style.boxShadow = '0 8px 24px rgba(255, 255, 255, 0.2)';
             }}
             onMouseLeave={(e) => {
               e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 4px 16px rgba(76,29,149,0.15)';
+              e.target.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.2)';
             }}>
-              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#a78bfa' }}>{stat.event.name}</div>
-              <div style={{ fontSize: '1rem', color: '#c4b5fd' }}>{dateStr}</div>
-              {locationStr && <div style={{ fontSize: '0.9rem', color: '#a1a1aa' }}>{locationStr}</div>}
+              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'rgba(255, 255, 255, 0.9)' }}>{stat.event.name}</div>
+              <div style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.8)' }}>{dateStr}</div>
+              {locationStr && <div style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.7)' }}>{locationStr}</div>}
               <div style={{ 
                 display: 'grid', 
                 gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -590,16 +610,16 @@ function UserEventStats({ userId, username }) {
                 fontSize: '1rem',
                 alignItems: 'center'
               }}>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(167, 139, 250, 0.1)', borderRadius: 8 }}>
-                  <div style={{ color: '#a78bfa', fontSize: '0.85rem', marginBottom: 4 }}>Points</div>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Points</div>
                   <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.total_points}</div>
                 </div>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(34, 211, 238, 0.1)', borderRadius: 8 }}>
-                  <div style={{ color: '#22d3ee', fontSize: '0.85rem', marginBottom: 4 }}>Correct</div>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Correct</div>
                   <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.correct_predictions}/{stat.total_predictions}</div>
                 </div>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(34, 197, 94, 0.1)', borderRadius: 8 }}>
-                  <div style={{ color: '#22c55e', fontSize: '0.85rem', marginBottom: 4 }}>Accuracy</div>
+                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Accuracy</div>
                   <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{roundedAccuracy}%</div>
                 </div>
               </div>
