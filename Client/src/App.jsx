@@ -5,7 +5,7 @@ import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
-import logo from './assets/2026.png';
+import logo from './assets/fytpix.png';
 import { API_URL } from './config';
 import './App.css';
 
