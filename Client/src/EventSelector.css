@@ -280,7 +280,7 @@
   z-index: 15;
   filter: none;
   transform: translateY(-8px) scale(1.05);
-  --electric-border-color: #dd8448;
+  --electric-border-color: #8B0000;
 }
 
 .event-card.selected.has-image .event-image {
@@ -292,7 +292,7 @@
   opacity: 1;
   z-index: 15;
   filter: none;
-  --electric-border-color: #dd8448;
+  --electric-border-color: #8B0000;
   overflow: hidden;
 }
 
@@ -326,7 +326,7 @@
   right: 0;
   bottom: 0;
   border-radius: 16px;
-  border: 3px solid #dd8448;
+  border: 3px solid #8B0000;
   filter: url(#electric-border-filter);
   box-sizing: border-box;
 }
@@ -337,7 +337,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  border: 2px solid rgba(221, 132, 72, 0.6);
+  border: 2px solid rgba(139, 0, 0, 0.6);
   border-radius: 16px;
   filter: blur(1px);
   pointer-events: none;
@@ -350,7 +350,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  border: 2px solid #dd8448;
+  border: 2px solid #8B0000;
   border-radius: 16px;
   filter: blur(4px);
   pointer-events: none;
@@ -370,9 +370,9 @@
   z-index: -1;
   background: linear-gradient(
     -30deg,
-    #dd8448,
+    #8B0000,
     transparent,
-    #dd8448
+    #8B0000
   );
   pointer-events: none;
 }

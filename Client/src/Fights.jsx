@@ -755,7 +755,17 @@ function Fights({ eventId, username, user_id, user_type }) {
 
           {selectedFights[fight.id] && !submittedFights[fight.id] && (
             <div className="selected-fighter-message">
-              <button className="submit-vote-button" onClick={() => handleSubmitVote(fight.id)}>Submit Vote</button>
+              <button className="submit-vote-button" onClick={() => handleSubmitVote(fight.id)}>
+                Submit Vote for{' '}
+                <span style={{
+                  fontFamily: '"Permanent Marker", cursive, sans-serif',
+                  color: '#8B0000'
+                }}>
+                  {String(selectedFights[fight.id]) === String(fight.fighter1_id) 
+                    ? fight.fighter1_name 
+                    : fight.fighter2_name}
+                </span>
+              </button>
             </div>
           )}
 
