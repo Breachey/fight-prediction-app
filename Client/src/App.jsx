@@ -5,7 +5,7 @@ import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
-import logo from './assets/fytpix.png';
+import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
 import './App.css';
 
@@ -203,11 +203,10 @@ function App() {
               <div style={{
                 textAlign: 'center',
                 fontSize: '1.5rem',
-                color: '#e9d5ff',
+                color: '#8B0000',
                 marginBottom: '20px',
-                fontFamily: 'cursive, "Brush Script MT", "Lucida Handwriting", serif',
-                fontStyle: 'italic',
-                letterSpacing: '0.05em'
+                fontFamily: '"Permanent Marker", cursive, sans-serif',
+                letterSpacing: '0.08em'
               }}>
                 Hi, {user.username}
               </div>
