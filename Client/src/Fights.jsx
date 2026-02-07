@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
+import { cachedFetchJson } from './utils/apiCache';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -52,12 +53,13 @@ function Fights({ eventId, username, user_id, user_type }) {
   const [voteErrors, setVoteErrors] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
-  const [voteCounts, setVoteCounts] = useState({}); // Store vote counts for button ratio
+  const [voteCounts, setVoteCounts] = useState({}); // Store vote counts (total + human) for button ratio
   const [fadeOutMessages, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
   const [expandedFightStats, setExpandedFightStats] = useState({});
   const [expandedAdminControls, setExpandedAdminControls] = useState({});
   const [editingFight, setEditingFight] = useState(null);
+  const [predictionHistory, setPredictionHistory] = useState([]);
 
   // Admin function to handle fight result updates
   const handleResultUpdate = async (fightId, winner) => {
@@ -145,21 +147,21 @@ function Fights({ eventId, username, user_id, user_type }) {
       Promise.all([
         // Fetch fights
         fetch(`${API_URL}/events/${eventId}/fights`),
-        // Fetch all predictions for the user by user_id
-        fetch(`${API_URL}/predictions?user_id=${encodeURIComponent(user_id)}`)
+        // Fetch user prediction history with fight outcomes
+        fetch(`${API_URL}/predictions/history?user_id=${encodeURIComponent(user_id)}`)
       ])
-        .then(async ([fightsResponse, predictionsResponse]) => {
+        .then(async ([fightsResponse, predictionHistoryResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
-          if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
+          if (!predictionHistoryResponse.ok) throw new Error('Failed to fetch prediction history');
 
-          const [fightsData, predictionsData] = await Promise.all([
+          const [fightsData, predictionHistoryData] = await Promise.all([
             fightsResponse.json(),
-            predictionsResponse.json()
+            predictionHistoryResponse.json()
           ]);
 
           // Create a map of fight ID to selected fighter
           const submittedVotes = {};
-          predictionsData.forEach(pred => {
+          predictionHistoryData.forEach(pred => {
             submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
           });
 
@@ -171,11 +173,13 @@ function Fights({ eventId, username, user_id, user_type }) {
 
           setFights(fightsWithStringIds);
           setSubmittedFights(submittedVotes);
+          setPredictionHistory(Array.isArray(predictionHistoryData) ? predictionHistoryData : []);
           setLoading(false);
         })
         .catch(err => {
           console.error('Error fetching data:', err);
           setError('Failed to load fights and predictions');
+          setPredictionHistory([]);
           setLoading(false);
         });
     }
@@ -203,54 +207,32 @@ function Fights({ eventId, username, user_id, user_type }) {
     localStorage.removeItem(`submittedFights_${eventId}_${username}`);
   }, [username, eventId]);
 
-  // Function to fetch vote counts for a fight (lightweight - just for button ratio)
-  const fetchVoteCounts = useCallback(async (fightId) => {
-    const fightKey = String(fightId);
-    const fight = fights.find(f => String(f.id) === fightKey);
-    if (!fight) return;
-
+  const fetchEventVoteCounts = useCallback(async () => {
+    if (!eventId) return;
     try {
-      const [fighter1Response, fighter2Response] = await Promise.all([
-        fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-        fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-      ]);
-
-      if (!fighter1Response.ok || !fighter2Response.ok) return;
-
-      const [fighter1Votes, fighter2Votes] = await Promise.all([
-        fighter1Response.json(),
-        fighter2Response.json()
-      ]);
-
-      // Filter out bot votes if needed (for count calculation)
-      const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
-      const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
-
-      setVoteCounts(prev => ({
-        ...prev,
-        [fightKey]: {
-          fighter1: fighter1Filtered.length,
-          fighter2: fighter2Filtered.length
-        }
-      }));
-    } catch (err) {
-      console.error('Error fetching vote counts:', err);
-    }
-  }, [fights, showAIVotes]);
-
-  // Fetch vote counts for fights the user has already voted on
-  useEffect(() => {
-    if (fights.length > 0 && Object.keys(submittedFights).length > 0) {
-      const votedFightIds = Object.keys(submittedFights);
-      votedFightIds.forEach(fightId => {
-        const fight = fights.find(f => String(f.id) === String(fightId));
-        if (fight) {
-          // Only fetch if we don't have counts yet, or if showAIVotes changed
-          fetchVoteCounts(fightId);
-        }
+      const data = await cachedFetchJson(`${API_URL}/events/${eventId}/vote-counts`, { ttlMs: 30000 });
+      const mappedCounts = {};
+      fights.forEach(fight => {
+        const fightKey = String(fight.id);
+        const fighterMap = data[fightKey] || {};
+        const fighter1Counts = fighterMap[String(fight.fighter1_id)] || { total: 0, human: 0 };
+        const fighter2Counts = fighterMap[String(fight.fighter2_id)] || { total: 0, human: 0 };
+        mappedCounts[fightKey] = {
+          fighter1: fighter1Counts,
+          fighter2: fighter2Counts
+        };
       });
+      setVoteCounts(mappedCounts);
+    } catch (err) {
+      console.error('Error fetching event vote counts:', err);
     }
-  }, [fights, submittedFights, fetchVoteCounts, showAIVotes]);
+  }, [eventId, fights]);
+
+  useEffect(() => {
+    if (eventId && fights.length > 0) {
+      fetchEventVoteCounts();
+    }
+  }, [eventId, fights, fetchEventVoteCounts]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterName) => {
@@ -330,21 +312,28 @@ function Fights({ eventId, username, user_id, user_type }) {
       const fight = fights.find(f => String(f.id) === fightKey);
       if (fight) {
         setVoteCounts(prev => {
-          const current = prev[fightKey] || { fighter1: 0, fighter2: 0 };
+          const current = prev[fightKey] || {
+            fighter1: { total: 0, human: 0 },
+            fighter2: { total: 0, human: 0 }
+          };
           const isFighter1 = String(selectedFighter) === String(fight.fighter1_id);
+          const targetKey = isFighter1 ? 'fighter1' : 'fighter2';
           return {
             ...prev,
             [fightKey]: {
-              fighter1: isFighter1 ? current.fighter1 + 1 : current.fighter1,
-              fighter2: isFighter1 ? current.fighter2 : current.fighter2 + 1
+              ...current,
+              [targetKey]: {
+                total: current[targetKey].total + 1,
+                human: current[targetKey].human + 1
+              }
             }
           };
         });
       }
 
-      // Fetch actual vote counts after a short delay to ensure API has processed the vote
+      // Refresh event counts after a short delay to ensure API has processed the vote
       setTimeout(() => {
-        fetchVoteCounts(fightId);
+        fetchEventVoteCounts();
       }, 500);
 
       // Refresh the votes display if the fight is expanded
@@ -361,10 +350,6 @@ function Fights({ eventId, username, user_id, user_type }) {
             fighter2Response.json()
           ]);
 
-          // Filter votes based on AI visibility setting
-          const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
-          const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
-
           setFightVotes(prev => ({
             ...prev,
             [fightId]: {
@@ -374,11 +359,13 @@ function Fights({ eventId, username, user_id, user_type }) {
           }));
 
           // Update vote counts from the fetched data
+          const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
+          const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
           setVoteCounts(prev => ({
             ...prev,
             [fightId]: {
-              fighter1: fighter1Filtered.length,
-              fighter2: fighter2Filtered.length
+              fighter1: { total: fighter1Votes.length, human: fighter1Human },
+              fighter2: { total: fighter2Votes.length, human: fighter2Human }
             }
           }));
         }
@@ -431,10 +418,6 @@ function Fights({ eventId, username, user_id, user_type }) {
           fighter2Response.json()
         ]);
 
-        // Filter votes based on AI visibility setting
-        const fighter1Filtered = fighter1Votes.filter(vote => showAIVotes || !vote.is_bot);
-        const fighter2Filtered = fighter2Votes.filter(vote => showAIVotes || !vote.is_bot);
-
         setFightVotes(prev => ({
           ...prev,
           [fightId]: {
@@ -444,11 +427,13 @@ function Fights({ eventId, username, user_id, user_type }) {
         }));
 
         // Update vote counts from the fetched data
+        const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
+        const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
         setVoteCounts(prev => ({
           ...prev,
           [fightId]: {
-            fighter1: fighter1Filtered.length,
-            fighter2: fighter2Filtered.length
+            fighter1: { total: fighter1Votes.length, human: fighter1Human },
+            fighter2: { total: fighter2Votes.length, human: fighter2Human }
           }
         }));
       } catch (err) {
@@ -484,6 +469,63 @@ function Fights({ eventId, username, user_id, user_type }) {
     color: showAIVotes ? '#60a5fa80' : 'rgba(255, 255, 255, 0.5)',
     border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.2)'}`,
   }), [showAIVotes]);
+
+  const completedHistoryByFighter = useMemo(() => {
+    const historyMap = new Map();
+    predictionHistory.forEach(entry => {
+      if (typeof entry.fighter_won !== 'boolean') {
+        return;
+      }
+      const fighterId = String(entry.fighter_id);
+      const parsedEventTimestamp = entry.event_date ? Date.parse(entry.event_date) : Number.NEGATIVE_INFINITY;
+      const eventTimestamp = Number.isFinite(parsedEventTimestamp) ? parsedEventTimestamp : Number.NEGATIVE_INFINITY;
+      const historyEntry = {
+        fightId: String(entry.fight_id),
+        fightIdNumeric: Number.isFinite(Number(entry.fight_id)) ? Number(entry.fight_id) : Number.NEGATIVE_INFINITY,
+        fighterWon: entry.fighter_won,
+        eventTimestamp,
+      };
+      if (!historyMap.has(fighterId)) {
+        historyMap.set(fighterId, [historyEntry]);
+      } else {
+        historyMap.get(fighterId).push(historyEntry);
+      }
+    });
+
+    historyMap.forEach(entries => {
+      entries.sort((a, b) => {
+        if (b.eventTimestamp !== a.eventTimestamp) {
+          return b.eventTimestamp - a.eventTimestamp;
+        }
+        return b.fightIdNumeric - a.fightIdNumeric;
+      });
+    });
+    return historyMap;
+  }, [predictionHistory]);
+
+  const getLastVoteOutcomeForFighter = useCallback((fight, fighterId) => {
+    const fighterHistory = completedHistoryByFighter.get(String(fighterId));
+    if (!fighterHistory || fighterHistory.length === 0) {
+      return null;
+    }
+
+    const currentFightId = String(fight.id);
+    const currentEventTimestamp = fight.event_date ? Date.parse(fight.event_date) : Number.POSITIVE_INFINITY;
+
+    for (const entry of fighterHistory) {
+      if (entry.fightId === currentFightId) {
+        continue;
+      }
+
+      if (Number.isFinite(currentEventTimestamp) && Number.isFinite(entry.eventTimestamp) && entry.eventTimestamp >= currentEventTimestamp) {
+        continue;
+      }
+
+      return entry.fighterWon ? 'won' : 'lost';
+    }
+
+    return null;
+  }, [completedHistoryByFighter]);
 
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
@@ -580,7 +622,13 @@ function Fights({ eventId, username, user_id, user_type }) {
                 />
               </div>
               <div className="fighter-image-container">
-                <img src={fight.fighter1_image} alt={fight.fighter1_name} className="fighter-image" />
+                <img
+                  src={fight.fighter1_image}
+                  alt={fight.fighter1_name}
+                  className="fighter-image"
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
               <h3 className="fighter-name">
                 <span className="fighter-name-text">{fight.fighter1_firstName}</span>
@@ -635,6 +683,15 @@ function Fights({ eventId, username, user_id, user_type }) {
                     <span className="stat-label">Streak</span>
                     <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
                   </div>
+                  {(() => {
+                    const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter1_id);
+                    if (!lastVoteOutcome) return null;
+                    return (
+                      <div className="last-vote-outcome">
+                        Last time you voted for this fighter, they {lastVoteOutcome}.
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
@@ -677,7 +734,13 @@ function Fights({ eventId, username, user_id, user_type }) {
                 />
               </div>
               <div className="fighter-image-container">
-                <img src={fight.fighter2_image} alt={fight.fighter2_name} className="fighter-image" />
+                <img
+                  src={fight.fighter2_image}
+                  alt={fight.fighter2_name}
+                  className="fighter-image"
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
               <h3 className="fighter-name">
                 <span className="fighter-name-text">{fight.fighter2_firstName}</span>
@@ -732,6 +795,15 @@ function Fights({ eventId, username, user_id, user_type }) {
                     <span className="stat-label">Streak</span>
                     <span>{fight.fighter2_streak !== null ? formatStreak(fight.fighter2_streak) : 'N/A'}</span>
                   </div>
+                  {(() => {
+                    const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter2_id);
+                    if (!lastVoteOutcome) return null;
+                    return (
+                      <div className="last-vote-outcome">
+                        Last time you voted for this fighter, they {lastVoteOutcome}.
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter2_id) && (
@@ -790,9 +862,15 @@ function Fights({ eventId, username, user_id, user_type }) {
                   // User has voted or fight is completed - show actual ratio
                   if (voteCounts[fight.id]) {
                     // Use vote counts (lightweight, always available after voting)
-                    const total = voteCounts[fight.id].fighter1 + voteCounts[fight.id].fighter2;
+                    const fighter1Count = showAIVotes
+                      ? voteCounts[fight.id].fighter1.total
+                      : voteCounts[fight.id].fighter1.human;
+                    const fighter2Count = showAIVotes
+                      ? voteCounts[fight.id].fighter2.total
+                      : voteCounts[fight.id].fighter2.human;
+                    const total = fighter1Count + fighter2Count;
                     if (total > 0) {
-                      split = Math.round((voteCounts[fight.id].fighter1 / total) * 100);
+                      split = Math.round((fighter1Count / total) * 100);
                     }
                   } else if (fightVotes[fight.id]) {
                     // Fallback to full vote data if available (user clicked "Show Votes")

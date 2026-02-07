@@ -1,8 +1,9 @@
 // Leaderboard.jsx
 // This component displays a leaderboard for an event and/or overall, with options to toggle between them and show/hide AI users.
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { API_URL } from './config';
+import { cachedFetchJson } from './utils/apiCache';
 import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import './Leaderboard.css';
@@ -20,6 +21,7 @@ function Leaderboard({ eventId, currentUser }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const loadedRef = useRef({ event: false, overall: false, season: false, '2025': false });
   // Whether to show AI users in the leaderboard
   const [showBots, setShowBots] = useState(false);
   // Which leaderboard is currently selected ('event' or 'overall' or 'season' or '2025')
@@ -27,10 +29,47 @@ function Leaderboard({ eventId, currentUser }) {
   // Add state for sorting
   const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
 
-  // Fetch both event, overall, and monthly leaderboards from the API
-  const fetchLeaderboards = useCallback(async ({ skipGlobalLoading = false, showManualIndicator = false } = {}) => {
+  const getEndpoint = useCallback((type) => {
+    if (type === 'event') {
+      return eventId ? `${API_URL}/events/${eventId}/leaderboard` : null;
+    }
+    if (type === 'overall') {
+      return `${API_URL}/leaderboard`;
+    }
+    if (type === 'season') {
+      return `${API_URL}/leaderboard/season`;
+    }
+    if (type === '2025') {
+      return `${API_URL}/leaderboard/2025`;
+    }
+    return null;
+  }, [eventId]);
+
+  const setLeaderboardData = useCallback((type, data) => {
+    if (type === 'event') setEventLeaderboard(data);
+    if (type === 'overall') setOverallLeaderboard(data);
+    if (type === 'season') setSeasonLeaderboard(data);
+    if (type === '2025') setSeason2025Leaderboard(data);
+  }, []);
+
+  const fetchLeaderboard = useCallback(async (type, { skipGlobalLoading = false, showManualIndicator = false } = {}) => {
+    const endpoint = getEndpoint(type);
+    if (!endpoint) {
+      if (type === 'event') {
+        setEventLeaderboard([]);
+        loadedRef.current.event = true;
+      }
+      return;
+    }
+
+    const hasLoaded = loadedRef.current[type];
+    const ttlMs = type === '2025'
+      ? 300000
+      : type === 'overall'
+      ? 120000
+      : 60000;
     const startLoading = () => {
-      if (!skipGlobalLoading) {
+      if (!skipGlobalLoading && !hasLoaded) {
         setIsLoading(true);
       }
       if (showManualIndicator) {
@@ -39,7 +78,7 @@ function Leaderboard({ eventId, currentUser }) {
     };
 
     const stopLoading = () => {
-      if (!skipGlobalLoading) {
+      if (!skipGlobalLoading && !hasLoaded) {
         setIsLoading(false);
       }
       if (showManualIndicator) {
@@ -51,115 +90,43 @@ function Leaderboard({ eventId, currentUser }) {
 
     try {
       setError('');
-
-      // Fetch all leaderboards in parallel
-      const [eventResponse, overallResponse, season2025Response, seasonResponse] = await Promise.all([
-        eventId ? fetch(`${API_URL}/events/${eventId}/leaderboard`, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        }).catch(error => {
-          console.error('Event leaderboard fetch error:', error);
-          return { ok: false, error };
-        }) : Promise.resolve(null),
-        fetch(`${API_URL}/leaderboard`, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        }).catch(error => {
-          console.error('Overall leaderboard fetch error:', error);
-          return { ok: false, error };
-        }),
-        fetch(`${API_URL}/leaderboard/2025`, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        }).catch(error => {
-          console.error('2025 leaderboard fetch error:', error);
-          return { ok: false, error };
-        }),
-        fetch(`${API_URL}/leaderboard/season`, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        }).catch(error => {
-          console.error('Season leaderboard fetch error:', error);
-          return { ok: false, error };
-        })
-      ]);
-
-      // Check overall leaderboard response
-      if (!overallResponse.ok) {
-        const errorMessage = overallResponse.error 
-          ? `Failed to load overall leaderboard: ${overallResponse.error.message}`
-          : 'Failed to load overall leaderboard. Please try again later.';
-        throw new Error(errorMessage);
-      }
-      const overallData = await overallResponse.json();
-      setOverallLeaderboard(overallData || []);
-
-      // Check 2025 leaderboard response
-      if (!season2025Response.ok) {
-        const errorMessage = season2025Response.error 
-          ? `Failed to load 2025 leaderboard: ${season2025Response.error.message}`
-          : 'Failed to load 2025 leaderboard. Please try again later.';
-        throw new Error(errorMessage);
-      }
-      const season2025Data = await season2025Response.json();
-      setSeason2025Leaderboard(season2025Data || []);
-
-      // Check season leaderboard response
-      if (!seasonResponse.ok) {
-        const errorMessage = seasonResponse.error 
-          ? `Failed to load season leaderboard: ${seasonResponse.error.message}`
-          : 'Failed to load season leaderboard. Please try again later.';
-        throw new Error(errorMessage);
-      }
-      const seasonData = await seasonResponse.json();
-      setSeasonLeaderboard(seasonData || []);
-
-      // Check event leaderboard response if we have an event ID
-      if (eventId && eventResponse) {
-        if (!eventResponse.ok) {
-          const errorMessage = eventResponse.error 
-            ? `Failed to load event leaderboard: ${eventResponse.error.message}`
-            : 'Failed to load event leaderboard. Please try again later.';
-          throw new Error(errorMessage);
-        }
-        const eventData = await eventResponse.json();
-        setEventLeaderboard(eventData || []);
-      } else {
-        setEventLeaderboard([]);
-      }
-
+      const data = await cachedFetchJson(endpoint, { ttlMs, force: showManualIndicator });
+      setLeaderboardData(type, data || []);
+      loadedRef.current[type] = true;
     } catch (error) {
-      console.error('Error fetching leaderboards:', error);
-      setError(error.message || 'An unexpected error occurred. Please try again later.');
-      // Set empty arrays to prevent undefined errors
-      setEventLeaderboard([]);
-      setOverallLeaderboard([]);
-      setSeason2025Leaderboard([]);
-      setSeasonLeaderboard([]);
+      console.error(`Error fetching ${type} leaderboard:`, error);
+      if (!hasLoaded) {
+        const baseMessage = type === 'event'
+          ? 'Failed to load event leaderboard.'
+          : type === 'overall'
+          ? 'Failed to load overall leaderboard.'
+          : type === 'season'
+          ? 'Failed to load season leaderboard.'
+          : 'Failed to load 2025 leaderboard.';
+        setError(baseMessage);
+        setLeaderboardData(type, []);
+        loadedRef.current[type] = true;
+      }
     } finally {
       stopLoading();
     }
+  }, [getEndpoint, setLeaderboardData]);
+
+  // Reset selected leaderboard if eventId changes
+  useEffect(() => {
+    setSelectedLeaderboard(eventId ? 'event' : 'overall');
+    setEventLeaderboard([]);
+    loadedRef.current.event = false;
   }, [eventId]);
 
-  // Fetch leaderboard data when component mounts or eventId changes
+  // Fetch selected leaderboard and refresh every 60 seconds
   useEffect(() => {
-    fetchLeaderboards();
-    // Refresh leaderboard data every 60 seconds (reduced from 30s for performance)
+    fetchLeaderboard(selectedLeaderboard);
     const refreshInterval = setInterval(() => {
-      fetchLeaderboards({ skipGlobalLoading: true });
+      fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true });
     }, 60000);
-    // Reset selected leaderboard if eventId changes
-    setSelectedLeaderboard(eventId ? 'event' : 'overall');
     return () => clearInterval(refreshInterval);
-  }, [eventId, fetchLeaderboards]);
+  }, [selectedLeaderboard, fetchLeaderboard]);
 
   // --- Styling objects ---
   // These objects define the inline styles for the leaderboard UI
@@ -513,7 +480,8 @@ function Leaderboard({ eventId, currentUser }) {
     };
     const bgUrl = entry.playercard?.image_url || '';
     const fallbackBg = 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%)';
-    const crownCount = Number(entry.event_win_count) || 0;
+    const crownSource = showBots ? entry.event_win_count : (entry.event_win_count_human ?? entry.event_win_count);
+    const crownCount = Number(crownSource) || 0;
     const crownBadgeStyle = {
       background: 'rgba(251, 191, 36, 0.2)',
       color: '#fcd34d',
@@ -910,7 +878,7 @@ function Leaderboard({ eventId, currentUser }) {
         <button
           className="refresh-button"
           style={refreshButtonStyle(isRefreshing)}
-          onClick={() => fetchLeaderboards({ skipGlobalLoading: true, showManualIndicator: true })}
+          onClick={() => fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true, showManualIndicator: true })}
           disabled={isRefreshing}
           aria-label="Refresh leaderboard"
           title="Refresh leaderboard"

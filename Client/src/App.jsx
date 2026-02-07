@@ -23,55 +23,48 @@ function App() {
   const menuRef = useRef(null);
 
   useEffect(() => {
-    // On mount: show splash, check for saved user in localStorage, set user if found
-    const initializeApp = async () => {
-      try {
-        const savedUsername = localStorage.getItem('username');
-        const savedPhoneNumber = localStorage.getItem('phoneNumber');
-        const savedUserId = localStorage.getItem('user_id');
-        const savedUserType = localStorage.getItem('user_type');
-        // Simulate splash screen minimum time (reduced for performance)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (savedUsername && savedPhoneNumber && savedUserId) {
-          // Fetch user data including playercard from backend
-          try {
-            const response = await fetch(`${API_URL}/user/by-id/${savedUserId}`);
-            if (response.ok) {
-              const userData = await response.json();
-              setUser({ 
-                username: savedUsername, 
-                phoneNumber: savedPhoneNumber, 
-                user_id: savedUserId,
-                user_type: savedUserType || 'user',
-                playercard: userData.playercards || null
-              });
-            } else {
-              // Fallback to localStorage data if API fails
-              setUser({ 
-                username: savedUsername, 
-                phoneNumber: savedPhoneNumber, 
-                user_id: savedUserId,
-                user_type: savedUserType || 'user'
-              });
-            }
-          } catch (error) {
-            console.error('Error fetching user playercard:', error);
-            // Fallback to localStorage data if API fails
+    let isMounted = true;
+    // On mount: check for saved user in localStorage and render immediately
+    const savedUsername = localStorage.getItem('username');
+    const savedPhoneNumber = localStorage.getItem('phoneNumber');
+    const savedUserId = localStorage.getItem('user_id');
+    const savedUserType = localStorage.getItem('user_type');
+
+    if (savedUsername && savedPhoneNumber && savedUserId) {
+      // Render with cached user immediately
+      setUser({ 
+        username: savedUsername, 
+        phoneNumber: savedPhoneNumber, 
+        user_id: savedUserId,
+        user_type: savedUserType || 'user'
+      });
+
+      // Fetch playercard in the background
+      (async () => {
+        try {
+          const response = await fetch(`${API_URL}/user/by-id/${savedUserId}`);
+          if (!response.ok) return;
+          const userData = await response.json();
+          if (isMounted) {
             setUser({ 
               username: savedUsername, 
               phoneNumber: savedPhoneNumber, 
               user_id: savedUserId,
-              user_type: savedUserType || 'user'
+              user_type: savedUserType || 'user',
+              playercard: userData.playercards || null
             });
           }
+        } catch (error) {
+          console.error('Error fetching user playercard:', error);
         }
-      } catch (error) {
-        console.error('Error initializing app:', error);
-      } finally {
-        setIsLoading(false);
-      }
+      })();
+    }
+
+    setIsLoading(false);
+
+    return () => {
+      isMounted = false;
     };
-    initializeApp();
   }, []);
 
   // Called when user successfully logs in or signs up
@@ -134,7 +127,6 @@ function App() {
       left: 0,
       width: '100%',
       height: '100%',
-      backgroundImage: 'url(/izzy_alex.jpeg)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
@@ -145,7 +137,7 @@ function App() {
 
     return (
       <div className="app" style={{ position: 'relative', overflow: 'hidden' }}>
-        <div style={loginBackgroundStyle}></div>
+        <div className="login-background" style={loginBackgroundStyle}></div>
         <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <header className="header" style={loginHeaderStyle}>
             <Link to="/">
