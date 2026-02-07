@@ -467,62 +467,11 @@ function UserEventStats({ userId, username }) {
       setLoading(true);
       setError(null);
       try {
-        // 1. Fetch all user predictions
-        const predRes = await fetch(`${API_URL}/predictions?user_id=${encodeURIComponent(userId)}`);
-        if (!predRes.ok) throw new Error('Failed to fetch predictions');
-        const predictions = await predRes.json();
-        if (!predictions.length) {
-          setEventStats([]);
-          setLoading(false);
-          return;
-        }
-        // 2. Fetch all events
-        const eventsRes = await fetch(`${API_URL}/events`);
-        if (!eventsRes.ok) throw new Error('Failed to fetch events');
-        const events = await eventsRes.json();
-        // 3. Fetch all fights for all events
-        const eventIdToFights = {};
-        await Promise.all(events.map(async (event) => {
-          const fightsRes = await fetch(`${API_URL}/events/${event.id}/fights`);
-          if (!fightsRes.ok) return;
-          const fights = await fightsRes.json();
-          eventIdToFights[event.id] = fights;
-        }));
-        // 4. Map predictions to event IDs
-        const fightIdToEventId = {};
-        Object.entries(eventIdToFights).forEach(([eventId, fights]) => {
-          fights.forEach(fight => {
-            fightIdToEventId[fight.id] = eventId;
-          });
-        });
-        // 5. Group predictions by event
-        const eventPredictions = {};
-        predictions.forEach(pred => {
-          const eventId = fightIdToEventId[pred.fight_id];
-          if (eventId) {
-            if (!eventPredictions[eventId]) eventPredictions[eventId] = [];
-            eventPredictions[eventId].push(pred);
-          }
-        });
-        // 6. For each event, fetch leaderboard and extract user stats
-        const stats = [];
-        await Promise.all(Object.keys(eventPredictions).map(async (eventId) => {
-          const event = events.find(e => String(e.id) === String(eventId));
-          if (!event) return;
-          const leaderboardRes = await fetch(`${API_URL}/events/${eventId}/leaderboard`);
-          if (!leaderboardRes.ok) return;
-          const leaderboard = await leaderboardRes.json();
-          const userEntry = leaderboard.find(entry => String(entry.user_id) === String(userId));
-          if (!userEntry) return;
-          stats.push({
-            event,
-            ...userEntry
-          });
-        }));
-        // 7. Sort by event date descending
-        stats.sort((a, b) => new Date(b.event.date) - new Date(a.event.date));
+        const statsRes = await fetch(`${API_URL}/user/${encodeURIComponent(userId)}/event-stats`);
+        if (!statsRes.ok) throw new Error('Failed to fetch event stats');
+        const stats = await statsRes.json();
         if (isMounted) {
-          setEventStats(stats);
+          setEventStats(stats || []);
           setLoading(false);
         }
       } catch (err) {

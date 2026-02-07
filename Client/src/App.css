@@ -38,6 +38,20 @@
   padding-bottom: 60px;
 }
 
+.login-background {
+  background-image: url('/izzy_alex_1280.jpg');
+  background-image: -webkit-image-set(
+    url('/izzy_alex_640.jpg') 1x,
+    url('/izzy_alex_1280.jpg') 2x,
+    url('/izzy_alex_1920.jpg') 3x
+  );
+  background-image: image-set(
+    url('/izzy_alex_640.jpg') 1x,
+    url('/izzy_alex_1280.jpg') 2x,
+    url('/izzy_alex_1920.jpg') 3x
+  );
+}
+
 .header {
   text-align: center;
   margin-bottom: 32px;

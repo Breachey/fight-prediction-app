@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import PlayerCard from './PlayerCard';
 import { API_URL } from '../config';
+import { cachedFetchJson, invalidateCache } from '../utils/apiCache';
 import './PlayerCardSelector.css';
 
 function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
@@ -20,18 +21,10 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
     setLoading(true);
     // Fetch playercards with user availability and events data
     Promise.all([
-      fetch(`${API_URL}/playercards?user_id=${encodeURIComponent(userId)}`),
-      fetch(`${API_URL}/events`)
+      cachedFetchJson(`${API_URL}/playercards?user_id=${encodeURIComponent(userId)}`, { ttlMs: 120000 }),
+      cachedFetchJson(`${API_URL}/events`, { ttlMs: 120000 })
     ])
-      .then(async ([playercardRes, eventsRes]) => {
-        if (!playercardRes.ok) throw new Error('Failed to load playercards');
-        if (!eventsRes.ok) throw new Error('Failed to load events');
-        
-        const [playercardData, eventsData] = await Promise.all([
-          playercardRes.json(),
-          eventsRes.json()
-        ]);
-        
+      .then(([playercardData, eventsData]) => {
         setPlayercards(playercardData);
         setEvents(eventsData);
         setLoading(false);
@@ -63,6 +56,8 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to update playercard');
       }
+      invalidateCache(`${API_URL}/playercards?user_id=${encodeURIComponent(userId)}`);
+      invalidateCache(`${API_URL}/events`);
       setSelectedId(id);
       if (onChange) onChange(card);
     } catch (err) {

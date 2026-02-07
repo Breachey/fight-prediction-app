@@ -19,8 +19,12 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
 
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Enable gzip compression
+app.use(compression());
 
 // Enable CORS for all routes
 app.use(cors({
@@ -31,10 +35,15 @@ app.use(cors({
       'http://localhost:3000',
       'http://localhost:5173'
     ];
-    
+
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
+    // Allow any localhost port for local dev (Vite can pick random ports)
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -49,6 +58,21 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Cache headers for frequently accessed, mostly-read endpoints
+const CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
+app.use((req, res, next) => {
+  const path = req.path;
+  const isEvents = path === '/events';
+  const isLeaderboard = path.startsWith('/leaderboard');
+  const isEventLeaderboard = /^\/events\/[^/]+\/leaderboard$/.test(path);
+  const isPlayercards = path === '/playercards';
+
+  if (isEvents || isLeaderboard || isEventLeaderboard || isPlayercards) {
+    res.set('Cache-Control', CACHE_CONTROL);
+  }
+  next();
+});
 
 // Add global error handlers to prevent server crashes
 process.on('unhandledRejection', (reason, promise) => {
@@ -223,7 +247,7 @@ app.post('/login', async (req, res) => {
     // Find user by phone number
     const { data: user, error } = await supabase
       .from('users')
-      .select('*')
+      .select('user_id, username, phone_number, user_type')
       .eq('phone_number', phoneNumber)
       .single();
 
@@ -258,7 +282,7 @@ async function getWeightclassMapping() {
   try {
     const { data: weightclasses, error } = await supabase
       .from('weightclasses')
-      .select('*');
+      .select('official_weightclass, gay_weightclass, weight_lbs');
     
     if (error) {
       console.error('Error fetching weightclasses:', error);
@@ -362,7 +386,7 @@ app.get('/fights', async (req, res) => {
     // Get the latest event
     const { data: latestEvent, error: eventError } = await supabase
       .from('events')
-      .select('*')
+      .select('id, name, date, is_completed, image_url')
       .order('date', { ascending: false })
       .limit(1);
 
@@ -374,7 +398,7 @@ app.get('/fights', async (req, res) => {
     // Get all fights for the latest event
     const { data: fights, error: fightsError } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, card_tier, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('EventId', latestEvent[0].id);
 
     if (fightsError) {
@@ -395,7 +419,7 @@ app.get('/fights', async (req, res) => {
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
       .from('fight_results')
-      .select('*');
+      .select('fight_id, fighter_id');
 
     if (resultsError) {
       console.error('Error fetching fight results:', resultsError);
@@ -514,7 +538,7 @@ app.post('/predict', async (req, res) => {
     // Get fight details to get betting odds from ufc_full_fight_card
     const { data: fightData, error: fightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FighterId, odds')
       .eq('FightId', fightId);
 
     if (fightError) {
@@ -534,7 +558,7 @@ app.post('/predict', async (req, res) => {
     }
 
     // Check if prediction already exists
-    let checkQuery = supabase.from('predictions').select('*').eq('fight_id', fightId);
+    let checkQuery = supabase.from('predictions').select('fight_id').eq('fight_id', fightId);
     if (user_id) {
       checkQuery = checkQuery.eq('user_id', user_id);
     } else if (username) {
@@ -581,7 +605,7 @@ app.get('/predictions', async (req, res) => {
     if (!username && !user_id) {
       return res.status(400).json({ error: 'Username or user_id is required' });
     }
-    let query = supabase.from('predictions').select('*');
+    let query = supabase.from('predictions').select('fight_id, fighter_id, username, user_id');
     if (user_id) {
       query = query.eq('user_id', user_id);
     } else if (username) {
@@ -599,6 +623,125 @@ app.get('/predictions', async (req, res) => {
   }
 });
 
+app.get('/predictions/history', async (req, res) => {
+  try {
+    const { username, user_id } = req.query;
+    if (!username && !user_id) {
+      return res.status(400).json({ error: 'Username or user_id is required' });
+    }
+
+    let predictionsQuery = supabase
+      .from('predictions')
+      .select('fight_id, fighter_id, username, user_id');
+    if (user_id) {
+      predictionsQuery = predictionsQuery.eq('user_id', user_id);
+    } else if (username) {
+      predictionsQuery = predictionsQuery.eq('username', username);
+    }
+
+    const predictions = await fetchAllFromSupabase(predictionsQuery);
+    if (!predictions || predictions.length === 0) {
+      return res.json([]);
+    }
+
+    const fightIds = Array.from(new Set(predictions.map(prediction => Number(prediction.fight_id))))
+      .filter(fightId => Number.isFinite(fightId));
+
+    if (fightIds.length === 0) {
+      return res.json([]);
+    }
+
+    const fightsQuery = supabase
+      .from('ufc_full_fight_card')
+      .select('FightId, EventId')
+      .in('FightId', fightIds);
+    const fights = await fetchAllFromSupabase(fightsQuery);
+
+    const fightEventMap = new Map();
+    (fights || []).forEach(fight => {
+      const fightId = Number(fight.FightId);
+      if (!Number.isFinite(fightId) || fightEventMap.has(fightId)) {
+        return;
+      }
+      fightEventMap.set(fightId, Number(fight.EventId));
+    });
+
+    const eventIds = Array.from(new Set(
+      (fights || [])
+        .map(fight => Number(fight.EventId))
+        .filter(eventId => Number.isFinite(eventId))
+    ));
+
+    const eventDateMap = new Map();
+    if (eventIds.length > 0) {
+      const eventsQuery = supabase
+        .from('events')
+        .select('id, date')
+        .in('id', eventIds);
+      const events = await fetchAllFromSupabase(eventsQuery);
+      (events || []).forEach(event => {
+        const eventId = Number(event.id);
+        if (!Number.isFinite(eventId)) {
+          return;
+        }
+        eventDateMap.set(eventId, event.date || null);
+      });
+    }
+
+    const fightResultsQuery = supabase
+      .from('fight_results')
+      .select('fight_id, fighter_id, is_completed')
+      .in('fight_id', fightIds);
+    const fightResults = await fetchAllFromSupabase(fightResultsQuery);
+    const fightResultMap = new Map(
+      (fightResults || []).map(result => [
+        Number(result.fight_id),
+        {
+          winner: result.fighter_id,
+          is_completed: Boolean(result.is_completed)
+        }
+      ])
+    );
+
+    const history = predictions
+      .map(prediction => {
+        const fightId = Number(prediction.fight_id);
+        const eventId = fightEventMap.get(fightId) || null;
+        const result = fightResultMap.get(fightId);
+        const winner = result?.winner ?? null;
+        const isCompleted = result?.is_completed || false;
+        const fighterWon = (isCompleted && winner !== null)
+          ? String(winner) === String(prediction.fighter_id)
+          : null;
+
+        return {
+          fight_id: prediction.fight_id,
+          fighter_id: prediction.fighter_id,
+          username: prediction.username,
+          user_id: prediction.user_id,
+          event_id: eventId,
+          event_date: eventId ? (eventDateMap.get(eventId) || null) : null,
+          winner,
+          is_completed: isCompleted,
+          fighter_won: fighterWon
+        };
+      })
+      .sort((a, b) => {
+        const aTime = a.event_date ? Date.parse(a.event_date) : Number.NEGATIVE_INFINITY;
+        const bTime = b.event_date ? Date.parse(b.event_date) : Number.NEGATIVE_INFINITY;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return Number(b.fight_id) - Number(a.fight_id);
+      });
+
+    res.json(history);
+  } catch (error) {
+    console.error('Error in /predictions/history:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/predictions/filter', async (req, res) => {
   const { fight_id, fighter_id } = req.query;
 
@@ -610,7 +753,7 @@ app.get('/predictions/filter', async (req, res) => {
     // Get predictions
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
-      .select('*')
+      .select('fight_id, fighter_id, username, user_id')
       .eq('fight_id', fight_id)
       .eq('fighter_id', fighter_id);
 
@@ -643,7 +786,7 @@ app.get('/predictions/filter', async (req, res) => {
     // Get leaderboard data for rankings
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select('*');
+      .select('user_id, predicted_correctly, points');
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
@@ -747,7 +890,7 @@ app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
     // Get the updated fight data to return
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -844,7 +987,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
     // First get the fight data to get the event_id and fighter IDs
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -902,7 +1045,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
     // Get all predictions for this fight
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
-      .select('*')
+      .select('fight_id, fighter_id, betting_odds, user_id, username')
       .eq('fight_id', id);
 
     if (predictionsError) {
@@ -962,7 +1105,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
     // Get the updated fight result
     const { data: updatedResult, error: getResultError } = await supabase
       .from('fight_results')
-      .select('*')
+      .select('fight_id, fighter_id, is_completed')
       .eq('fight_id', id)
       .single();
 
@@ -1063,7 +1206,8 @@ function calculateUserStreak(userResults) {
 
   // Debug logging for Breachey
   const username = userResults[0]?.username || sortedResults[0]?.user_id;
-  if (username && (username.toLowerCase().includes('breachey') || username.toLowerCase().includes('breach'))) {
+  const usernameStr = username != null ? String(username).toLowerCase() : '';
+  if (usernameStr && (usernameStr.includes('breachey') || usernameStr.includes('breach'))) {
     console.log('DEBUG Streak for', username, ':', {
       type: streakType,
       count: streakCount,
@@ -1135,12 +1279,12 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
 
   const eventResultsQuery = supabase
     .from('prediction_results')
-    .select('*')
+    .select('event_id, user_id, predicted_correctly, points')
     .eq('event_id', eventIdFilter);
   const eventResults = await fetchAllFromSupabase(eventResultsQuery);
 
   const effectiveAllTimeResults = allTimeResults || await fetchAllFromSupabase(
-    supabase.from('prediction_results').select('*')
+    supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
   );
   const effectiveUserCache = userCache || await fetchUsersWithPlayercards();
   const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = effectiveUserCache;
@@ -1261,21 +1405,118 @@ async function fetchEventWinCounts(userIds, year) {
 /**
  * Applies prepared crown counts to leaderboard entries.
  */
-function addEventWinCounts(entries, countsMap) {
+function addEventWinCounts(entries, countsMap, fieldName = 'event_win_count') {
   if (!entries || entries.length === 0) {
     return entries;
   }
   return entries.map(entry => ({
     ...entry,
-    event_win_count: countsMap[String(entry.user_id)] || 0
+    [fieldName]: countsMap[String(entry.user_id)] || 0
   }));
+}
+
+/**
+ * Returns a map of user_id -> number of event wins among humans only.
+ * @param {Array|undefined} userIds - Optional array of user IDs to filter by
+ * @param {number|undefined} year - Optional year to filter event wins by
+ */
+async function fetchHumanEventWinCounts(userIds, year) {
+  try {
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return {};
+    }
+
+    const uniqueIds = Array.from(new Set(userIds.map(id => String(id))));
+    if (uniqueIds.length === 0) {
+      return {};
+    }
+
+    const usersQuery = supabase
+      .from('users')
+      .select('user_id, is_bot')
+      .in('user_id', uniqueIds);
+    const users = await fetchAllFromSupabase(usersQuery);
+    const humanUserIds = (users || [])
+      .filter(user => !user.is_bot)
+      .map(user => String(user.user_id));
+
+    if (humanUserIds.length === 0) {
+      return {};
+    }
+
+    let eventsQuery = supabase
+      .from('events')
+      .select('id, date, is_completed')
+      .eq('is_completed', true);
+
+    if (year !== undefined) {
+      eventsQuery = eventsQuery
+        .gte('date', `${year}-01-01`)
+        .lt('date', `${year + 1}-01-01`);
+    }
+
+    const events = await fetchAllFromSupabase(eventsQuery);
+    const eventIds = (events || [])
+      .map(event => String(event.id))
+      .filter(Boolean);
+
+    if (eventIds.length === 0) {
+      return {};
+    }
+
+    const resultsQuery = supabase
+      .from('prediction_results')
+      .select('event_id, user_id, points')
+      .in('user_id', humanUserIds)
+      .in('event_id', eventIds);
+    const results = await fetchAllFromSupabase(resultsQuery);
+
+    if (!results || results.length === 0) {
+      return {};
+    }
+
+    const eventUserPoints = new Map();
+    results.forEach(result => {
+      const eventIdStr = String(result.event_id);
+      const userIdStr = String(result.user_id);
+      if (!eventUserPoints.has(eventIdStr)) {
+        eventUserPoints.set(eventIdStr, new Map());
+      }
+      const userPoints = eventUserPoints.get(eventIdStr);
+      const current = userPoints.get(userIdStr) || 0;
+      userPoints.set(userIdStr, current + (Number(result.points) || 0));
+    });
+
+    const counts = {};
+    for (const userPoints of eventUserPoints.values()) {
+      let topPoints = null;
+      for (const points of userPoints.values()) {
+        if (topPoints === null || points > topPoints) {
+          topPoints = points;
+        }
+      }
+      if (topPoints === null) {
+        continue;
+      }
+      for (const [userIdStr, points] of userPoints.entries()) {
+        if (points === topPoints) {
+          counts[userIdStr] = (counts[userIdStr] || 0) + 1;
+        }
+      }
+    }
+
+    return counts;
+  } catch (error) {
+    console.error('Error fetching human event win counts:', error);
+    return {};
+  }
 }
 
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
     // Get all prediction results using the pagination helper
-    const resultsQuery = supabase.from('prediction_results').select('*');
+    const resultsQuery = supabase.from('prediction_results').select('user_id, predicted_correctly, points, created_at');
     const results = await fetchAllFromSupabase(resultsQuery);
 
     // Get all users with their user_id, username, is_bot, and playercard info
@@ -1365,7 +1606,9 @@ app.get('/leaderboard', async (req, res) => {
         parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
     const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id));
+    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id));
     leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
+    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
@@ -1389,7 +1632,7 @@ app.get('/leaderboard/2025', async (req, res) => {
     const eventIds2025 = new Set((events2025 || []).map(e => Number(e.id)));
 
     // Get all prediction results for 2025 events
-    const allResultsQuery = supabase.from('prediction_results').select('*');
+    const allResultsQuery = supabase.from('prediction_results').select('user_id, event_id, predicted_correctly, points');
     const allResults = await fetchAllFromSupabase(allResultsQuery);
     
     // Filter results to only 2025 events
@@ -1400,7 +1643,7 @@ app.get('/leaderboard/2025', async (req, res) => {
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
     const allTimeResults = await fetchAllFromSupabase(
-      supabase.from('prediction_results').select('*')
+      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
     );
 
     // Get all users with their user_id, username, is_bot, and playercard info
@@ -1478,7 +1721,9 @@ app.get('/leaderboard/2025', async (req, res) => {
 
     // Get event win counts for 2025 events only
     const eventWinCounts2025 = await fetchEventWinCounts(leaderboard.map(user => user.user_id), 2025);
+    const humanEventWinCounts2025 = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), 2025);
     leaderboard = addEventWinCounts(leaderboard, eventWinCounts2025);
+    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts2025, 'event_win_count_human');
 
     // Mark season winner (user with highest points from 2025)
     if (leaderboard.length > 0) {
@@ -1498,31 +1743,35 @@ app.get('/leaderboard/2025', async (req, res) => {
   }
 });
 
-// Get current season (2026) leaderboard
+// Get current season (current year) leaderboard
 app.get('/leaderboard/season', async (req, res) => {
   try {
-    // Get all events from 2026
-    const events2026Query = supabase
+    const currentYear = new Date().getFullYear();
+    const seasonStart = `${currentYear}-01-01`;
+    const nextSeasonStart = `${currentYear + 1}-01-01`;
+
+    // Get all events from current year
+    const seasonEventsQuery = supabase
       .from('events')
       .select('id')
-      .gte('date', '2026-01-01')
-      .lt('date', '2027-01-01');
-    const events2026 = await fetchAllFromSupabase(events2026Query);
-    const eventIds2026 = new Set((events2026 || []).map(e => Number(e.id)));
+      .gte('date', seasonStart)
+      .lt('date', nextSeasonStart);
+    const seasonEvents = await fetchAllFromSupabase(seasonEventsQuery);
+    const seasonEventIds = new Set((seasonEvents || []).map(e => Number(e.id)));
 
-    // Get all prediction results for 2026 events
-    const allResultsQuery = supabase.from('prediction_results').select('*');
+    // Get all prediction results for current year events
+    const allResultsQuery = supabase.from('prediction_results').select('user_id, event_id, predicted_correctly, points');
     const allResults = await fetchAllFromSupabase(allResultsQuery);
     
-    // Filter results to only 2026 events
+    // Filter results to only current year events
     const results = (allResults || []).filter(result => {
       const eventId = Number(result.event_id);
-      return eventIds2026.has(eventId);
+      return seasonEventIds.has(eventId);
     });
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
     const allTimeResults = await fetchAllFromSupabase(
-      supabase.from('prediction_results').select('*')
+      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
     );
 
     // Get all users with their user_id, username, is_bot, and playercard info
@@ -1600,11 +1849,10 @@ app.get('/leaderboard/season', async (req, res) => {
         parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
 
-    // Set event win counts to 0 for season leaderboard (no events have happened yet for 2026)
-    leaderboard = leaderboard.map(entry => ({
-      ...entry,
-      event_win_count: 0
-    }));
+    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
+    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
+    leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
+    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
 
     res.json(leaderboard);
   } catch (error) {
@@ -1629,13 +1877,13 @@ app.get('/leaderboard/monthly', async (req, res) => {
     // Get all prediction results for the current month using the pagination helper
     const resultsQuery = supabase
       .from('prediction_results')
-      .select('*')
+      .select('user_id, predicted_correctly, points, created_at')
       .gte('created_at', firstDayISO)
       .lt('created_at', nextMonthISO);
     const results = await fetchAllFromSupabase(resultsQuery);
 
     // Get all-time prediction results for streak calculation
-    const allTimeResultsQuery = supabase.from('prediction_results').select('*');
+    const allTimeResultsQuery = supabase.from('prediction_results').select('user_id, predicted_correctly, created_at');
     const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
 
     // Get all users with their user_id, username, is_bot, and playercard info
@@ -1712,7 +1960,9 @@ app.get('/leaderboard/monthly', async (req, res) => {
         parseFloat(b.accuracy) - parseFloat(a.accuracy)
       );
     const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id));
+    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id));
     leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
+    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing monthly leaderboard:', error);
@@ -1731,7 +1981,7 @@ app.get('/events', async (req, res) => {
     // Fetch events from the events table (this is the primary source now)
     const { data: eventsData, error: eventsError } = await supabase
       .from('events')
-      .select('*')
+      .select('id, name, date, is_completed, image_url')
       .order('date', { ascending: false });
 
     if (eventsError) {
@@ -1773,9 +2023,9 @@ app.get('/events', async (req, res) => {
       date: event.date,
       is_completed: event.is_completed,
       status: event.is_completed ? 'Complete' : 'Upcoming',
-      venue: event.venue,
-      location_city: event.location_city,
-      location_state: event.location_state,
+      venue: null,
+      location_city: null,
+      location_state: null,
       image_url: event.image_url,
       has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
@@ -1800,7 +2050,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // First check if the event exists in the events table
     const { data: eventData, error: eventError } = await supabase
       .from('events')
-      .select('*')
+      .select('id, date')
       .eq('id', id)
       .single();
 
@@ -1812,7 +2062,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // Get fights for the event from ufc_full_fight_card
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('EventId', id)
       .order('FightOrder');
 
@@ -1830,7 +2080,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
       .from('fight_results')
-      .select('*');
+      .select('fight_id, fighter_id, is_completed');
 
     if (resultsError) {
       console.error('Error fetching fight results:', resultsError);
@@ -1897,6 +2147,7 @@ app.get('/events/:id/fights', async (req, res) => {
       const transformedFight = {
         id: fightId,
         event_id: id,
+        event_date: eventData.date || null,
         fighter1_id: redFighter.id,
         fighter1_name: redFighter.name,
         fighter1_firstName: redFighter.firstName,
@@ -1952,13 +2203,85 @@ app.get('/events/:id/fights', async (req, res) => {
   }
 });
 
+// Get vote counts for all fights in an event (total + human counts)
+app.get('/events/:id/vote-counts', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Event ID is required' });
+    }
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+
+    const { data: fights, error: fightsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('FightId')
+      .eq('EventId', id);
+
+    if (fightsError) {
+      console.error('Error fetching fights for vote counts:', fightsError);
+      return res.status(500).json({ error: 'Failed to fetch fights for vote counts' });
+    }
+
+    const fightIds = Array.from(new Set((fights || []).map(f => f.FightId))).filter(Boolean);
+    if (fightIds.length === 0) {
+      return res.json({});
+    }
+
+    const predictionsQuery = supabase
+      .from('predictions')
+      .select('fight_id, fighter_id, user_id')
+      .in('fight_id', fightIds);
+    const predictions = await fetchAllFromSupabase(predictionsQuery);
+
+    if (!predictions || predictions.length === 0) {
+      return res.json({});
+    }
+
+    const userIds = Array.from(new Set(predictions.map(p => String(p.user_id)).filter(Boolean)));
+    let userIsBotMap = new Map();
+    if (userIds.length > 0) {
+      const usersQuery = supabase
+        .from('users')
+        .select('user_id, is_bot')
+        .in('user_id', userIds);
+      const users = await fetchAllFromSupabase(usersQuery);
+      userIsBotMap = new Map((users || []).map(u => [String(u.user_id), Boolean(u.is_bot)]));
+    }
+
+    const counts = {};
+    predictions.forEach(pred => {
+      const fightIdStr = String(pred.fight_id);
+      const fighterIdStr = String(pred.fighter_id);
+      if (!counts[fightIdStr]) {
+        counts[fightIdStr] = {};
+      }
+      if (!counts[fightIdStr][fighterIdStr]) {
+        counts[fightIdStr][fighterIdStr] = { total: 0, human: 0 };
+      }
+      const isBot = pred.user_id ? userIsBotMap.get(String(pred.user_id)) : false;
+      counts[fightIdStr][fighterIdStr].total += 1;
+      if (!isBot) {
+        counts[fightIdStr][fighterIdStr].human += 1;
+      }
+    });
+
+    res.json(counts);
+  } catch (error) {
+    console.error('Error fetching event vote counts:', error);
+    res.status(500).json({ error: 'Failed to fetch event vote counts' });
+  }
+});
+
 // Get event leaderboard
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
     const { leaderboard } = await buildEventLeaderboard(id);
-    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(entry => entry.user_id));
-    const leaderboardWithCrowns = addEventWinCounts(leaderboard, eventWinCounts);
+    const currentYear = new Date().getFullYear();
+    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
+    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
+    let leaderboardWithCrowns = addEventWinCounts(leaderboard, eventWinCounts);
+    leaderboardWithCrowns = addEventWinCounts(leaderboardWithCrowns, humanEventWinCounts, 'event_win_count_human');
     res.json(leaderboardWithCrowns);
   } catch (error) {
     console.error('Error processing event leaderboard:', error);
@@ -2117,7 +2440,9 @@ app.post('/events/backfill-winners', async (req, res) => {
       });
     }
 
-    const allTimeResults = await fetchAllFromSupabase(supabase.from('prediction_results').select('*'));
+    const allTimeResults = await fetchAllFromSupabase(
+      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
+    );
     const userCache = await fetchUsersWithPlayercards();
 
     const processed = [];
@@ -2185,7 +2510,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('*')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -2209,7 +2534,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     // Get the fight result (keep .single() here)
     const { data: fightResult, error: getResultError } = await supabase
       .from('fight_results')
-      .select('*')
+      .select('fight_id, fighter_id, is_completed')
       .eq('fight_id', id)
       .single();
 
@@ -2487,6 +2812,104 @@ app.get('/user/by-id/:user_id', async (req, res) => {
   }
 });
 
+// Get per-event stats for a user (avoids client-side N+1 requests)
+app.get('/user/:user_id/event-stats', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    if (!user_id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const resultsQuery = supabase
+      .from('prediction_results')
+      .select('event_id, predicted_correctly, points')
+      .eq('user_id', user_id);
+    let results = [];
+    try {
+      results = await fetchAllFromSupabase(resultsQuery);
+    } catch (error) {
+      console.error('Error fetching prediction_results for event stats:', error);
+      return res.status(500).json({ error: 'Failed to fetch prediction results', details: error.message });
+    }
+
+    if (!results || results.length === 0) {
+      return res.json([]);
+    }
+
+    const statsByEvent = new Map();
+    results.forEach(result => {
+      const eventId = Number(result.event_id);
+      if (Number.isNaN(eventId)) {
+        return;
+      }
+      if (!statsByEvent.has(eventId)) {
+        statsByEvent.set(eventId, {
+          event_id: eventId,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        });
+      }
+      const stat = statsByEvent.get(eventId);
+      stat.total_predictions += 1;
+      if (result.predicted_correctly) {
+        stat.correct_predictions += 1;
+      }
+      stat.total_points += (result.points || 0);
+    });
+
+    const eventIds = Array.from(statsByEvent.keys()).filter(id => !Number.isNaN(id));
+    if (eventIds.length === 0) {
+      return res.json([]);
+    }
+
+    const eventsQuery = supabase
+      .from('events')
+      .select('id, name, date')
+      .in('id', eventIds);
+    let events = [];
+    try {
+      events = await fetchAllFromSupabase(eventsQuery);
+    } catch (error) {
+      console.error('Error fetching events for event stats:', error);
+      return res.status(500).json({ error: 'Failed to fetch events for stats', details: error.message });
+    }
+    const eventMap = new Map((events || []).map(event => [
+      Number(event.id),
+      {
+        ...event,
+        venue: null,
+        location_city: null,
+        location_state: null
+      }
+    ]));
+
+    const stats = Array.from(statsByEvent.values())
+      .map(stat => {
+        const accuracy = stat.total_predictions > 0
+          ? ((stat.correct_predictions / stat.total_predictions) * 100).toFixed(2)
+          : '0.00';
+        return {
+          event: eventMap.get(stat.event_id) || { id: stat.event_id },
+          total_predictions: stat.total_predictions,
+          correct_predictions: stat.correct_predictions,
+          total_points: stat.total_points,
+          accuracy
+        };
+      })
+      .sort((a, b) => {
+        const aDate = a.event?.date ? new Date(a.event.date) : 0;
+        const bDate = b.event?.date ? new Date(b.event.date) : 0;
+        return bDate - aDate;
+      });
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching user event stats:', error);
+    res.status(500).json({ error: 'Failed to fetch user event stats' });
+  }
+});
+
 // Admin endpoint to set user type (for development/setup purposes)
 app.post('/admin/set-user-type', async (req, res) => {
   try {
@@ -2538,7 +2961,7 @@ app.get('/playercards', async (req, res) => {
     
     const { data: playercards, error } = await supabase
       .from('playercards')
-      .select('*')
+      .select('id, name, image_url, category, unlock_requirements, is_premium, created_at, required_event_id')
       .order('category', { ascending: true })
       .order('name', { ascending: true });
     
@@ -2831,7 +3254,7 @@ app.patch('/playercards/:id/event-requirement', async (req, res) => {
       .from('playercards')
       .update({ required_event_id })
       .eq('id', id)
-      .select('*')
+      .select('id, name, image_url, category, unlock_requirements, is_premium, created_at, required_event_id')
       .single();
     
     if (updateError) {
