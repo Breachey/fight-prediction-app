@@ -2,29 +2,17 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing required Supabase environment variables: SUPABASE_URL and SUPABASE_ANON_KEY');
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  throw new Error('Missing required Supabase environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
 }
 
-// Use service role for server-side queries so RLS can be strict without breaking API behavior.
+// All server-side queries use service-role credentials.
 const supabase = createClient(
   supabaseUrl,
-  supabaseServiceRoleKey || supabaseAnonKey
+  supabaseServiceRoleKey
 );
-
-// Create a service role client for admin operations
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseServiceRoleKey || supabaseAnonKey
-);
-
-// Validate admin client setup
-if (!supabaseServiceRoleKey) {
-  console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY not set, falling back to ANON_KEY. RLS-protected tables may fail.');
-}
 
 const express = require('express');
 const cors = require('cors');
@@ -160,22 +148,21 @@ async function testSupabaseConnection() {
       console.log('Available columns in ufc_full_fight_card:', Object.keys(data[0]).join(', '));
     }
 
-    // Test admin client permissions
+    // Test service-role permissions
     try {
-      console.log('Testing admin client permissions...');
-      const { data: adminTestData, error: adminTestError } = await supabaseAdmin
+      console.log('Testing service-role permissions...');
+      const { data: adminTestData, error: adminTestError } = await supabase
         .from('users')
         .select('user_id')
         .limit(1);
       
       if (adminTestError) {
-        console.warn('Admin client test failed:', adminTestError);
-        console.warn('Admin operations may fail - check SUPABASE_SERVICE_ROLE_KEY');
+        console.warn('Service-role test failed:', adminTestError);
       } else {
-        console.log('Admin client test successful');
+        console.log('Service-role test successful');
       }
     } catch (adminError) {
-      console.warn('Admin client test error:', adminError);
+      console.warn('Service-role test error:', adminError);
     }
 
     console.log('Supabase connection test successful');
@@ -2331,7 +2318,7 @@ app.post('/events/:id/finalize', async (req, res) => {
     }
 
     // Mark event as completed
-    const { error: updateEventError } = await supabaseAdmin
+    const { error: updateEventError } = await supabase
       .from('events')
       .update({ is_completed: true })
       .eq('id', eventId);
@@ -2342,7 +2329,7 @@ app.post('/events/:id/finalize', async (req, res) => {
     }
 
     // Update EventStatus on the fight card rows
-    const { error: updateCardError } = await supabaseAdmin
+    const { error: updateCardError } = await supabase
       .from('ufc_full_fight_card')
       .update({ EventStatus: targetStatus })
       .eq('EventId', eventId);
@@ -2356,7 +2343,7 @@ app.post('/events/:id/finalize', async (req, res) => {
 
     if (winners.length > 0) {
       // Clear any prior winners for this event to keep data idempotent
-      const { error: deleteError } = await supabaseAdmin
+      const { error: deleteError } = await supabase
         .from('event_winners')
         .delete()
         .eq('event_id', eventId);
@@ -2372,7 +2359,7 @@ app.post('/events/:id/finalize', async (req, res) => {
         points: winner.total_points
       }));
 
-      const { error: insertError } = await supabaseAdmin
+      const { error: insertError } = await supabase
         .from('event_winners')
         .insert(payload);
 
@@ -2472,7 +2459,7 @@ app.post('/events/backfill-winners', async (req, res) => {
           continue;
         }
 
-        const { error: deleteError } = await supabaseAdmin
+        const { error: deleteError } = await supabase
           .from('event_winners')
           .delete()
           .eq('event_id', eventId);
@@ -2488,7 +2475,7 @@ app.post('/events/backfill-winners', async (req, res) => {
           points: winner.total_points
         }));
 
-        const { error: insertError } = await supabaseAdmin
+        const { error: insertError } = await supabase
           .from('event_winners')
           .insert(payload);
 
@@ -3143,9 +3130,9 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
       return res.status(500).json({ error: 'Failed to verify user' });
     }
     
-    // Try the update with the admin client to bypass RLS
+    // Use the service-role client so this update is not blocked by RLS.
     try {
-      const { data: updatedUser, error: updateError } = await supabaseAdmin
+      const { data: updatedUser, error: updateError } = await supabase
         .from('users')
         .update({ selected_playercard_id: parseInt(playercard_id) })
         .eq('user_id', parseInt(user_id))
@@ -3167,7 +3154,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
       if (!updatedUser || updatedUser.length === 0) {
         console.log('Update returned empty, checking if update actually succeeded...');
         try {
-          const { data: verifyUser, error: verifyError } = await supabaseAdmin
+          const { data: verifyUser, error: verifyError } = await supabase
             .from('users')
             .select('user_id, username, selected_playercard_id')
             .eq('user_id', parseInt(user_id))
