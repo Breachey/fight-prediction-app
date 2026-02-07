@@ -30,11 +30,18 @@ app.use(compression());
 app.use(cors({
   origin: function (origin, callback) {
     const allowedOrigins = [
+      'https://fytpix.com',
+      'https://www.fytpix.com',
       'https://fight-prediction-app.vercel.app',
       'https://fight-prediction-app-git-breachey-brandons-projects-a1d75233.vercel.app',
       'http://localhost:3000',
       'http://localhost:5173'
     ];
+    const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const allAllowedOrigins = [...new Set([...allowedOrigins, ...configuredOrigins])];
 
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -44,7 +51,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allAllowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
