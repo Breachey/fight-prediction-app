@@ -35,16 +35,6 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
     const card = selectedCard || cardRefs.current[index];
     if (!carousel || !card) return;
 
-    try {
-      card.scrollIntoView({
-        behavior: behavior === 'smooth' ? 'smooth' : 'auto',
-        block: 'nearest',
-        inline: 'center'
-      });
-    } catch (error) {
-      // Continue with manual centering fallback below.
-    }
-
     // Center using viewport-relative geometry so transforms/padding don't skew offsets.
     const carouselRect = carousel.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
