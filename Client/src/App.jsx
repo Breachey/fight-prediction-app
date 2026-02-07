@@ -138,7 +138,7 @@ function App() {
     return (
       <div className="app" style={{ position: 'relative', overflow: 'hidden' }}>
         <div className="login-background" style={loginBackgroundStyle}></div>
-        <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'relative', zIndex: 1, minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
           <header className="header" style={loginHeaderStyle}>
             <Link to="/">
               <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
