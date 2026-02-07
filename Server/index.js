@@ -1,20 +1,29 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing required Supabase environment variables: SUPABASE_URL and SUPABASE_ANON_KEY');
+}
+
+// Use service role for server-side queries so RLS can be strict without breaking API behavior.
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://rnixnohdeayspegtrfds.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuaXhub2hkZWF5c3BlZ3RyZmRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMyODE3NzksImV4cCI6MjA1ODg1Nzc3OX0.quxIKY4BIWXAxSXVUSP353-sR_NBTCcrVZ8Fuj6hmiE'
+  supabaseUrl,
+  supabaseServiceRoleKey || supabaseAnonKey
 );
 
 // Create a service role client for admin operations
 const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || 'https://rnixnohdeayspegtrfds.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+  supabaseUrl,
+  supabaseServiceRoleKey || supabaseAnonKey
 );
 
 // Validate admin client setup
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY not set, falling back to ANON_KEY. Admin operations may fail.');
+if (!supabaseServiceRoleKey) {
+  console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY not set, falling back to ANON_KEY. RLS-protected tables may fail.');
 }
 
 const express = require('express');
