@@ -63,6 +63,23 @@ app.use(cors({
 
 app.use(express.json());
 
+const DEFAULT_IMAGE_PROXY_ALLOWED_HOSTS = ['images.tapology.com'];
+const IMAGE_PROXY_ALLOWED_HOSTS = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || '')
+  .split(',')
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean);
+const ALL_IMAGE_PROXY_ALLOWED_HOSTS = [...new Set([
+  ...DEFAULT_IMAGE_PROXY_ALLOWED_HOSTS,
+  ...IMAGE_PROXY_ALLOWED_HOSTS
+])];
+
+function isImageProxyHostAllowed(hostname) {
+  const normalizedHost = (hostname || '').toLowerCase();
+  return ALL_IMAGE_PROXY_ALLOWED_HOSTS.some(
+    (allowedHost) => normalizedHost === allowedHost || normalizedHost.endsWith(`.${allowedHost}`)
+  );
+}
+
 // Cache headers for frequently accessed, mostly-read endpoints
 const CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 app.use((req, res, next) => {
@@ -71,8 +88,9 @@ app.use((req, res, next) => {
   const isLeaderboard = path.startsWith('/leaderboard');
   const isEventLeaderboard = /^\/events\/[^/]+\/leaderboard$/.test(path);
   const isPlayercards = path === '/playercards';
+  const isHighlights = /^\/user\/[^/]+\/highlights\/(\d{4}|all-time)$/.test(path);
 
-  if (isEvents || isLeaderboard || isEventLeaderboard || isPlayercards) {
+  if (isEvents || isLeaderboard || isEventLeaderboard || isPlayercards || isHighlights) {
     res.set('Cache-Control', CACHE_CONTROL);
   }
   next();
@@ -850,6 +868,71 @@ app.get('/', (req, res) => {
   res.json({ status: 'API is running' });
 });
 
+app.get('/utils/image-proxy', async (req, res) => {
+  const rawUrl = (req.query.url || '').toString();
+  if (!rawUrl) {
+    return res.status(400).json({ error: 'Missing required query parameter: url' });
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch (error) {
+    return res.status(400).json({ error: 'Invalid url parameter' });
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return res.status(400).json({ error: 'Only http and https URLs are allowed' });
+  }
+
+  if (!isImageProxyHostAllowed(parsedUrl.hostname)) {
+    return res.status(403).json({ error: 'Image host is not allowed' });
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const upstreamResponse = await fetch(parsedUrl.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'FightPickerImageProxy/1.0'
+      }
+    });
+
+    if (!upstreamResponse.ok) {
+      return res.status(502).json({ error: `Upstream image request failed (${upstreamResponse.status})` });
+    }
+
+    const contentType = upstreamResponse.headers.get('content-type') || '';
+    if (!contentType.startsWith('image/')) {
+      return res.status(415).json({ error: 'Upstream resource is not an image' });
+    }
+
+    const cacheControl = upstreamResponse.headers.get('cache-control') || '';
+    res.set('Content-Type', contentType);
+    res.set(
+      'Cache-Control',
+      cacheControl && !cacheControl.includes('private')
+        ? cacheControl
+        : 'public, max-age=86400, stale-while-revalidate=604800'
+    );
+
+    const imageBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
+    return res.status(200).send(imageBuffer);
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return res.status(504).json({ error: 'Timed out while fetching image' });
+    }
+    console.error('Error in GET /utils/image-proxy:', error);
+    return res.status(502).json({ error: 'Failed to fetch image' });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
 // Cancel a fight
 app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
   try {
@@ -1227,6 +1310,28 @@ function calculateUserStreak(userResults) {
     type: streakType,
     count: streakCount
   };
+}
+
+// Calculates the longest win streak from an ordered prediction result list.
+function calculateLongestWinStreak(orderedResults) {
+  if (!orderedResults || orderedResults.length === 0) {
+    return 0;
+  }
+
+  let current = 0;
+  let longest = 0;
+  orderedResults.forEach(result => {
+    if (result.predicted_correctly) {
+      current += 1;
+      if (current > longest) {
+        longest = current;
+      }
+    } else {
+      current = 0;
+    }
+  });
+
+  return longest;
 }
 
 /**
@@ -1984,7 +2089,7 @@ app.get('/events', async (req, res) => {
     // Fetch events from the events table (this is the primary source now)
     const { data: eventsData, error: eventsError } = await supabase
       .from('events')
-      .select('id, name, date, is_completed, image_url')
+      .select('id, name, date, is_completed, image_url, venue, location_city, location_state, location_country')
       .order('date', { ascending: false });
 
     if (eventsError) {
@@ -2026,9 +2131,10 @@ app.get('/events', async (req, res) => {
       date: event.date,
       is_completed: event.is_completed,
       status: event.is_completed ? 'Complete' : 'Upcoming',
-      venue: null,
-      location_city: null,
-      location_state: null,
+      venue: event.venue || null,
+      location_city: event.location_city || null,
+      location_state: event.location_state || null,
+      location_country: event.location_country || null,
       image_url: event.image_url,
       has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
@@ -2868,7 +2974,7 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
 
     const eventsQuery = supabase
       .from('events')
-      .select('id, name, date')
+      .select('id, name, date, venue, location_city, location_state, location_country')
       .in('id', eventIds);
     let events = [];
     try {
@@ -2877,15 +2983,7 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
       console.error('Error fetching events for event stats:', error);
       return res.status(500).json({ error: 'Failed to fetch events for stats', details: error.message });
     }
-    const eventMap = new Map((events || []).map(event => [
-      Number(event.id),
-      {
-        ...event,
-        venue: null,
-        location_city: null,
-        location_state: null
-      }
-    ]));
+    const eventMap = new Map((events || []).map(event => [Number(event.id), event]));
 
     const stats = Array.from(statsByEvent.values())
       .map(stat => {
@@ -2910,6 +3008,1403 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
   } catch (error) {
     console.error('Error fetching user event stats:', error);
     res.status(500).json({ error: 'Failed to fetch user event stats' });
+  }
+});
+
+app.get('/user/:user_id/vote-reminders', async (req, res) => {
+  try {
+    const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
+    if (!Number.isFinite(normalizedUserId)) {
+      return res.status(400).json({ error: 'User ID must be a valid integer' });
+    }
+
+    const { data, error } = await supabase
+      .from('fighter_vote_reminders')
+      .select('fighter_id, fighter_name, reminder_type, created_at, updated_at')
+      .eq('user_id', normalizedUserId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching vote reminders:', error);
+      return res.status(500).json({ error: 'Failed to fetch vote reminders' });
+    }
+
+    res.json(data || []);
+  } catch (error) {
+    console.error('Vote reminders fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
+  try {
+    const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
+    const normalizedFighterId = Number.parseInt(String(req.params.fighter_id), 10);
+    const fighterName = typeof req.body?.fighter_name === 'string'
+      ? req.body.fighter_name.trim()
+      : '';
+    const reminderTypeRaw = typeof req.body?.reminder_type === 'string'
+      ? req.body.reminder_type.trim()
+      : '';
+    const reminderType = reminderTypeRaw || 'broken_heart';
+
+    if (!Number.isFinite(normalizedUserId)) {
+      return res.status(400).json({ error: 'User ID must be a valid integer' });
+    }
+    if (!Number.isFinite(normalizedFighterId)) {
+      return res.status(400).json({ error: 'Fighter ID must be a valid integer' });
+    }
+    if (!['broken_heart', 'heart_eyes'].includes(reminderType)) {
+      return res.status(400).json({ error: 'reminder_type must be "broken_heart" or "heart_eyes"' });
+    }
+
+    const { data, error } = await supabase
+      .from('fighter_vote_reminders')
+      .upsert([{
+        user_id: normalizedUserId,
+        fighter_id: normalizedFighterId,
+        fighter_name: fighterName || null,
+        reminder_type: reminderType
+      }], { onConflict: 'user_id,fighter_id' })
+      .select('fighter_id, fighter_name, reminder_type, created_at, updated_at')
+      .single();
+
+    if (error) {
+      console.error('Error saving vote reminder:', error);
+      return res.status(500).json({ error: 'Failed to save vote reminder' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Vote reminder save error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
+  try {
+    const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
+    const normalizedFighterId = Number.parseInt(String(req.params.fighter_id), 10);
+
+    if (!Number.isFinite(normalizedUserId)) {
+      return res.status(400).json({ error: 'User ID must be a valid integer' });
+    }
+    if (!Number.isFinite(normalizedFighterId)) {
+      return res.status(400).json({ error: 'Fighter ID must be a valid integer' });
+    }
+
+    const { error } = await supabase
+      .from('fighter_vote_reminders')
+      .delete()
+      .eq('user_id', normalizedUserId)
+      .eq('fighter_id', normalizedFighterId);
+
+    if (error) {
+      console.error('Error deleting vote reminder:', error);
+      return res.status(500).json({ error: 'Failed to delete vote reminder' });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Vote reminder delete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get season highlights for a user and year
+app.get('/user/:user_id/highlights/:year', async (req, res) => {
+  try {
+    const { user_id, year } = req.params;
+    const normalizedPeriod = String(year || '').trim().toLowerCase();
+    const isAllTime = normalizedPeriod === 'all-time' || normalizedPeriod === 'alltime' || normalizedPeriod === 'all';
+    const numericYear = Number(year);
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    if (!isAllTime && (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100)) {
+      return res.status(400).json({ error: 'Year must be a valid 4-digit number or "all-time"' });
+    }
+
+    const periodLabel = isAllTime ? 'all-time' : String(numericYear);
+    const seasonStart = isAllTime ? null : `${numericYear}-01-01`;
+    const nextSeasonStart = isAllTime ? null : `${numericYear + 1}-01-01`;
+    const parseOddsValue = (value) => {
+      if (value === null || value === undefined) return null;
+      const parsed = Number.parseInt(String(value), 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const roundTo = (value, decimals = 2) => Number(Number(value || 0).toFixed(decimals));
+    const formatCardTier = (tier) => {
+      if (!tier) return 'Unknown';
+      if (tier === 'Prelims1') return 'Prelims';
+      if (tier === 'Prelims2') return 'Early Prelims';
+      return tier;
+    };
+    const normalizeWeightclassLabel = (value) => {
+      const raw = (value || '').toString().trim();
+      if (!raw) return 'Unknown';
+      const lower = raw.toLowerCase();
+      if (lower === 'unknown' || lower === 'n/a' || lower === 'na' || lower === 'null' || lower === 'none') {
+        return 'Unknown';
+      }
+      return raw;
+    };
+    const normalizeCornerLabel = (value) => {
+      const lower = (value || '').toString().trim().toLowerCase();
+      if (lower === 'red') return 'Red';
+      if (lower === 'blue') return 'Blue';
+      return 'Unknown';
+    };
+    const normalizeUsernameKey = (value) => (value || '').toString().trim().toLowerCase();
+    const isBotFlag = (value) => {
+      if (value === true || value === 1) return true;
+      const normalized = (value || '').toString().trim().toLowerCase();
+      return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    };
+    const buildBenchmarkMetric = (entries, targetUserId, key, decimals = 2) => {
+      if (!entries || entries.length === 0) {
+        return null;
+      }
+
+      const totalUsers = entries.length;
+      const values = entries.map((entry) => Number(entry[key]) || 0);
+      const sum = values.reduce((acc, value) => acc + value, 0);
+      const average = totalUsers > 0 ? roundTo(sum / totalUsers, decimals) : 0;
+      const targetEntry = entries.find((entry) => String(entry.user_id) === String(targetUserId));
+      const rawUserValue = targetEntry ? (Number(targetEntry[key]) || 0) : 0;
+      const userValue = roundTo(rawUserValue, decimals);
+      const rank = values.filter((value) => value > rawUserValue).length + 1;
+      const topPercent = totalUsers > 0
+        ? Number(((rank / totalUsers) * 100).toFixed(1))
+        : 100;
+
+      return {
+        average,
+        user_value: userValue,
+        difference_from_average: roundTo(userValue - average, decimals),
+        rank,
+        total_users: totalUsers,
+        top_percent: topPercent
+      };
+    };
+    const buildEmptyPayload = () => ({
+      user_id: String(user_id),
+      period: periodLabel,
+      year: isAllTime ? null : numericYear,
+      generated_at: new Date().toISOString(),
+      summary: {
+        total_predictions: 0,
+        correct_predictions: 0,
+        incorrect_predictions: 0,
+        accuracy: 0,
+        total_points: 0,
+        events_played: 0,
+        event_wins: 0,
+        average_points_per_event: 0,
+        longest_win_streak: 0
+      },
+      best_event: null,
+      toughest_event: null,
+      events: [],
+      fighter_insights: {
+        most_trusted_fighter: null,
+        most_profitable_fighter: null,
+        biggest_underdog_hit: null
+      },
+      style_insights: {
+        best_card_tier: null,
+        best_weightclass: null,
+        corner_performance: {
+          red_corner: {
+            total_picks: 0,
+            correct_picks: 0,
+            accuracy: 0
+          },
+          blue_corner: {
+            total_picks: 0,
+            correct_picks: 0,
+            accuracy: 0
+          },
+          favorite_corner: null
+        },
+        momentum: {
+          first_half_accuracy: 0,
+          second_half_accuracy: 0,
+          delta: 0,
+          total_predictions: 0
+        }
+      },
+      rivalry_insights: {
+        biggest_nemesis: null,
+        head_to_head: null,
+        pick_twin: null
+      },
+      community_insights: {
+        most_voted_fighter: null,
+        community_cash_cow_fighter: null,
+        most_faded_fighter: null,
+        crowd_favorite_corner: null,
+        biggest_whiff_fight: null
+      },
+      benchmarks: {
+        cohort_label: 'active human users',
+        cohort_size: 0,
+        metrics: {
+          total_predictions: null,
+          accuracy: null,
+          total_points: null,
+          events_played: null,
+          event_wins: null,
+          average_points_per_event: null
+        }
+      },
+      leaderboards: {
+        longest_win_streak: []
+      }
+    });
+
+    const eventsQuery = supabase
+      .from('events')
+      .select('id, name, date, image_url');
+    const eventsForPeriod = isAllTime
+      ? await fetchAllFromSupabase(eventsQuery)
+      : await fetchAllFromSupabase(
+        eventsQuery
+          .gte('date', seasonStart)
+          .lt('date', nextSeasonStart)
+      );
+    const normalizedEvents = (eventsForPeriod || []).map(event => ({
+      id: Number(event.id),
+      name: event.name || `Event ${event.id}`,
+      date: event.date || null,
+      image_url: event.image_url || null
+    }));
+    const validEvents = normalizedEvents.filter(event => Number.isFinite(event.id));
+    const eventIds = validEvents.map(event => event.id);
+    const eventMap = new Map(validEvents.map(event => [event.id, event]));
+
+    if (eventIds.length === 0) {
+      return res.json(buildEmptyPayload());
+    }
+
+    const weightclassMap = await getWeightclassMapping();
+    const weightclassByLbs = new Map();
+    weightclassMap.forEach((value) => {
+      const lbs = Number(value?.weight_lbs);
+      if (!Number.isFinite(lbs) || lbs <= 0) {
+        return;
+      }
+      if (!weightclassByLbs.has(lbs)) {
+        weightclassByLbs.set(lbs, value?.gay_weightclass || value?.official_weightclass || null);
+      }
+    });
+    const resolveWeightclassLabel = (rawLabel, rawLbs) => {
+      const raw = (rawLabel || '').toString().trim();
+      const normalizedRaw = normalizeWeightclass(raw);
+      if (normalizedRaw) {
+        const mapped = weightclassMap.get(normalizedRaw);
+        if (mapped) {
+          return normalizeWeightclassLabel(mapped.gay_weightclass || mapped.official_weightclass || raw);
+        }
+      }
+
+      const normalizedLabel = normalizeWeightclassLabel(raw);
+      if (normalizedLabel !== 'Unknown') {
+        return normalizedLabel;
+      }
+
+      const lbs = Number(rawLbs);
+      if (Number.isFinite(lbs) && lbs > 0 && weightclassByLbs.has(lbs)) {
+        return normalizeWeightclassLabel(weightclassByLbs.get(lbs));
+      }
+
+      return 'Unknown';
+    };
+
+    const seasonFightRows = await fetchAllFromSupabase(
+      supabase
+        .from('ufc_full_fight_card')
+        .select('EventId, FightId, CardSegment, FighterWeightClass, Weight_lbs, Corner, FighterId, FirstName, LastName, odds')
+        .in('EventId', eventIds)
+    );
+    const fightMetaMap = new Map();
+    (seasonFightRows || []).forEach(row => {
+      const fightId = Number(row.FightId);
+      const eventId = Number(row.EventId);
+      const fighterId = Number(row.FighterId);
+      if (!Number.isFinite(fightId) || !Number.isFinite(eventId)) {
+        return;
+      }
+      if (!fightMetaMap.has(fightId)) {
+        fightMetaMap.set(fightId, {
+          fight_id: fightId,
+          event_id: eventId,
+          card_tier: formatCardTier(row.CardSegment),
+          weightclass: resolveWeightclassLabel(row.FighterWeightClass, row.Weight_lbs),
+          fighters: new Map()
+        });
+      }
+      const fightMeta = fightMetaMap.get(fightId);
+      const normalizedWeightclass = resolveWeightclassLabel(row.FighterWeightClass, row.Weight_lbs);
+      if (fightMeta.weightclass === 'Unknown' && normalizedWeightclass !== 'Unknown') {
+        fightMeta.weightclass = normalizedWeightclass;
+      }
+      if (Number.isFinite(fighterId)) {
+        fightMetaMap.get(fightId).fighters.set(fighterId, {
+          fighter_id: fighterId,
+          fighter_name: `${row.FirstName || ''} ${row.LastName || ''}`.trim() || `Fighter ${fighterId}`,
+          odds: parseOddsValue(row.odds),
+          corner: normalizeCornerLabel(row.Corner)
+        });
+      }
+    });
+
+    const seasonResults = await fetchAllFromSupabase(
+      supabase
+        .from('prediction_results')
+        .select('event_id, fight_id, predicted_correctly, points, created_at')
+        .eq('user_id', user_id)
+        .in('event_id', eventIds)
+    );
+
+    const rows = (seasonResults || []).map(row => ({
+      event_id: Number(row.event_id),
+      fight_id: Number.isFinite(Number(row.fight_id)) ? Number(row.fight_id) : 0,
+      predicted_correctly: Boolean(row.predicted_correctly),
+      points: Number(row.points) || 0,
+      created_at: row.created_at || null
+    }))
+      .filter(row => Number.isFinite(row.event_id));
+
+    if (rows.length === 0) {
+      return res.json(buildEmptyPayload());
+    }
+
+    const userFightIds = Array.from(new Set(
+      rows
+        .map(row => Number(row.fight_id))
+        .filter(fightId => Number.isFinite(fightId) && fightId > 0)
+    ));
+    let usernameForUser = null;
+    try {
+      const { data: userRecord, error: userLookupError } = await supabase
+        .from('users')
+        .select('username')
+        .eq('user_id', user_id)
+        .maybeSingle();
+      if (!userLookupError) {
+        usernameForUser = userRecord?.username || null;
+      } else {
+        console.error('Error looking up username for highlights:', userLookupError);
+      }
+    } catch (lookupError) {
+      console.error('Unexpected error looking up username for highlights:', lookupError);
+    }
+
+    let userPredictions = [];
+    if (userFightIds.length > 0) {
+      const predictionsByUserId = await fetchAllFromSupabase(
+        supabase
+          .from('predictions')
+          .select('fight_id, fighter_id, betting_odds, user_id, username')
+          .eq('user_id', user_id)
+          .in('fight_id', userFightIds)
+      );
+      const predictionsByUsername = usernameForUser
+        ? await fetchAllFromSupabase(
+          supabase
+            .from('predictions')
+            .select('fight_id, fighter_id, betting_odds, user_id, username')
+            .eq('username', usernameForUser)
+            .in('fight_id', userFightIds)
+        )
+        : [];
+
+      // Prefer user_id-linked rows over username-only rows when duplicates exist.
+      const mergedByFight = new Map();
+      const mergePrediction = (prediction, priority) => {
+        const fightId = Number(prediction?.fight_id);
+        if (!Number.isFinite(fightId)) {
+          return;
+        }
+        const existing = mergedByFight.get(fightId);
+        if (!existing) {
+          mergedByFight.set(fightId, { ...prediction, __priority: priority });
+          return;
+        }
+        if (priority > existing.__priority) {
+          mergedByFight.set(fightId, { ...prediction, __priority: priority });
+          return;
+        }
+        if (priority === existing.__priority) {
+          const existingOdds = parseOddsValue(existing.betting_odds);
+          const nextOdds = parseOddsValue(prediction.betting_odds);
+          if (existingOdds === null && nextOdds !== null) {
+            mergedByFight.set(fightId, { ...prediction, __priority: priority });
+          }
+        }
+      };
+
+      (predictionsByUsername || []).forEach((prediction) => mergePrediction(prediction, 0));
+      (predictionsByUserId || []).forEach((prediction) => mergePrediction(prediction, 1));
+      userPredictions = [...mergedByFight.values()].map((item) => {
+        const { __priority, ...prediction } = item;
+        return prediction;
+      });
+    }
+    const myPredictionByFight = new Map(
+      (userPredictions || [])
+        .map(prediction => {
+          const fightId = Number(prediction.fight_id);
+          const fighterId = Number(prediction.fighter_id);
+          if (!Number.isFinite(fightId) || !Number.isFinite(fighterId)) {
+            return null;
+          }
+          return [
+            fightId,
+            {
+              fight_id: fightId,
+              fighter_id: fighterId,
+              betting_odds: parseOddsValue(prediction.betting_odds)
+            }
+          ];
+        })
+        .filter(Boolean)
+    );
+
+    const byEvent = new Map();
+    rows.forEach(row => {
+      if (!byEvent.has(row.event_id)) {
+        byEvent.set(row.event_id, {
+          event_id: row.event_id,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0
+        });
+      }
+      const bucket = byEvent.get(row.event_id);
+      bucket.total_predictions += 1;
+      if (row.predicted_correctly) {
+        bucket.correct_predictions += 1;
+      }
+      bucket.total_points += row.points;
+    });
+
+    const eventStats = Array.from(byEvent.values())
+      .map(stat => {
+        const event = eventMap.get(stat.event_id) || { id: stat.event_id, name: `Event ${stat.event_id}`, date: null };
+        const accuracy = stat.total_predictions > 0
+          ? Number(((stat.correct_predictions / stat.total_predictions) * 100).toFixed(2))
+          : 0;
+        return {
+          event_id: stat.event_id,
+          event_name: event.name,
+          event_date: event.date,
+          event_image_url: event.image_url || null,
+          total_predictions: stat.total_predictions,
+          correct_predictions: stat.correct_predictions,
+          total_points: stat.total_points,
+          accuracy
+        };
+      })
+      .sort((a, b) => {
+        const aTime = a.event_date ? Date.parse(a.event_date) : Number.NEGATIVE_INFINITY;
+        const bTime = b.event_date ? Date.parse(b.event_date) : Number.NEGATIVE_INFINITY;
+        return aTime - bTime;
+      });
+
+    const totalPredictions = rows.length;
+    const correctPredictions = rows.reduce((sum, row) => sum + (row.predicted_correctly ? 1 : 0), 0);
+    const totalPoints = rows.reduce((sum, row) => sum + row.points, 0);
+    const eventsPlayed = eventStats.length;
+    const accuracy = totalPredictions > 0
+      ? Number(((correctPredictions / totalPredictions) * 100).toFixed(2))
+      : 0;
+    const averagePointsPerEvent = eventsPlayed > 0
+      ? Number((totalPoints / eventsPlayed).toFixed(2))
+      : 0;
+
+    const orderedForStreak = [...rows].sort((a, b) => {
+      const aEventDate = eventMap.get(a.event_id)?.date;
+      const bEventDate = eventMap.get(b.event_id)?.date;
+      const aEventTime = aEventDate ? Date.parse(aEventDate) : Number.NEGATIVE_INFINITY;
+      const bEventTime = bEventDate ? Date.parse(bEventDate) : Number.NEGATIVE_INFINITY;
+      if (aEventTime !== bEventTime) {
+        return aEventTime - bEventTime;
+      }
+      const aCreated = a.created_at ? Date.parse(a.created_at) : Number.NEGATIVE_INFINITY;
+      const bCreated = b.created_at ? Date.parse(b.created_at) : Number.NEGATIVE_INFINITY;
+      if (aCreated !== bCreated) {
+        return aCreated - bCreated;
+      }
+      return a.fight_id - b.fight_id;
+    });
+    const accuracyForRows = (items) => {
+      if (!items || items.length === 0) return 0;
+      const correct = items.reduce((sum, item) => sum + (item.predicted_correctly ? 1 : 0), 0);
+      return Number(((correct / items.length) * 100).toFixed(2));
+    };
+    const splitPoint = Math.ceil(orderedForStreak.length / 2);
+    const firstHalfRows = orderedForStreak.slice(0, splitPoint);
+    const secondHalfRows = orderedForStreak.slice(splitPoint);
+    const firstHalfAccuracy = accuracyForRows(firstHalfRows);
+    const secondHalfAccuracy = accuracyForRows(secondHalfRows);
+    const momentumDelta = Number((secondHalfAccuracy - firstHalfAccuracy).toFixed(2));
+
+    const longestWinStreak = calculateLongestWinStreak(orderedForStreak);
+
+    const eventWinners = await fetchAllFromSupabase(
+      supabase
+        .from('event_winners')
+        .select('event_id')
+        .eq('user_id', user_id)
+        .in('event_id', eventIds)
+    );
+    const eventWins = (eventWinners || []).length;
+
+    const bestEvent = eventStats.length > 0
+      ? [...eventStats].sort((a, b) =>
+        b.total_points - a.total_points ||
+        b.accuracy - a.accuracy ||
+        b.correct_predictions - a.correct_predictions
+      )[0]
+      : null;
+
+    const toughestEvent = eventStats.length > 0
+      ? [...eventStats].sort((a, b) =>
+        a.accuracy - b.accuracy ||
+        a.total_points - b.total_points ||
+        b.total_predictions - a.total_predictions
+      )[0]
+      : null;
+
+    // Fighter insights
+    const fighterBuckets = new Map();
+    const underdogHits = [];
+    const cardTierBuckets = new Map();
+    const weightclassBuckets = new Map();
+    const cornerBuckets = new Map([
+      ['Red', { corner: 'Red', total_picks: 0, correct_picks: 0 }],
+      ['Blue', { corner: 'Blue', total_picks: 0, correct_picks: 0 }]
+    ]);
+
+    rows.forEach(row => {
+      const fightId = Number(row.fight_id);
+      const fightMeta = fightMetaMap.get(fightId);
+      const myPick = myPredictionByFight.get(fightId);
+
+      if (myPick) {
+        const fighterInfo = fightMeta?.fighters?.get(myPick.fighter_id);
+        const fighterName = fighterInfo?.fighter_name || `Fighter ${myPick.fighter_id}`;
+        const pickedCorner = normalizeCornerLabel(fighterInfo?.corner);
+        if (!fighterBuckets.has(myPick.fighter_id)) {
+          fighterBuckets.set(myPick.fighter_id, {
+            fighter_id: myPick.fighter_id,
+            fighter_name: fighterName,
+            picks: 0,
+            correct_picks: 0,
+            points_from_wins: 0
+          });
+        }
+        const bucket = fighterBuckets.get(myPick.fighter_id);
+        bucket.picks += 1;
+        if (row.predicted_correctly) {
+          bucket.correct_picks += 1;
+          bucket.points_from_wins += row.points;
+        }
+
+        const fallbackOdds = fighterInfo?.odds ?? null;
+        const selectedOdds = myPick.betting_odds ?? fallbackOdds;
+        if (row.predicted_correctly && selectedOdds !== null && selectedOdds > 0) {
+          const event = eventMap.get(row.event_id);
+          underdogHits.push({
+            fight_id: fightId,
+            fighter_id: myPick.fighter_id,
+            fighter_name: fighterName,
+            odds: selectedOdds,
+            points: row.points,
+            event_id: row.event_id,
+            event_name: event?.name || `Event ${row.event_id}`,
+            event_date: event?.date || null
+          });
+        }
+
+        if (pickedCorner !== 'Unknown' && cornerBuckets.has(pickedCorner)) {
+          const cornerBucket = cornerBuckets.get(pickedCorner);
+          cornerBucket.total_picks += 1;
+          if (row.predicted_correctly) {
+            cornerBucket.correct_picks += 1;
+          }
+        }
+      }
+
+      const cardTierKey = fightMeta?.card_tier || 'Unknown';
+      if (!cardTierBuckets.has(cardTierKey)) {
+        cardTierBuckets.set(cardTierKey, { label: cardTierKey, total_predictions: 0, correct_predictions: 0 });
+      }
+      const cardTierStat = cardTierBuckets.get(cardTierKey);
+      cardTierStat.total_predictions += 1;
+      if (row.predicted_correctly) {
+        cardTierStat.correct_predictions += 1;
+      }
+
+      const weightclassKey = normalizeWeightclassLabel(fightMeta?.weightclass);
+      if (weightclassKey !== 'Unknown') {
+        if (!weightclassBuckets.has(weightclassKey)) {
+          weightclassBuckets.set(weightclassKey, { label: weightclassKey, total_predictions: 0, correct_predictions: 0 });
+        }
+        const weightclassStat = weightclassBuckets.get(weightclassKey);
+        weightclassStat.total_predictions += 1;
+        if (row.predicted_correctly) {
+          weightclassStat.correct_predictions += 1;
+        }
+      }
+    });
+
+    const mostTrustedFighter = fighterBuckets.size > 0
+      ? [...fighterBuckets.values()].sort((a, b) =>
+        b.picks - a.picks ||
+        b.points_from_wins - a.points_from_wins ||
+        b.correct_picks - a.correct_picks
+      )[0]
+      : null;
+
+    const mostProfitableFighter = fighterBuckets.size > 0
+      ? [...fighterBuckets.values()].sort((a, b) =>
+        b.points_from_wins - a.points_from_wins ||
+        b.correct_picks - a.correct_picks ||
+        b.picks - a.picks
+      )[0]
+      : null;
+
+    const biggestUnderdogHit = underdogHits.length > 0
+      ? [...underdogHits].sort((a, b) =>
+        b.odds - a.odds ||
+        b.points - a.points
+      )[0]
+      : null;
+
+    const bestCardTier = cardTierBuckets.size > 0
+      ? [...cardTierBuckets.values()]
+        .map(item => ({
+          card_tier: item.label,
+          total_predictions: item.total_predictions,
+          correct_predictions: item.correct_predictions,
+          accuracy: item.total_predictions > 0
+            ? Number(((item.correct_predictions / item.total_predictions) * 100).toFixed(2))
+            : 0
+        }))
+        .sort((a, b) =>
+          b.accuracy - a.accuracy ||
+          b.total_predictions - a.total_predictions
+        )[0]
+      : null;
+
+    const bestWeightclass = (() => {
+      if (weightclassBuckets.size === 0) {
+        return null;
+      }
+      const stats = [...weightclassBuckets.values()]
+        .map(item => ({
+          weightclass: item.label,
+          total_predictions: item.total_predictions,
+          correct_predictions: item.correct_predictions,
+          accuracy: item.total_predictions > 0
+            ? Number(((item.correct_predictions / item.total_predictions) * 100).toFixed(2))
+            : 0
+        }));
+      const minimumSamples = 3;
+      const sufficientlySampled = stats.filter(item => item.total_predictions >= minimumSamples);
+      const pool = sufficientlySampled.length > 0
+        ? sufficientlySampled
+        : stats;
+      return pool.sort((a, b) =>
+        b.accuracy - a.accuracy ||
+        b.total_predictions - a.total_predictions
+      )[0] || null;
+    })();
+
+    const redCorner = cornerBuckets.get('Red') || { corner: 'Red', total_picks: 0, correct_picks: 0 };
+    const blueCorner = cornerBuckets.get('Blue') || { corner: 'Blue', total_picks: 0, correct_picks: 0 };
+    const redCornerSummary = {
+      total_picks: redCorner.total_picks,
+      correct_picks: redCorner.correct_picks,
+      accuracy: redCorner.total_picks > 0
+        ? Number(((redCorner.correct_picks / redCorner.total_picks) * 100).toFixed(2))
+        : 0
+    };
+    const blueCornerSummary = {
+      total_picks: blueCorner.total_picks,
+      correct_picks: blueCorner.correct_picks,
+      accuracy: blueCorner.total_picks > 0
+        ? Number(((blueCorner.correct_picks / blueCorner.total_picks) * 100).toFixed(2))
+        : 0
+    };
+    const totalKnownCornerPicks = redCornerSummary.total_picks + blueCornerSummary.total_picks;
+    const favoriteCorner = (() => {
+      if (totalKnownCornerPicks === 0) {
+        return null;
+      }
+      const ordered = [
+        { corner: 'Red', ...redCornerSummary },
+        { corner: 'Blue', ...blueCornerSummary }
+      ].sort((a, b) =>
+        b.total_picks - a.total_picks ||
+        b.accuracy - a.accuracy
+      );
+      const winner = ordered[0];
+      return {
+        corner: winner.corner,
+        total_picks: winner.total_picks,
+        correct_picks: winner.correct_picks,
+        accuracy: winner.accuracy,
+        pick_share: Number(((winner.total_picks / totalKnownCornerPicks) * 100).toFixed(2))
+      };
+    })();
+
+    // Rivalry insights (humans only)
+    const users = await fetchAllFromSupabase(
+      supabase
+        .from('users')
+        .select('user_id, username, is_bot')
+    );
+    const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
+    const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
+    const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
+
+    const myResultsByFight = new Map(
+      rows
+        .map(row => {
+          const fightId = Number(row.fight_id);
+          if (!Number.isFinite(fightId) || fightId <= 0) {
+            return null;
+          }
+          return [
+            fightId,
+            {
+              predicted_correctly: Boolean(row.predicted_correctly),
+              event_id: row.event_id
+            }
+          ];
+        })
+        .filter(Boolean)
+    );
+
+    const getOpponentBucket = (map, opponentId) => {
+      const key = String(opponentId);
+      if (!map.has(key)) {
+        map.set(key, {
+          user_id: key,
+          username: userIdToUsername.get(key) || `User ${key}`,
+          shared_fights: 0,
+          they_right_you_wrong: 0,
+          you_right_they_wrong: 0,
+          same_picks: 0,
+          shared_pick_fights: 0
+        });
+      }
+      return map.get(key);
+    };
+
+    const opponentMap = new Map();
+
+    const seasonHumanResults = await fetchAllFromSupabase(
+      supabase
+        .from('prediction_results')
+        .select('user_id, username, event_id, fight_id, predicted_correctly, points, created_at')
+        .in('event_id', eventIds)
+    );
+    (seasonHumanResults || []).forEach(row => {
+      const opponentId = String(row.user_id);
+      if (opponentId === String(user_id) || !humanUserSet.has(opponentId)) {
+        return;
+      }
+      const fightId = Number(row.fight_id);
+      if (!Number.isFinite(fightId) || !myResultsByFight.has(fightId)) {
+        return;
+      }
+      const mine = myResultsByFight.get(fightId);
+      const theirsCorrect = Boolean(row.predicted_correctly);
+      const bucket = getOpponentBucket(opponentMap, opponentId);
+      bucket.shared_fights += 1;
+      if (theirsCorrect && !mine.predicted_correctly) {
+        bucket.they_right_you_wrong += 1;
+      } else if (!theirsCorrect && mine.predicted_correctly) {
+        bucket.you_right_they_wrong += 1;
+      }
+    });
+
+    const seasonHumanPredictions = userFightIds.length > 0
+      ? await fetchAllFromSupabase(
+        supabase
+          .from('predictions')
+          .select('user_id, fight_id, fighter_id')
+          .in('fight_id', userFightIds)
+      )
+      : [];
+    (seasonHumanPredictions || []).forEach(row => {
+      const opponentId = String(row.user_id);
+      if (opponentId === String(user_id) || !humanUserSet.has(opponentId)) {
+        return;
+      }
+      const fightId = Number(row.fight_id);
+      const fighterId = Number(row.fighter_id);
+      const myPick = myPredictionByFight.get(fightId);
+      if (!Number.isFinite(fightId) || !Number.isFinite(fighterId) || !myPick) {
+        return;
+      }
+      const bucket = getOpponentBucket(opponentMap, opponentId);
+      bucket.shared_pick_fights += 1;
+      if (Number(myPick.fighter_id) === fighterId) {
+        bucket.same_picks += 1;
+      }
+    });
+
+    const rivalryRows = [...opponentMap.values()]
+      .map(item => ({
+        ...item,
+        net_edge: item.you_right_they_wrong - item.they_right_you_wrong,
+        pick_overlap_pct: item.shared_pick_fights > 0
+          ? Number(((item.same_picks / item.shared_pick_fights) * 100).toFixed(2))
+          : 0
+      }))
+      .filter(item => item.shared_fights > 0 || item.shared_pick_fights > 0);
+
+    const biggestNemesis = rivalryRows.length > 0
+      ? [...rivalryRows].sort((a, b) =>
+        b.they_right_you_wrong - a.they_right_you_wrong ||
+        b.shared_fights - a.shared_fights
+      )[0]
+      : null;
+
+    const headToHead = rivalryRows.length > 0
+      ? [...rivalryRows].sort((a, b) =>
+        b.shared_fights - a.shared_fights ||
+        Math.abs(b.net_edge) - Math.abs(a.net_edge)
+      )[0]
+      : null;
+
+    const pickTwin = rivalryRows.length > 0
+      ? [...rivalryRows]
+        .filter(item => item.shared_pick_fights >= 3)
+        .sort((a, b) =>
+          b.pick_overlap_pct - a.pick_overlap_pct ||
+          b.shared_pick_fights - a.shared_pick_fights
+        )[0] || null
+      : null;
+
+    // Cohort benchmarks (active human users for this season)
+    const seasonEventWinners = await fetchAllFromSupabase(
+      supabase
+        .from('event_winners')
+        .select('user_id, event_id')
+        .in('event_id', eventIds)
+    );
+    const seasonEventWinsByUser = {};
+    (seasonEventWinners || []).forEach((row) => {
+      const candidateUserId = String(row.user_id);
+      if (!humanUserSet.has(candidateUserId)) {
+        return;
+      }
+      seasonEventWinsByUser[candidateUserId] = (seasonEventWinsByUser[candidateUserId] || 0) + 1;
+    });
+
+    const cohortByUser = new Map();
+    (seasonHumanResults || []).forEach((row) => {
+      const candidateUserId = String(row.user_id);
+      if (!humanUserSet.has(candidateUserId)) {
+        return;
+      }
+      const eventId = Number(row.event_id);
+      if (!Number.isFinite(eventId)) {
+        return;
+      }
+      if (!cohortByUser.has(candidateUserId)) {
+        cohortByUser.set(candidateUserId, {
+          user_id: candidateUserId,
+          total_predictions: 0,
+          correct_predictions: 0,
+          total_points: 0,
+          event_ids: new Set()
+        });
+      }
+      const bucket = cohortByUser.get(candidateUserId);
+      bucket.total_predictions += 1;
+      if (row.predicted_correctly) {
+        bucket.correct_predictions += 1;
+      }
+      bucket.total_points += Number(row.points) || 0;
+      bucket.event_ids.add(eventId);
+    });
+
+    const cohortEntries = [...cohortByUser.values()].map((entry) => {
+      const eventsPlayedForUser = entry.event_ids.size;
+      const accuracyForUser = entry.total_predictions > 0
+        ? roundTo((entry.correct_predictions / entry.total_predictions) * 100, 2)
+        : 0;
+      const averagePointsPerEventForUser = eventsPlayedForUser > 0
+        ? roundTo(entry.total_points / eventsPlayedForUser, 2)
+        : 0;
+      return {
+        user_id: entry.user_id,
+        total_predictions: entry.total_predictions,
+        accuracy: accuracyForUser,
+        total_points: entry.total_points,
+        events_played: eventsPlayedForUser,
+        event_wins: seasonEventWinsByUser[entry.user_id] || 0,
+        average_points_per_event: averagePointsPerEventForUser
+      };
+    });
+
+    const longestStreakLeaderboard = (() => {
+      if (!seasonHumanResults || seasonHumanResults.length === 0) {
+        return [];
+      }
+      const resultsByUser = new Map();
+      (seasonHumanResults || []).forEach((row) => {
+        const candidateUserId = String(row.user_id);
+        const eventId = Number(row.event_id);
+        const fightId = Number(row.fight_id);
+        if (!humanUserSet.has(candidateUserId) || !Number.isFinite(eventId) || !Number.isFinite(fightId)) {
+          return;
+        }
+        if (!resultsByUser.has(candidateUserId)) {
+          resultsByUser.set(candidateUserId, []);
+        }
+        resultsByUser.get(candidateUserId).push({
+          event_id: eventId,
+          fight_id: fightId,
+          predicted_correctly: Boolean(row.predicted_correctly),
+          created_at: row.created_at || null
+        });
+      });
+
+      return [...resultsByUser.entries()]
+        .map(([candidateUserId, userRows]) => {
+          const orderedRows = [...userRows].sort((a, b) => {
+            const aEventDate = eventMap.get(a.event_id)?.date;
+            const bEventDate = eventMap.get(b.event_id)?.date;
+            const aEventTime = aEventDate ? Date.parse(aEventDate) : Number.NEGATIVE_INFINITY;
+            const bEventTime = bEventDate ? Date.parse(bEventDate) : Number.NEGATIVE_INFINITY;
+            if (aEventTime !== bEventTime) {
+              return aEventTime - bEventTime;
+            }
+            const aCreated = a.created_at ? Date.parse(a.created_at) : Number.NEGATIVE_INFINITY;
+            const bCreated = b.created_at ? Date.parse(b.created_at) : Number.NEGATIVE_INFINITY;
+            if (aCreated !== bCreated) {
+              return aCreated - bCreated;
+            }
+            return a.fight_id - b.fight_id;
+          });
+          const totalPredictionsForUser = orderedRows.length;
+          const correctPredictionsForUser = orderedRows.reduce(
+            (sum, item) => sum + (item.predicted_correctly ? 1 : 0),
+            0
+          );
+          return {
+            user_id: candidateUserId,
+            username: userIdToUsername.get(candidateUserId) || `User ${candidateUserId}`,
+            longest_win_streak: calculateLongestWinStreak(orderedRows),
+            total_predictions: totalPredictionsForUser,
+            accuracy: totalPredictionsForUser > 0
+              ? roundTo((correctPredictionsForUser / totalPredictionsForUser) * 100, 2)
+              : 0
+          };
+        })
+        .sort((a, b) =>
+          b.longest_win_streak - a.longest_win_streak ||
+          b.accuracy - a.accuracy ||
+          b.total_predictions - a.total_predictions ||
+          (a.username || '').localeCompare(b.username || '')
+        )
+        .map((item, index) => ({
+          ...item,
+          rank: index + 1
+        }))
+        .slice(0, 50);
+    })();
+
+    const benchmarkMetrics = {
+      total_predictions: buildBenchmarkMetric(cohortEntries, user_id, 'total_predictions', 0),
+      accuracy: buildBenchmarkMetric(cohortEntries, user_id, 'accuracy', 2),
+      total_points: buildBenchmarkMetric(cohortEntries, user_id, 'total_points', 0),
+      events_played: buildBenchmarkMetric(cohortEntries, user_id, 'events_played', 0),
+      event_wins: buildBenchmarkMetric(cohortEntries, user_id, 'event_wins', 0),
+      average_points_per_event: buildBenchmarkMetric(cohortEntries, user_id, 'average_points_per_event', 2)
+    };
+    const averagePointsByEvent = {};
+    const eventUserPointsMap = new Map();
+    (seasonHumanResults || []).forEach((row) => {
+      const candidateUserId = String(row.user_id);
+      if (!humanUserSet.has(candidateUserId)) {
+        return;
+      }
+      const eventId = Number(row.event_id);
+      if (!Number.isFinite(eventId)) {
+        return;
+      }
+      if (!eventUserPointsMap.has(eventId)) {
+        eventUserPointsMap.set(eventId, new Map());
+      }
+      const userPointsForEvent = eventUserPointsMap.get(eventId);
+      userPointsForEvent.set(
+        candidateUserId,
+        (userPointsForEvent.get(candidateUserId) || 0) + (Number(row.points) || 0)
+      );
+    });
+    eventUserPointsMap.forEach((userPointsForEvent, eventId) => {
+      const totals = [...userPointsForEvent.values()];
+      if (totals.length === 0) {
+        averagePointsByEvent[eventId] = null;
+        return;
+      }
+      const sum = totals.reduce((acc, value) => acc + value, 0);
+      averagePointsByEvent[eventId] = roundTo(sum / totals.length, 2);
+    });
+    const eventStatsWithAverages = eventStats.map((stat) => ({
+      ...stat,
+      average_points_all_users: averagePointsByEvent[Number(stat.event_id)] ?? null
+    }));
+
+    const formatCommunityPct = (value) => Number((Number(value || 0)).toFixed(2));
+    const seasonFightIdsFromResults = Array.from(new Set(
+      (seasonHumanResults || [])
+        .map((row) => Number(row?.fight_id))
+        .filter((fightId) => Number.isFinite(fightId) && fightId > 0)
+    ));
+    const seasonFightIds = seasonFightIdsFromResults.length > 0
+      ? seasonFightIdsFromResults
+      : Array.from(fightMetaMap.keys()).filter((fightId) => Number.isFinite(Number(fightId)) && Number(fightId) > 0);
+    const usernameToUserId = new Map(
+      humanUsers
+        .map((candidate) => [normalizeUsernameKey(candidate.username), String(candidate.user_id)])
+        .filter(([username]) => Boolean(username))
+    );
+    const resolvePredictionUserId = (prediction) => {
+      const directUserId = String(prediction?.user_id || '');
+      if (directUserId && humanUserSet.has(directUserId)) {
+        return directUserId;
+      }
+      const mappedUserId = usernameToUserId.get(normalizeUsernameKey(prediction?.username));
+      if (mappedUserId && humanUserSet.has(mappedUserId)) {
+        return mappedUserId;
+      }
+      return null;
+    };
+    const buildFightLabel = (fightId) => {
+      const fightMeta = fightMetaMap.get(Number(fightId));
+      if (!fightMeta?.fighters || fightMeta.fighters.size === 0) {
+        return `Fight ${fightId}`;
+      }
+      const fighters = [...fightMeta.fighters.values()];
+      const red = fighters.find((fighter) => normalizeCornerLabel(fighter?.corner) === 'Red');
+      const blue = fighters.find((fighter) => normalizeCornerLabel(fighter?.corner) === 'Blue');
+      if (red?.fighter_name && blue?.fighter_name) {
+        return `${red.fighter_name} vs ${blue.fighter_name}`;
+      }
+      if (fighters.length >= 2) {
+        return `${fighters[0].fighter_name} vs ${fighters[1].fighter_name}`;
+      }
+      return fighters[0]?.fighter_name || `Fight ${fightId}`;
+    };
+
+    const seasonAllPredictionsRaw = seasonFightIds.length > 0
+      ? await fetchAllFromSupabase(
+        supabase
+          .from('predictions')
+          .select('fight_id, fighter_id, user_id, username')
+          .in('fight_id', seasonFightIds)
+      )
+      : [];
+
+    const communityPredictionByUserFight = new Map();
+    (seasonAllPredictionsRaw || []).forEach((prediction) => {
+      const fightId = Number(prediction?.fight_id);
+      const fighterId = Number(prediction?.fighter_id);
+      const resolvedUserId = resolvePredictionUserId(prediction);
+      if (!resolvedUserId || !Number.isFinite(fightId) || fightId <= 0 || !Number.isFinite(fighterId) || fighterId <= 0) {
+        return;
+      }
+      const key = `${resolvedUserId}:${fightId}`;
+      const priority = prediction?.user_id ? 1 : 0;
+      const existing = communityPredictionByUserFight.get(key);
+      if (!existing || priority > existing.priority) {
+        communityPredictionByUserFight.set(key, {
+          key,
+          user_id: resolvedUserId,
+          fight_id: fightId,
+          fighter_id: fighterId,
+          priority
+        });
+      }
+    });
+
+    const communityResultByUserFight = new Map();
+    (seasonHumanResults || []).forEach((row) => {
+      const candidateUserId = String(row.user_id);
+      const fightId = Number(row.fight_id);
+      if (!humanUserSet.has(candidateUserId) || !Number.isFinite(fightId) || fightId <= 0) {
+        return;
+      }
+      communityResultByUserFight.set(`${candidateUserId}:${fightId}`, {
+        predicted_correctly: Boolean(row.predicted_correctly),
+        points: Number(row.points) || 0
+      });
+    });
+
+    const communityFighterBuckets = new Map();
+    const communityCornerBuckets = new Map([
+      ['Red', { corner: 'Red', total_votes: 0, correct_picks: 0 }],
+      ['Blue', { corner: 'Blue', total_votes: 0, correct_picks: 0 }]
+    ]);
+
+    const getCommunityFighterBucket = (fighterId, fighterName, corner) => {
+      const key = String(fighterId);
+      if (!communityFighterBuckets.has(key)) {
+        communityFighterBuckets.set(key, {
+          fighter_id: Number(fighterId),
+          fighter_name: fighterName || `Fighter ${fighterId}`,
+          corner: normalizeCornerLabel(corner),
+          total_votes: 0,
+          correct_picks: 0,
+          incorrect_picks: 0,
+          points_won: 0
+        });
+      }
+      return communityFighterBuckets.get(key);
+    };
+
+    communityPredictionByUserFight.forEach((prediction, key) => {
+      const fightMeta = fightMetaMap.get(Number(prediction.fight_id));
+      const fighterInfo = fightMeta?.fighters?.get(Number(prediction.fighter_id));
+      const fighterName = fighterInfo?.fighter_name || `Fighter ${prediction.fighter_id}`;
+      const fighterCorner = normalizeCornerLabel(fighterInfo?.corner);
+
+      const fighterBucket = getCommunityFighterBucket(prediction.fighter_id, fighterName, fighterCorner);
+      fighterBucket.total_votes += 1;
+
+      if (fighterCorner !== 'Unknown' && communityCornerBuckets.has(fighterCorner)) {
+        const cornerBucket = communityCornerBuckets.get(fighterCorner);
+        cornerBucket.total_votes += 1;
+      }
+
+      const result = communityResultByUserFight.get(key);
+      if (!result) {
+        return;
+      }
+      if (result.predicted_correctly) {
+        fighterBucket.correct_picks += 1;
+        fighterBucket.points_won += result.points;
+        if (fighterCorner !== 'Unknown' && communityCornerBuckets.has(fighterCorner)) {
+          const cornerBucket = communityCornerBuckets.get(fighterCorner);
+          cornerBucket.correct_picks += 1;
+        }
+      } else {
+        fighterBucket.incorrect_picks += 1;
+      }
+    });
+
+    const communityFighterStats = [...communityFighterBuckets.values()].map((bucket) => ({
+      ...bucket,
+      pick_share: communityPredictionByUserFight.size > 0
+        ? formatCommunityPct((bucket.total_votes / communityPredictionByUserFight.size) * 100)
+        : 0,
+      accuracy: bucket.total_votes > 0
+        ? formatCommunityPct((bucket.correct_picks / bucket.total_votes) * 100)
+        : 0,
+      fade_rate: bucket.total_votes > 0
+        ? formatCommunityPct((bucket.incorrect_picks / bucket.total_votes) * 100)
+        : 0
+    }));
+
+    const mostVotedFighter = communityFighterStats.length > 0
+      ? [...communityFighterStats].sort((a, b) =>
+        b.total_votes - a.total_votes ||
+        b.correct_picks - a.correct_picks ||
+        b.points_won - a.points_won
+      )[0]
+      : null;
+
+    const communityCashCowFighter = communityFighterStats.length > 0
+      ? [...communityFighterStats].sort((a, b) =>
+        b.points_won - a.points_won ||
+        b.correct_picks - a.correct_picks ||
+        b.total_votes - a.total_votes
+      )[0]
+      : null;
+
+    const mostFadedFighter = (() => {
+      const sufficientlySampled = communityFighterStats.filter((item) => item.total_votes >= 8);
+      const pool = sufficientlySampled.length > 0 ? sufficientlySampled : communityFighterStats;
+      if (pool.length === 0) {
+        return null;
+      }
+      return [...pool].sort((a, b) =>
+        b.incorrect_picks - a.incorrect_picks ||
+        b.fade_rate - a.fade_rate ||
+        b.total_votes - a.total_votes
+      )[0];
+    })();
+
+    const crowdFavoriteCorner = (() => {
+      const stats = [...communityCornerBuckets.values()].map((bucket) => ({
+        corner: bucket.corner,
+        total_votes: bucket.total_votes,
+        correct_picks: bucket.correct_picks,
+        accuracy: bucket.total_votes > 0
+          ? formatCommunityPct((bucket.correct_picks / bucket.total_votes) * 100)
+          : 0
+      }));
+      const totalCornerVotes = stats.reduce((sum, item) => sum + item.total_votes, 0);
+      if (totalCornerVotes === 0) {
+        return null;
+      }
+      const winner = [...stats].sort((a, b) =>
+        b.total_votes - a.total_votes ||
+        b.accuracy - a.accuracy
+      )[0];
+      return {
+        ...winner,
+        pick_share: formatCommunityPct((winner.total_votes / totalCornerVotes) * 100)
+      };
+    })();
+
+    const communityFightBuckets = new Map();
+    communityResultByUserFight.forEach((result, key) => {
+      const [, fightIdValue] = key.split(':');
+      const fightId = Number(fightIdValue);
+      if (!Number.isFinite(fightId) || fightId <= 0) {
+        return;
+      }
+      if (!communityFightBuckets.has(fightId)) {
+        communityFightBuckets.set(fightId, {
+          fight_id: fightId,
+          total_predictions: 0,
+          wrong_picks: 0
+        });
+      }
+      const bucket = communityFightBuckets.get(fightId);
+      bucket.total_predictions += 1;
+      if (!result.predicted_correctly) {
+        bucket.wrong_picks += 1;
+      }
+    });
+
+    const biggestWhiffFight = communityFightBuckets.size > 0
+      ? [...communityFightBuckets.values()]
+        .map((bucket) => {
+          const fightMeta = fightMetaMap.get(bucket.fight_id);
+          const event = eventMap.get(fightMeta?.event_id);
+          return {
+            ...bucket,
+            wrong_rate: bucket.total_predictions > 0
+              ? formatCommunityPct((bucket.wrong_picks / bucket.total_predictions) * 100)
+              : 0,
+            fight_label: buildFightLabel(bucket.fight_id),
+            event_id: fightMeta?.event_id || null,
+            event_name: event?.name || null,
+            event_date: event?.date || null
+          };
+        })
+        .sort((a, b) =>
+          b.wrong_picks - a.wrong_picks ||
+          b.wrong_rate - a.wrong_rate ||
+          b.total_predictions - a.total_predictions
+        )[0]
+      : null;
+
+    return res.json({
+      user_id: String(user_id),
+      period: periodLabel,
+      year: isAllTime ? null : numericYear,
+      generated_at: new Date().toISOString(),
+      summary: {
+        total_predictions: totalPredictions,
+        correct_predictions: correctPredictions,
+        incorrect_predictions: Math.max(totalPredictions - correctPredictions, 0),
+        accuracy,
+        total_points: totalPoints,
+        events_played: eventsPlayed,
+        event_wins: eventWins,
+        average_points_per_event: averagePointsPerEvent,
+        longest_win_streak: longestWinStreak
+      },
+      best_event: bestEvent,
+      toughest_event: toughestEvent,
+      events: eventStatsWithAverages,
+      fighter_insights: {
+        most_trusted_fighter: mostTrustedFighter,
+        most_profitable_fighter: mostProfitableFighter,
+        biggest_underdog_hit: biggestUnderdogHit
+      },
+      style_insights: {
+        best_card_tier: bestCardTier,
+        best_weightclass: bestWeightclass,
+        corner_performance: {
+          red_corner: redCornerSummary,
+          blue_corner: blueCornerSummary,
+          favorite_corner: favoriteCorner
+        },
+        momentum: {
+          first_half_accuracy: firstHalfAccuracy,
+          second_half_accuracy: secondHalfAccuracy,
+          delta: momentumDelta,
+          total_predictions: rows.length
+        }
+      },
+      rivalry_insights: {
+        biggest_nemesis: biggestNemesis
+          ? {
+            user_id: biggestNemesis.user_id,
+            username: biggestNemesis.username,
+            times_they_were_right_you_wrong: biggestNemesis.they_right_you_wrong,
+            shared_fights: biggestNemesis.shared_fights
+          }
+          : null,
+        head_to_head: headToHead
+          ? {
+            user_id: headToHead.user_id,
+            username: headToHead.username,
+            you_right_they_wrong: headToHead.you_right_they_wrong,
+            they_right_you_wrong: headToHead.they_right_you_wrong,
+            net_edge: headToHead.net_edge,
+            shared_fights: headToHead.shared_fights
+          }
+          : null,
+        pick_twin: pickTwin
+          ? {
+            user_id: pickTwin.user_id,
+            username: pickTwin.username,
+            overlap_pct: pickTwin.pick_overlap_pct,
+            shared_fights: pickTwin.shared_pick_fights,
+            same_picks: pickTwin.same_picks
+          }
+          : null
+      },
+      community_insights: {
+        most_voted_fighter: mostVotedFighter,
+        community_cash_cow_fighter: communityCashCowFighter,
+        most_faded_fighter: mostFadedFighter,
+        crowd_favorite_corner: crowdFavoriteCorner,
+        biggest_whiff_fight: biggestWhiffFight
+      },
+      benchmarks: {
+        cohort_label: 'active human users',
+        cohort_size: cohortEntries.length,
+        metrics: benchmarkMetrics
+      },
+      leaderboards: {
+        longest_win_streak: longestStreakLeaderboard
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user highlights:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch user highlights',
+      details: error.message
+    });
   }
 });
 

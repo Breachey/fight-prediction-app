@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import './Leaderboard.css';
 
-function Leaderboard({ eventId, currentUser }) {
+function Leaderboard({ eventId, currentUser, currentUserId }) {
   // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
   // State for overall leaderboard data
@@ -28,6 +28,7 @@ function Leaderboard({ eventId, currentUser }) {
   const [selectedLeaderboard, setSelectedLeaderboard] = useState(eventId ? 'event' : 'overall');
   // Add state for sorting
   const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
+  const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
@@ -127,6 +128,40 @@ function Leaderboard({ eventId, currentUser }) {
     }, 60000);
     return () => clearInterval(refreshInterval);
   }, [selectedLeaderboard, fetchLeaderboard]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRivalries = async () => {
+      if (!currentUserId) {
+        setRivalryMarkers({ pickTwinUserId: null, nemesisUserId: null });
+        return;
+      }
+      const seasonYear = new Date().getFullYear();
+      try {
+        const highlights = await cachedFetchJson(
+          `${API_URL}/user/${encodeURIComponent(currentUserId)}/highlights/${seasonYear}`,
+          { ttlMs: 120000, cacheKey: `rivalry-markers:${currentUserId}:${seasonYear}` }
+        );
+        if (cancelled) return;
+        setRivalryMarkers({
+          pickTwinUserId: highlights?.rivalry_insights?.pick_twin?.user_id
+            ? String(highlights.rivalry_insights.pick_twin.user_id)
+            : null,
+          nemesisUserId: highlights?.rivalry_insights?.biggest_nemesis?.user_id
+            ? String(highlights.rivalry_insights.biggest_nemesis.user_id)
+            : null
+        });
+      } catch {
+        if (!cancelled) {
+          setRivalryMarkers({ pickTwinUserId: null, nemesisUserId: null });
+        }
+      }
+    };
+    loadRivalries();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
 
   // --- Styling objects ---
   // These objects define the inline styles for the leaderboard UI
@@ -470,7 +505,7 @@ function Leaderboard({ eventId, currentUser }) {
 
   // --- LeaderboardCard subcomponent ---
   // Renders a single leaderboard entry as a card
-  const LeaderboardCard = ({ entry, index, isCurrentUser, total, minCorrect, maxCorrect, minTotal, maxTotal, minAcc, maxAcc, minPoints, maxPoints }) => {
+  const LeaderboardCard = ({ entry, index, isCurrentUser, isPickTwin, isNemesis, total, minCorrect, maxCorrect, minTotal, maxTotal, minAcc, maxAcc, minPoints, maxPoints }) => {
     const roundedAccuracy = Math.round(parseFloat(entry.accuracy));
     // Color interpolation for stats
     const getStatColor = (val, min, max) => {
@@ -512,6 +547,55 @@ function Leaderboard({ eventId, currentUser }) {
       border: '1px solid rgba(255, 215, 0, 0.4)',
       minWidth: 0
     };
+    const rivalryBadgeStyle = (type) => ({
+      background: type === 'twin'
+        ? 'rgba(34, 211, 238, 0.22)'
+        : 'rgba(168, 85, 247, 0.25)',
+      color: type === 'twin' ? '#a5f3fc' : '#e9d5ff',
+      padding: '0px 7px',
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 600,
+      lineHeight: 1,
+      height: 16,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      fontFamily: '"Permanent Marker", "Brush Script MT", cursive',
+      letterSpacing: '0.03em',
+      border: type === 'twin'
+        ? '1px solid rgba(34, 211, 238, 0.52)'
+        : '1px solid rgba(168, 85, 247, 0.54)',
+      minWidth: 0
+    });
+    const baseBoxShadow = isCurrentUser
+      ? '0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(255, 255, 255, 0.2)'
+      : index === 0
+      ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
+      : index === 1
+      ? '0 0 16px 2px #C0C0C088, 0 2px 8px rgba(0,0,0,0.15)'
+      : index === 2
+      ? '0 0 16px 2px #CD7F3288, 0 2px 8px rgba(0,0,0,0.15)'
+      : '0 2px 8px rgba(0,0,0,0.15)';
+    const rivalryShadow = isPickTwin
+      ? ', 0 0 0 2px rgba(34, 211, 238, 0.85), 0 0 18px rgba(34, 211, 238, 0.25)'
+      : isNemesis
+      ? ', 0 0 0 2px rgba(168, 85, 247, 0.9), 0 0 18px rgba(168, 85, 247, 0.28)'
+      : '';
+    const baseBorder = isCurrentUser
+      ? '2.5px solid rgba(255, 255, 255, 0.6)'
+      : index === 0
+      ? '2.5px solid #FFD700'
+      : index === 1
+      ? '2.5px solid #C0C0C0'
+      : index === 2
+      ? '2.5px solid #CD7F32'
+      : '1px solid rgba(255, 255, 255, 0.2)';
+    const rivalryBorder = isPickTwin
+      ? '2.5px solid rgba(34, 211, 238, 0.9)'
+      : isNemesis
+      ? '2.5px solid rgba(168, 85, 247, 0.95)'
+      : baseBorder;
     return (
       <div
         style={{
@@ -521,26 +605,8 @@ function Leaderboard({ eventId, currentUser }) {
           padding: 0,
           marginBottom: 16,
           color: '#fff',
-          boxShadow:
-            isCurrentUser
-              ? '0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(255, 255, 255, 0.2)'
-              : index === 0
-              ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
-              : index === 1
-              ? '0 0 16px 2px #C0C0C088, 0 2px 8px rgba(0,0,0,0.15)'
-              : index === 2
-              ? '0 0 16px 2px #CD7F3288, 0 2px 8px rgba(0,0,0,0.15)'
-              : '0 2px 8px rgba(0,0,0,0.15)',
-          border:
-            isCurrentUser
-              ? '2.5px solid rgba(255, 255, 255, 0.6)'
-              : index === 0
-              ? '2.5px solid #FFD700'
-              : index === 1
-              ? '2.5px solid #C0C0C0'
-              : index === 2
-              ? '2.5px solid #CD7F32'
-              : '1px solid rgba(255, 255, 255, 0.2)',
+          boxShadow: `${baseBoxShadow}${rivalryShadow}`,
+          border: rivalryBorder,
           overflow: 'hidden',
           minHeight: 90,
           display: 'flex',
@@ -674,6 +740,16 @@ function Leaderboard({ eventId, currentUser }) {
                       🏆
                     </span>
                   )}
+                  {isPickTwin && (
+                    <span style={rivalryBadgeStyle('twin')}>
+                      👯 Twin
+                    </span>
+                  )}
+                  {isNemesis && (
+                    <span style={rivalryBadgeStyle('nemesis')}>
+                      😈 Nemesis
+                    </span>
+                  )}
                 </div>
               </span>
             </div>
@@ -754,6 +830,8 @@ function Leaderboard({ eventId, currentUser }) {
               entry={entry}
               index={index}
               isCurrentUser={entry.username === currentUser}
+              isPickTwin={rivalryMarkers.pickTwinUserId != null && String(entry.user_id) === String(rivalryMarkers.pickTwinUserId)}
+              isNemesis={rivalryMarkers.nemesisUserId != null && String(entry.user_id) === String(rivalryMarkers.nemesisUserId)}
               total={sortedData.length}
               minCorrect={minCorrect}
               maxCorrect={maxCorrect}
@@ -768,7 +846,7 @@ function Leaderboard({ eventId, currentUser }) {
         </div>
       </>
     );
-  }, [showBots, sortConfig, currentUser, interpolateColor]);
+  }, [showBots, sortConfig, currentUser, interpolateColor, rivalryMarkers]);
 
   // --- Main render logic ---
 

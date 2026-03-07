@@ -29,11 +29,15 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
         setEvents(eventsData);
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         setError('Failed to load playercards');
         setLoading(false);
       });
   }, [userId]);
+
+  useEffect(() => {
+    setSelectedId(currentPlayercardId);
+  }, [currentPlayercardId]);
 
   const handleSelect = async (id) => {
     if (id === selectedId) return;
@@ -72,64 +76,80 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
     return event ? event.name : `Event ${requiredEventId}`;
   };
 
+  const selectedCard = playercards.find(card => card.id === selectedId);
+  const unlockedCount = playercards.filter(card => card.is_available).length;
+
   if (loading) return <div className="playercard-selector-loading">Loading playercards...</div>;
   if (error && !playercards.length) return <div className="playercard-selector-error">{error}</div>;
 
   return (
-    <div className="playercard-selector-root">
-      {/* Accordion Header */}
+    <div className={`playercard-selector-root${isExpanded ? ' is-open' : ''}`}>
       <button 
         className="playercard-selector-header"
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-label={isExpanded ? 'Collapse playercard selector' : 'Expand playercard selector'}
       >
-        <span className="playercard-selector-header-text">Change Your Playercard</span>
+        <span className="playercard-selector-header-main">
+          <span className="playercard-selector-header-title">Playercard Vault</span>
+          <span className="playercard-selector-header-text">
+            {selectedCard
+              ? `Current: ${selectedCard.name}`
+              : `${unlockedCount} of ${playercards.length} unlocked`}
+          </span>
+        </span>
         <span className={`playercard-selector-chevron ${isExpanded ? 'expanded' : ''}`}>
           ▼
         </span>
       </button>
 
-      {/* Error message (shown when expanded) */}
       {error && playercards.length > 0 && (
         <div className="playercard-selector-error">{error}</div>
       )}
 
-      {/* Accordion Content */}
       <div className={`playercard-selector-content ${isExpanded ? 'expanded' : ''}`}>
+        <div className="playercard-selector-mobile-hint">Swipe to browse cards</div>
         <div className="playercard-selector-grid">
           {playercards.map(card => {
             const isLocked = !card.is_available;
             const isSelected = card.id === selectedId;
+            const cardStatusLabel = isSelected ? 'Selected' : (isLocked ? 'Locked' : 'Tap to select');
             
             return (
-              <div
+              <button
+                type="button"
                 key={card.id}
                 className={`playercard-selector-item${isSelected ? ' selected' : ''}${isLocked ? ' locked' : ''}`}
                 onClick={() => handleSelect(card.id)}
-                tabIndex={0}
-                aria-label={`Select playercard: ${card.name}${isLocked ? ' (Locked)' : ''}`}
+                aria-pressed={isSelected}
+                aria-label={`Select playercard: ${card.name}${isLocked ? ' (Locked)' : ''}${isSelected ? ' (Selected)' : ''}`}
+                disabled={saving}
                 style={{ 
-                  pointerEvents: saving ? 'none' : 'auto', 
-                  opacity: saving && !isSelected ? 0.6 : (isLocked ? 0.7 : 1)
+                  opacity: saving && !isSelected ? 0.6 : 1
                 }}
               >
-                <PlayerCard
-                  username=""
-                  playercard={card}
-                  size="large"
-                  isCurrentUser={isSelected}
-                />
-                <div className="playercard-selector-label">{card.name}</div>
+                <div className="playercard-selector-card-shell">
+                  <PlayerCard
+                    username=""
+                    playercard={card}
+                    size="large"
+                    isCurrentUser={isSelected}
+                  />
+                </div>
+                <div className="playercard-selector-item-footer">
+                  <div className="playercard-selector-label">{card.name}</div>
+                  <div className={`playercard-selector-pill ${isSelected ? 'selected' : ''}${isLocked ? ' locked' : ''}`}>
+                    {cardStatusLabel}
+                  </div>
+                </div>
                 {isLocked && card.required_event_id != null && (
                   <div className="playercard-selector-locked-overlay">
-                    <div className="playercard-selector-lock-icon">🔒</div>
                     <div className="playercard-selector-lock-text">
                       Vote in {getRequiredEventName(card.required_event_id)} to unlock
                     </div>
                   </div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

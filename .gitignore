@@ -136,3 +136,14 @@ dist
 .pnp.*
 
 .config/
+
+# macOS metadata
+.DS_Store
+
+# local editor/MCP auth config
+.cursor/mcp.json
+
+# supabase local state
+supabase/.temp/
+supabase/.branches/
+supabase/dev.db

@@ -1,10 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { API_URL } from './config';
 import { useParams } from 'react-router-dom';
-import badgeBestPerc from './assets/badge_best_perc_1000x1000.svg';
-import badgeMostGuesses from './assets/badge_most_guesses_1000x1000.svg';
-import badgeMostPoints from './assets/badge_most_points_1000x1000.svg';
-import badgeWorstPerc from './assets/badge_worst_perc_1000x1000.svg';
 import PlayerCard from './components/PlayerCard';
 import PlayerCardSelector from './components/PlayerCardSelector';
 
@@ -31,8 +27,7 @@ function formatAccountAge(createdAt) {
 
 function ProfilePage({ user: loggedInUser }) {
   const cardRef = useRef(null);
-  const usernameRef = useRef(null);
-  const [badges, setBadges] = useState([]);
+  const currentSeasonYear = new Date().getFullYear();
   const [loading, setLoading] = useState(true);
   const [profileUser, setProfileUser] = useState(null);
   const [error, setError] = useState(null);
@@ -40,6 +35,9 @@ function ProfilePage({ user: loggedInUser }) {
   const [accountCreatedAt, setAccountCreatedAt] = useState(null);
   const [accountAgeLoading, setAccountAgeLoading] = useState(true);
   const [accountAgeError, setAccountAgeError] = useState(null);
+  const [seasonRivalries, setSeasonRivalries] = useState({ biggestNemesis: null, pickTwin: null });
+  const [seasonRivalriesLoading, setSeasonRivalriesLoading] = useState(true);
+  const [seasonRivalriesError, setSeasonRivalriesError] = useState('');
   const normalizedLoggedInUserId = loggedInUser?.user_id != null ? String(loggedInUser.user_id) : null;
   const normalizedProfileUserId = profileUser?.user_id != null ? String(profileUser.user_id) : null;
   const isOwnProfile = Boolean(
@@ -60,47 +58,17 @@ function ProfilePage({ user: loggedInUser }) {
         fill: 'forwards'
       });
     }
-    if (usernameRef.current) {
-      usernameRef.current.animate([
-        { opacity: 0, transform: 'translateX(-40px) scale(0.9)' },
-        { opacity: 1, transform: 'translateX(0) scale(1)' }
-      ], {
-        duration: 800,
-        delay: 300,
-        easing: 'cubic-bezier(.61,1.42,.41,.99)',
-        fill: 'forwards'
-      });
-    }
   }, [profileUser]);
 
   // CSS keyframes for animations
   const keyframes = `
-    @keyframes usernameGlow {
-      0% {
-        text-shadow: 0 0 8px rgba(255, 255, 255, 0.5), 0 0 16px rgba(255, 255, 255, 0.3);
-        color: #fff;
-      }
-      50% {
-        text-shadow: 0 0 24px rgba(255, 255, 255, 0.8), 0 0 48px rgba(255, 255, 255, 0.5);
-        color: #fff;
-      }
-      100% {
-        text-shadow: 0 0 8px rgba(255, 255, 255, 0.5), 0 0 16px rgba(255, 255, 255, 0.3);
-        color: #fff;
-      }
-    }
-    @keyframes badgePop {
-      0% { transform: scale(0.7) rotate(-10deg); opacity: 0; }
-      60% { transform: scale(1.15) rotate(5deg); opacity: 1; }
-      100% { transform: scale(1) rotate(0deg); opacity: 1; }
-    }
     @keyframes spin { 
       0% { transform: rotate(0deg); } 
       100% { transform: rotate(360deg); } 
     }
   `;
 
-  // Fetch user data and badges
+  // Fetch user data
   useEffect(() => {
     if (!loggedInUser) return;
     
@@ -109,6 +77,9 @@ function ProfilePage({ user: loggedInUser }) {
     setError(null);
     setAccountAgeLoading(true);
     setAccountAgeError(null);
+    setSeasonRivalriesLoading(true);
+    setSeasonRivalriesError('');
+    setSeasonRivalries({ biggestNemesis: null, pickTwin: null });
     
     // Determine which user_id to show
     const userIdToShow = routeUserId || loggedInUser.user_id;
@@ -123,6 +94,7 @@ function ProfilePage({ user: loggedInUser }) {
         
         // Filter out bots
         const filtered = data.filter(entry => !entry.is_bot);
+        const userById = new Map(filtered.map(entry => [String(entry.user_id), entry]));
         
         // Find the user entry by user_id
         const userEntry = filtered.find(entry => String(entry.user_id) === String(userIdToShow));
@@ -130,6 +102,7 @@ function ProfilePage({ user: loggedInUser }) {
         if (!userEntry) {
           setError('User not found');
           setLoading(false);
+          setSeasonRivalriesLoading(false);
           return;
         }
         
@@ -144,10 +117,41 @@ function ProfilePage({ user: loggedInUser }) {
             setAccountCreatedAt(userData.created_at);
             setAccountAgeLoading(false);
           })
-          .catch(err => {
+          .catch(() => {
             if (isMounted) {
               setAccountAgeError('Could not load account age');
               setAccountAgeLoading(false);
+            }
+          });
+
+        fetch(`${API_URL}/user/${encodeURIComponent(userEntry.user_id)}/highlights/${currentSeasonYear}`)
+          .then(res => {
+            if (!res.ok) throw new Error('Failed to fetch rivalry insights');
+            return res.json();
+          })
+          .then(highlightsData => {
+            if (!isMounted) return;
+
+            const rivalryInsights = highlightsData?.rivalry_insights || {};
+            const enrichWithCard = (rival) => {
+              if (!rival) return null;
+              const entry = userById.get(String(rival.user_id));
+              return {
+                ...rival,
+                playercard: entry?.playercard || null
+              };
+            };
+
+            setSeasonRivalries({
+              biggestNemesis: enrichWithCard(rivalryInsights.biggest_nemesis),
+              pickTwin: enrichWithCard(rivalryInsights.pick_twin)
+            });
+            setSeasonRivalriesLoading(false);
+          })
+          .catch(() => {
+            if (isMounted) {
+              setSeasonRivalriesError('Could not load rivalry insights right now.');
+              setSeasonRivalriesLoading(false);
             }
           });
         
@@ -159,46 +163,6 @@ function ProfilePage({ user: loggedInUser }) {
           playercard: userEntry.playercard
         });
         
-        // Calculate badges
-        const byPoints = [...filtered].sort((a, b) => b.total_points - a.total_points);
-        const byAccuracy = [...filtered].sort((a, b) => parseFloat(b.accuracy) - parseFloat(a.accuracy));
-        const byCorrect = [...filtered].sort((a, b) => b.correct_predictions - a.correct_predictions);
-        
-        const userBadges = [];
-        
-        if (byPoints[0] && String(byPoints[0].user_id) === String(userIdToShow)) {
-          userBadges.push({
-            key: 'points',
-            label: 'Most Points',
-            svg: <img src={badgeMostPoints} alt="Most Points Badge" width={60} height={60} />
-          });
-        }
-        
-        if (byAccuracy[0] && String(byAccuracy[0].user_id) === String(userIdToShow)) {
-          userBadges.push({
-            key: 'accuracy',
-            label: 'Best Accuracy',
-            svg: <img src={badgeBestPerc} alt="Best Accuracy Badge" width={60} height={60} />
-          });
-        }
-        
-        if (byCorrect[0] && String(byCorrect[0].user_id) === String(userIdToShow)) {
-          userBadges.push({
-            key: 'correct',
-            label: 'Most Correct Picks',
-            svg: <img src={badgeMostGuesses} alt="Most Correct Picks Badge" width={60} height={60} />
-          });
-        }
-        
-        if (byAccuracy.length > 1 && String(byAccuracy[byAccuracy.length-1].user_id) === String(userIdToShow)) {
-          userBadges.push({
-            key: 'worst_accuracy',
-            label: 'Worst Accuracy',
-            svg: <img src={badgeWorstPerc} alt="Worst Accuracy Badge" width={60} height={60} />
-          });
-        }
-        
-        setBadges(userBadges);
         setLoading(false);
       })
       .catch((err) => {
@@ -209,7 +173,7 @@ function ProfilePage({ user: loggedInUser }) {
       });
       
     return () => { isMounted = false; };
-  }, [routeUserId, loggedInUser]);
+  }, [routeUserId, loggedInUser, currentSeasonYear]);
 
   // Loading timeout
   useEffect(() => {
@@ -381,202 +345,112 @@ function ProfilePage({ user: loggedInUser }) {
               )}
             </div>
           )}
-          
-          {/* Badges Section */}
-          <div style={{ marginBottom: 40 }}>
-            <h3 style={{ 
-              color: '#FFD700', 
-              marginBottom: 20, 
-              fontWeight: 700, 
-              fontSize: '1.4rem', 
-              letterSpacing: 1,
+
+          <div style={{
+            marginTop: 4,
+            padding: 'clamp(14px, 3vw, 22px)',
+            borderRadius: 16,
+            border: '1px solid rgba(255, 255, 255, 0.24)',
+            background: 'linear-gradient(145deg, rgba(43, 18, 84, 0.35), rgba(12, 26, 56, 0.4))'
+          }}>
+            <h3 style={{
+              margin: '0 0 6px',
+              fontSize: '1.32rem',
+              fontWeight: 700,
+              letterSpacing: 0.6,
               textAlign: 'center',
-              textShadow: '0 2px 8px rgba(255, 215, 0, 0.3)'
+              color: 'rgba(255, 255, 255, 0.95)'
             }}>
-              Badges
+              Current Season Rivalries
             </h3>
-            {loading ? (
-              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontStyle: 'italic', textAlign: 'center' }}>Loading badges...</div>
-            ) : badges.length === 0 ? (
-              <div style={{ 
-                color: 'rgba(255, 255, 255, 0.7)', 
-                fontStyle: 'italic', 
-                textAlign: 'center',
-                padding: 20,
-                background: 'rgba(255, 255, 255, 0.05)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                borderRadius: 12,
-                border: '1px dashed rgba(255, 255, 255, 0.3)'
-              }}>
-                No badges yet. Get to the top of the leaderboard to earn some!
+            <div style={{
+              marginBottom: 14,
+              fontSize: '0.9rem',
+              color: 'rgba(255, 255, 255, 0.74)',
+              textAlign: 'center'
+            }}>
+              {currentSeasonYear} pick matchups
+            </div>
+
+            {seasonRivalriesLoading ? (
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', textAlign: 'center', fontSize: '0.96rem' }}>
+                Loading rivalry insights...
+              </div>
+            ) : seasonRivalriesError ? (
+              <div style={{ color: '#ffb6b6', textAlign: 'center', fontSize: '0.96rem' }}>
+                {seasonRivalriesError}
               </div>
             ) : (
-              <div style={{ 
-                display: 'flex', 
-                gap: 24, 
-                flexWrap: 'wrap', 
-                alignItems: 'center',
-                justifyContent: 'center'
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: 12
               }}>
-                {badges.map((badge, i) => (
-                  <div 
-                    key={badge.key} 
-                    style={{ 
-                      textAlign: 'center', 
-                      animation: 'badgePop 0.7s cubic-bezier(.61,1.42,.41,.99) both', 
-                      animationDelay: `${0.2 + i * 0.15}s`,
-                      padding: 16,
-                      background: 'rgba(255, 215, 0, 0.1)',
-                      borderRadius: 16,
-                      border: '1px solid rgba(255, 215, 0, 0.3)'
-                    }}
-                  >
-                    <div style={{ marginBottom: 8 }}>{badge.svg}</div>
-                    <div style={{ 
-                      color: '#FFD700', 
-                      fontWeight: 600, 
-                      fontSize: '1rem', 
-                      letterSpacing: 0.5 
-                    }}>
-                      {badge.label}
-                    </div>
+                <div style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid rgba(248, 113, 113, 0.35)',
+                  background: 'linear-gradient(140deg, rgba(127, 29, 29, 0.32), rgba(255, 255, 255, 0.05))'
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: 10, color: 'rgba(255, 225, 225, 0.96)' }}>
+                    Biggest Nemesis
                   </div>
-                ))}
+                  {seasonRivalries.biggestNemesis ? (
+                    <>
+                      <PlayerCard
+                        username={seasonRivalries.biggestNemesis.username}
+                        playercard={seasonRivalries.biggestNemesis.playercard}
+                        size="medium"
+                      />
+                      <div style={{ marginTop: 10, color: 'rgba(255, 238, 238, 0.9)', fontSize: '0.88rem', lineHeight: 1.4 }}>
+                        {seasonRivalries.biggestNemesis.times_they_were_right_you_wrong} swing fights
+                        {seasonRivalries.biggestNemesis.shared_fights
+                          ? ` over ${seasonRivalries.biggestNemesis.shared_fights} shared fights`
+                          : ''}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: 'rgba(255, 238, 238, 0.75)', fontSize: '0.9rem' }}>
+                      No nemesis identified yet this season.
+                    </div>
+                  )}
+                </div>
+
+                <div style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid rgba(34, 211, 238, 0.35)',
+                  background: 'linear-gradient(140deg, rgba(8, 76, 104, 0.3), rgba(255, 255, 255, 0.05))'
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: 10, color: 'rgba(210, 250, 255, 0.96)' }}>
+                    Pick Twin
+                  </div>
+                  {seasonRivalries.pickTwin ? (
+                    <>
+                      <PlayerCard
+                        username={seasonRivalries.pickTwin.username}
+                        playercard={seasonRivalries.pickTwin.playercard}
+                        size="medium"
+                      />
+                      <div style={{ marginTop: 10, color: 'rgba(220, 250, 255, 0.9)', fontSize: '0.88rem', lineHeight: 1.4 }}>
+                        {Number(seasonRivalries.pickTwin.overlap_pct || 0).toFixed(2)}% overlap
+                        {seasonRivalries.pickTwin.shared_fights
+                          ? ` across ${seasonRivalries.pickTwin.shared_fights} shared picks`
+                          : ''}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: 'rgba(220, 250, 255, 0.75)', fontSize: '0.9rem' }}>
+                      Need at least 3 shared picks to detect a twin.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-          
-          {/* User Event Stats Section */}
-          <UserEventStats userId={profileUser.user_id} username={profileUser.username} />
         </div>
       </div>
     </>
-  );
-}
-
-// --- UserEventStats subcomponent ---
-function UserEventStats({ userId, username }) {
-  const [eventStats, setEventStats] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchStats() {
-      setLoading(true);
-      setError(null);
-      try {
-        const statsRes = await fetch(`${API_URL}/user/${encodeURIComponent(userId)}/event-stats`);
-        if (!statsRes.ok) throw new Error('Failed to fetch event stats');
-        const stats = await statsRes.json();
-        if (isMounted) {
-          setEventStats(stats || []);
-          setLoading(false);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err.message || 'Failed to load event stats');
-          setLoading(false);
-        }
-      }
-    }
-    fetchStats();
-    return () => { isMounted = false; };
-  }, [userId]);
-
-  if (loading) return <div style={{ color: 'rgba(255, 255, 255, 0.8)', marginBottom: 24, textAlign: 'center' }}>Loading event stats...</div>;
-  if (error) return <div style={{ color: '#ff6b6b', marginBottom: 24, textAlign: 'center' }}>{error}</div>;
-  if (!eventStats.length) return (
-    <div style={{ 
-      color: 'rgba(255, 255, 255, 0.7)', 
-      fontStyle: 'italic', 
-      marginBottom: 24, 
-      textAlign: 'center',
-      padding: 20,
-      background: 'rgba(255, 255, 255, 0.05)',
-      backdropFilter: 'blur(10px)',
-      WebkitBackdropFilter: 'blur(10px)',
-      borderRadius: 12,
-      border: '1px dashed rgba(255, 255, 255, 0.3)'
-    }}>
-      No event stats yet. Vote in some fights to see your stats!
-    </div>
-  );
-
-  // Render event stats as cards (similar to leaderboard)
-  return (
-    <div style={{ marginBottom: 32 }}>
-      <h3 style={{ 
-        color: 'rgba(255, 255, 255, 0.9)', 
-        marginBottom: 20, 
-        fontWeight: 700, 
-        fontSize: '1.4rem', 
-        letterSpacing: 1,
-        textAlign: 'center',
-        textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
-      }}>
-        Your Event Stats
-      </h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {eventStats.map((stat, i) => {
-          const dateStr = stat.event.date ? new Date(stat.event.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-          const locationParts = [stat.event.venue, stat.event.location_city, stat.event.location_state].filter(Boolean);
-          const locationStr = locationParts.join(', ');
-          const roundedAccuracy = Math.round(parseFloat(stat.accuracy));
-          return (
-            <div key={stat.event.id} style={{
-              background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%), rgba(255, 255, 255, 0.05)',
-              backdropFilter: 'blur(15px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(15px) saturate(180%)',
-              borderRadius: 16,
-              padding: 20,
-              color: '#fff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'translateY(-2px)';
-              e.target.style.boxShadow = '0 8px 24px rgba(255, 255, 255, 0.2)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.2)';
-            }}>
-              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'rgba(255, 255, 255, 0.9)' }}>{stat.event.name}</div>
-              <div style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.8)' }}>{dateStr}</div>
-              {locationStr && <div style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.7)' }}>{locationStr}</div>}
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                gap: 16, 
-                marginTop: 12, 
-                fontSize: '1rem',
-                alignItems: 'center'
-              }}>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Points</div>
-                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.total_points}</div>
-                </div>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Correct</div>
-                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{stat.correct_predictions}/{stat.total_predictions}</div>
-                </div>
-                <div style={{ textAlign: 'center', padding: 8, background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(5px)', borderRadius: 8, border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                  <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.85rem', marginBottom: 4 }}>Accuracy</div>
-                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{roundedAccuracy}%</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

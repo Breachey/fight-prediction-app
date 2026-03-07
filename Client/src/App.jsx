@@ -1,22 +1,28 @@
 // client/src/App.js
 // Main App component for Fight Picker application
-import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
-import { Link, Routes, Route, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, lazy, Suspense, useRef, useMemo } from 'react';
+import { Link, Routes, Route, useLocation } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
+import { extractPosterAccents, DEFAULT_EVENT_ACCENTS } from './utils/posterAccentTheme';
 import './App.css';
 
 // Lazy load heavy components to improve initial load time
 const Fights = lazy(() => import('./Fights'));
 const Leaderboard = lazy(() => import('./Leaderboard'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
+const HighlightsPage = lazy(() => import('./HighlightsPage'));
 
 function App() {
+  const location = useLocation();
+  const isMainPage = location.pathname === '/';
   // State for selected event, user info, and loading status
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventAccents, setEventAccents] = useState(DEFAULT_EVENT_ACCENTS);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -98,6 +104,51 @@ function App() {
     }
   }, [isMenuOpen]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const imageUrl = selectedEvent?.image_url || '';
+
+    if (!imageUrl) {
+      setEventAccents(DEFAULT_EVENT_ACCENTS);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    (async () => {
+      const accents = await extractPosterAccents(imageUrl);
+      if (isMounted) {
+        setEventAccents(accents);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedEvent?.id, selectedEvent?.image_url]);
+
+  const activeAccents = isMainPage ? eventAccents : DEFAULT_EVENT_ACCENTS;
+
+  const appAccentStyle = useMemo(
+    () => ({
+      '--event-accent-1': activeAccents.primaryHex,
+      '--event-accent-2': activeAccents.secondaryHex,
+      '--event-accent-1-rgb': activeAccents.primaryRgb,
+      '--event-accent-2-rgb': activeAccents.secondaryRgb,
+      '--event-surface-rgb': activeAccents.surfaceRgb,
+      '--event-background-rgb': activeAccents.backgroundRgb,
+      '--event-ink-rgb': activeAccents.inkRgb,
+      '--event-muted-rgb': activeAccents.mutedRgb,
+      '--event-border-rgb': activeAccents.borderRgb,
+      '--event-button-text-rgb': activeAccents.buttonTextRgb,
+      '--event-glow-1-alpha': activeAccents.glow1Alpha,
+      '--event-glow-2-alpha': activeAccents.glow2Alpha,
+      '--event-panel-glow-alpha': activeAccents.panelGlowAlpha,
+      '--event-panel-glow-alpha-strong': activeAccents.panelGlowAlphaStrong,
+    }),
+    [activeAccents]
+  );
+
   // Inline styles for layout and UI
   const headerStyle = {
     display: 'flex',
@@ -136,7 +187,7 @@ function App() {
     };
 
     return (
-      <div className="app" style={{ position: 'relative', overflow: 'hidden' }}>
+      <div className="app" data-event-theme={activeAccents.mode} style={{ ...appAccentStyle, position: 'relative', overflow: 'hidden' }}>
         <div className="login-background" style={loginBackgroundStyle}></div>
         <div style={{ position: 'relative', zIndex: 1, minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
           <header className="header" style={loginHeaderStyle}>
@@ -153,7 +204,7 @@ function App() {
 
   // Main app UI when user is logged in
   return (
-    <div className="app">
+    <div className="app" data-event-theme={activeAccents.mode} style={appAccentStyle}>
       <header className="header" style={headerStyle}>
         <Link to="/">
           <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
@@ -175,7 +226,14 @@ function App() {
                 className="hamburger-menu-item"
                 onClick={() => setIsMenuOpen(false)}
               >
-                Customize
+                Profile
+              </Link>
+              <Link
+                to="/stats"
+                className="hamburger-menu-item"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Stats
               </Link>
               <button 
                 className="hamburger-menu-item hamburger-menu-logout"
@@ -192,14 +250,7 @@ function App() {
           <Route path="/" element={
             <>
               {/* Greeting message */}
-              <div style={{
-                textAlign: 'center',
-                fontSize: '1.5rem',
-                color: '#8B0000',
-                marginBottom: '20px',
-                fontFamily: '"Permanent Marker", cursive, sans-serif',
-                letterSpacing: '0.08em'
-              }}>
+              <div className="welcome-greeting">
                 Hi, {user.username}
               </div>
               {/* Event selection dropdown */}
@@ -207,6 +258,7 @@ function App() {
                 <EventSelector 
                   onEventSelect={setSelectedEventId} 
                   selectedEventId={selectedEventId}
+                  onSelectedEventChange={setSelectedEvent}
                   userType={user.user_type}
                 />
               </div>
@@ -218,10 +270,14 @@ function App() {
               <div className="section-divider" aria-hidden="true"></div>
               {/* Leaderboard for selected event */}
               <div className="section leaderboard-section">
-                <Leaderboard eventId={selectedEventId} currentUser={user.username} />
+                <Leaderboard eventId={selectedEventId} currentUser={user.username} currentUserId={user.user_id} />
               </div>
             </>
           } />
+          <Route path="/stats" element={<HighlightsPage user={user} defaultYear={2025} />} />
+          <Route path="/stats/:period" element={<HighlightsPage user={user} defaultYear={2025} />} />
+          <Route path="/highlights" element={<HighlightsPage user={user} defaultYear={2025} />} />
+          <Route path="/highlights/:year" element={<HighlightsPage user={user} defaultYear={2025} />} />
           <Route path="/profile/:user_id" element={<ProfilePage user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} />} />
         </Routes>

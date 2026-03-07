@@ -8,9 +8,9 @@
   min-width: 0;
   padding: 0 18px;
   height: 48px;
-  background: linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #ef4444 100%);
   transition: box-shadow 0.2s, filter 0.18s, background 0.2s;
-  box-shadow: 0 2px 8px rgba(76, 29, 149, 0.1);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
   cursor: pointer;
   user-select: none;
 }
@@ -32,8 +32,8 @@
 }
 
 .playercard-root.playercard-current-user {
-  outline: 1px solid rgba(167, 139, 250, 0.3);
-  box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
+  outline: 1px solid rgba(59, 130, 246, 0.55);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.24);
   z-index: 2;
 }
 
@@ -62,7 +62,7 @@
 
 .playercard-root:hover {
   filter: brightness(1.08) saturate(1.08);
-  box-shadow: 0 3px 10px rgba(167, 139, 250, 0.15), 0 1px 4px rgba(76, 29, 149, 0.1);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.26), 0 3px 10px rgba(239, 68, 68, 0.2);
 }
 
 @media (max-width: 600px) {
