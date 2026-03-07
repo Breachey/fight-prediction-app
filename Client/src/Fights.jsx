@@ -23,20 +23,77 @@ const toggleButtonStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: '8px 12px',
-  borderRadius: '8px',
+  padding: '8px 2px',
+  borderRadius: '0',
   background: 'transparent',
-  border: '1px solid rgba(255, 255, 255, 0.2)',
+  border: 'none',
+  borderBottom: '1px solid rgba(255, 255, 255, 0.24)',
   cursor: 'pointer',
   fontSize: '0.875rem',
-  transition: 'all 0.2s ease',
+  fontWeight: 600,
+  letterSpacing: '0.04em',
+  transition: 'color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease',
   marginBottom: '10px',
-  width: 'fit-content',
-  margin: '0 auto 20px auto',
-  opacity: 0.7
+  width: 'auto',
+  margin: '0 auto 18px auto',
+  opacity: 0.74
 };
 
+const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
+const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
+const REMINDER_EMOJI_MAP = {
+  [REMINDER_TYPE_BROKEN_HEART]: '💔',
+  [REMINDER_TYPE_HEART_EYES]: '😍'
+};
+
+const BROKEN_HEART_MESSAGES = [
+  "We'll remind you to never vote for this fool again.",
+  "We'll remind you this dude did you dirty.",
+  "We'll remind you this clown wrecked your picks.",
+  "We'll remind you this fighter sold your night.",
+  "We'll remind you this one broke your heart before.",
+  "We'll remind you this pick brought pure pain.",
+  "We'll remind you this man burned your trust.",
+  "We'll remind you this fighter had you sick.",
+  "We'll remind you this dude fumbled your ticket.",
+  "We'll remind you to keep this one in timeout."
+];
+
+const HEART_EYES_MESSAGES = [
+  "We'll remember you would suck this dude's dick.",
+  "We'll remember this is your king.",
+  "We'll remember you never doubt this savage.",
+  "We'll remember this fighter is your golden boy.",
+  "We'll remember this is your ride-or-die pick.",
+  "We'll remember you think this motherfucker throws down.",
+  "We'll remember this dude is your favorite menace.",
+  "We'll remember this fighter is your lock.",
+  "We'll remember you believe this one is built different.",
+  "We'll remember this is your certified killer."
+];
+
 function Fights({ eventId, username, user_id, user_type }) {
+  const currentSeasonYear = new Date().getFullYear();
+  const reminderStorageKey = `voteReminders_${user_id || username || 'guest'}`;
+  const normalizeReminderMap = useCallback((rows) => {
+    if (!Array.isArray(rows)) {
+      return {};
+    }
+
+    return rows.reduce((acc, row) => {
+      if (row?.fighter_id === undefined || row?.fighter_id === null) {
+        return acc;
+      }
+
+      acc[String(row.fighter_id)] = {
+        fighterName: row.fighter_name || '',
+        reminderType: row.reminder_type || REMINDER_TYPE_BROKEN_HEART,
+        createdAt: row.created_at || null,
+        updatedAt: row.updated_at || null
+      };
+      return acc;
+    }, {});
+  }, []);
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,6 +117,11 @@ function Fights({ eventId, username, user_id, user_type }) {
   const [expandedAdminControls, setExpandedAdminControls] = useState({});
   const [editingFight, setEditingFight] = useState(null);
   const [predictionHistory, setPredictionHistory] = useState([]);
+  const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
+  const [voteReminders, setVoteReminders] = useState(() => {
+    const saved = localStorage.getItem(reminderStorageKey);
+    return saved ? JSON.parse(saved) : {};
+  });
 
   // Admin function to handle fight result updates
   const handleResultUpdate = async (fightId, winner) => {
@@ -185,6 +247,76 @@ function Fights({ eventId, username, user_id, user_type }) {
     }
   }, [eventId, user_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadRivalries = async () => {
+      if (!user_id) {
+        setRivalryMarkers({ pickTwinUserId: null, nemesisUserId: null });
+        return;
+      }
+      try {
+        const highlights = await cachedFetchJson(
+          `${API_URL}/user/${encodeURIComponent(user_id)}/highlights/${currentSeasonYear}`,
+          { ttlMs: 120000, cacheKey: `rivalry-markers:${user_id}:${currentSeasonYear}` }
+        );
+        if (cancelled) return;
+        setRivalryMarkers({
+          pickTwinUserId: highlights?.rivalry_insights?.pick_twin?.user_id
+            ? String(highlights.rivalry_insights.pick_twin.user_id)
+            : null,
+          nemesisUserId: highlights?.rivalry_insights?.biggest_nemesis?.user_id
+            ? String(highlights.rivalry_insights.biggest_nemesis.user_id)
+            : null
+        });
+      } catch {
+        if (!cancelled) {
+          setRivalryMarkers({ pickTwinUserId: null, nemesisUserId: null });
+        }
+      }
+    };
+    loadRivalries();
+    return () => {
+      cancelled = true;
+    };
+  }, [user_id, currentSeasonYear]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const saved = localStorage.getItem(reminderStorageKey);
+    const localReminders = saved ? JSON.parse(saved) : {};
+    setVoteReminders(localReminders);
+
+    const loadReminderState = async () => {
+      if (!user_id) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch vote reminders');
+        }
+
+        const reminderRows = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        const normalizedReminders = normalizeReminderMap(reminderRows);
+        setVoteReminders(normalizedReminders);
+        localStorage.setItem(reminderStorageKey, JSON.stringify(normalizedReminders));
+      } catch (err) {
+        console.error('Error loading vote reminders:', err);
+      }
+    };
+
+    loadReminderState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizeReminderMap, reminderStorageKey, user_id]);
+
   // Save selectedFights to localStorage whenever it changes
   useEffect(() => {
     if (eventId && username) {
@@ -198,6 +330,10 @@ function Fights({ eventId, username, user_id, user_type }) {
       localStorage.setItem(`submittedFights_${eventId}_${username}`, JSON.stringify(submittedFights));
     }
   }, [submittedFights, eventId, username]);
+
+  useEffect(() => {
+    localStorage.setItem(reminderStorageKey, JSON.stringify(voteReminders));
+  }, [voteReminders, reminderStorageKey]);
 
   // Clear both selected and submitted fights when username or eventId changes
   useEffect(() => {
@@ -235,10 +371,27 @@ function Fights({ eventId, username, user_id, user_type }) {
   }, [eventId, fights, fetchEventVoteCounts]);
 
   // Function to handle selection (but not submission) of a fighter
-  const handleSelection = (fightId, fighterName) => {
+  const handleSelection = (fightId, fighterId, fighterName) => {
     // Only allow selection if vote hasn't been submitted and fight isn't completed
     if (submittedFights[fightId] || fights.find(f => f.id === fightId)?.is_completed) return;
-    setSelectedFights(prev => ({ ...prev, [fightId]: fighterName }));
+
+    const reminder = voteReminders[String(fighterId)];
+    const reminderType = reminder?.reminderType || REMINDER_TYPE_BROKEN_HEART;
+    if (reminder && reminderType === REMINDER_TYPE_BROKEN_HEART) {
+      const shouldContinue = window.confirm(
+        `Reminder: you asked not to vote for ${fighterName} again.\n\nSelect ${fighterName} anyway?`
+      );
+      if (!shouldContinue) {
+        setVoteErrors(prev => ({
+          ...prev,
+          [fightId]: `Reminder active: you asked not to vote for ${fighterName} again.`
+        }));
+        return;
+      }
+    }
+
+    setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
+    setSelectedFights(prev => ({ ...prev, [fightId]: fighterId }));
   };
 
   // Function to handle message fade out
@@ -466,8 +619,9 @@ function Fights({ eventId, username, user_id, user_type }) {
   // Dynamic toggle button style based on showAIVotes state
   const dynamicToggleStyle = useMemo(() => ({
     ...toggleButtonStyle,
-    color: showAIVotes ? '#60a5fa80' : 'rgba(255, 255, 255, 0.5)',
-    border: `1px solid ${showAIVotes ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.2)'}`,
+    color: showAIVotes ? 'rgba(147, 197, 253, 0.92)' : 'rgba(255, 255, 255, 0.68)',
+    borderBottom: `1px solid ${showAIVotes ? 'rgba(147, 197, 253, 0.58)' : 'rgba(255, 255, 255, 0.28)'}`,
+    opacity: showAIVotes ? 0.95 : 0.74
   }), [showAIVotes]);
 
   const completedHistoryByFighter = useMemo(() => {
@@ -527,6 +681,133 @@ function Fights({ eventId, username, user_id, user_type }) {
     return null;
   }, [completedHistoryByFighter]);
 
+  const setVoteReminderType = useCallback(async (fighterId, fighterName, reminderType) => {
+    const fighterKey = String(fighterId);
+    const previousReminders = voteReminders;
+    const nextReminders = {
+      ...previousReminders,
+      [fighterKey]: {
+        fighterName,
+        reminderType,
+        createdAt: previousReminders[fighterKey]?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    };
+
+    setVoteReminders(nextReminders);
+
+    if (!user_id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders/${encodeURIComponent(fighterId)}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fighter_name: fighterName,
+            reminder_type: reminderType
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save reminder');
+      }
+
+      const savedReminder = await response.json();
+      setVoteReminders(prev => ({
+        ...prev,
+        [fighterKey]: {
+          fighterName: savedReminder?.fighter_name || fighterName,
+          reminderType: savedReminder?.reminder_type || reminderType,
+          createdAt: savedReminder?.created_at || prev[fighterKey]?.createdAt || null,
+          updatedAt: savedReminder?.updated_at || prev[fighterKey]?.updatedAt || null
+        }
+      }));
+    } catch (err) {
+      console.error('Error updating vote reminder:', err);
+      setVoteReminders(previousReminders);
+      setError(err.message || 'Failed to update vote reminder');
+    }
+  }, [user_id, voteReminders]);
+
+  const clearVoteReminder = useCallback(async (fighterId) => {
+    const fighterKey = String(fighterId);
+    const previousReminders = voteReminders;
+    const nextReminders = { ...previousReminders };
+    delete nextReminders[fighterKey];
+    setVoteReminders(nextReminders);
+
+    if (!user_id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders/${encodeURIComponent(fighterId)}`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) {
+        throw new Error('Failed to remove reminder');
+      }
+    } catch (err) {
+      console.error('Error removing vote reminder:', err);
+      setVoteReminders(previousReminders);
+      setError(err.message || 'Failed to remove vote reminder');
+    }
+  }, [user_id, voteReminders]);
+
+  const hasVoteReminder = useCallback((fighterId) => (
+    Boolean(voteReminders[String(fighterId)])
+  ), [voteReminders]);
+
+  const getReminder = useCallback((fighterId) => (
+    voteReminders[String(fighterId)] || null
+  ), [voteReminders]);
+
+  const getReminderType = useCallback((fighterId) => {
+    const reminder = getReminder(fighterId);
+    return reminder ? (reminder.reminderType || REMINDER_TYPE_BROKEN_HEART) : null;
+  }, [getReminder]);
+
+  const getReminderEmoji = useCallback((fighterId) => {
+    const reminderType = getReminderType(fighterId);
+    if (!reminderType) return null;
+    return REMINDER_EMOJI_MAP[reminderType] || REMINDER_EMOJI_MAP[REMINDER_TYPE_BROKEN_HEART];
+  }, [getReminderType]);
+
+  const getReminderStatusMessage = useCallback((fighterId) => {
+    const fighterKey = String(fighterId);
+    const reminder = voteReminders[fighterKey];
+    if (!reminder) {
+      return null;
+    }
+    const reminderType = reminder.reminderType || REMINDER_TYPE_BROKEN_HEART;
+    const messagePool = reminderType === REMINDER_TYPE_HEART_EYES
+      ? HEART_EYES_MESSAGES
+      : BROKEN_HEART_MESSAGES;
+    const seed = `${fighterKey}:${reminder.updatedAt || reminder.createdAt || ''}`;
+    const hash = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return messagePool[hash % messagePool.length];
+  }, [voteReminders]);
+
+  const getVoteRivalryMarker = useCallback((vote) => {
+    const voteUserId = vote?.user_id != null ? String(vote.user_id) : null;
+    if (!voteUserId) return null;
+    if (rivalryMarkers.pickTwinUserId && voteUserId === String(rivalryMarkers.pickTwinUserId)) {
+      return 'twin';
+    }
+    if (rivalryMarkers.nemesisUserId && voteUserId === String(rivalryMarkers.nemesisUserId)) {
+      return 'nemesis';
+    }
+    return null;
+  }, [rivalryMarkers]);
+
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
   }
@@ -538,6 +819,7 @@ function Fights({ eventId, username, user_id, user_type }) {
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
         <button 
+          className="ai-votes-toggle"
           style={dynamicToggleStyle}
           onClick={() => setShowAIVotes(!showAIVotes)}
         >
@@ -545,12 +827,13 @@ function Fights({ eventId, username, user_id, user_type }) {
         </button>
       </div>
 
-      {error && (
-        // Global error (e.g. from fetching fights) is still displayed at the top
-        <div className="error-message">{error}</div>
-      )}
+      <div className="fights-content">
+        {error && (
+          // Global error (e.g. from fetching fights) is still displayed at the top
+          <div className="error-message">{error}</div>
+        )}
 
-      {fights.map((fight) => (
+        {fights.map((fight) => (
         <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''}`}>
           {(fight.card_tier || fight.weightclass || fight.is_canceled) && (
             <div className="fight-meta">
@@ -602,7 +885,7 @@ function Fights({ eventId, username, user_id, user_type }) {
                       ? 'unselected'
                       : ''
               }`}
-              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id)}
+              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id, fight.fighter1_name)}
             >
               <div className="fighter-card-flag-background">
                 <ReactCountryFlag 
@@ -621,6 +904,16 @@ function Fights({ eventId, username, user_id, user_type }) {
                   }}
                 />
               </div>
+              {hasVoteReminder(fight.fighter1_id) && (
+                <div
+                  className="fighter-reminder-badge"
+                  role="img"
+                  aria-label="Reminder active"
+                  title="Reminder active"
+                >
+                  {getReminderEmoji(fight.fighter1_id)}
+                </div>
+              )}
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter1_image}
@@ -692,6 +985,51 @@ function Fights({ eventId, username, user_id, user_type }) {
                       </div>
                     );
                   })()}
+                  {hasVoteReminder(fight.fighter1_id) && (
+                    <div className="vote-reminder-status">
+                      {getReminderStatusMessage(fight.fighter1_id)}
+                    </div>
+                  )}
+                  <div className="vote-reminder-controls">
+                    <div className="vote-reminder-options">
+                      <button
+                        type="button"
+                        className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_BROKEN_HEART);
+                        }}
+                        aria-label="Set broken heart reminder"
+                        title="Broken heart reminder"
+                      >
+                        💔
+                      </button>
+                      <button
+                        type="button"
+                        className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_HEART_EYES);
+                        }}
+                        aria-label="Set heart eyes reminder"
+                        title="Heart eyes reminder"
+                      >
+                        😍
+                      </button>
+                    </div>
+                  </div>
+                  {hasVoteReminder(fight.fighter1_id) && (
+                    <button
+                      type="button"
+                      className="vote-reminder-clear-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearVoteReminder(fight.fighter1_id);
+                      }}
+                    >
+                      Clear Reminder
+                    </button>
+                  )}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
@@ -714,7 +1052,7 @@ function Fights({ eventId, username, user_id, user_type }) {
                       ? 'unselected'
                       : ''
               }`}
-              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id)}
+              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id, fight.fighter2_name)}
             >
               <div className="fighter-card-flag-background">
                 <ReactCountryFlag 
@@ -733,6 +1071,16 @@ function Fights({ eventId, username, user_id, user_type }) {
                   }}
                 />
               </div>
+              {hasVoteReminder(fight.fighter2_id) && (
+                <div
+                  className="fighter-reminder-badge"
+                  role="img"
+                  aria-label="Reminder active"
+                  title="Reminder active"
+                >
+                  {getReminderEmoji(fight.fighter2_id)}
+                </div>
+              )}
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter2_image}
@@ -804,6 +1152,51 @@ function Fights({ eventId, username, user_id, user_type }) {
                       </div>
                     );
                   })()}
+                  {hasVoteReminder(fight.fighter2_id) && (
+                    <div className="vote-reminder-status">
+                      {getReminderStatusMessage(fight.fighter2_id)}
+                    </div>
+                  )}
+                  <div className="vote-reminder-controls">
+                    <div className="vote-reminder-options">
+                      <button
+                        type="button"
+                        className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_BROKEN_HEART);
+                        }}
+                        aria-label="Set broken heart reminder"
+                        title="Broken heart reminder"
+                      >
+                        💔
+                      </button>
+                      <button
+                        type="button"
+                        className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_HEART_EYES);
+                        }}
+                        aria-label="Set heart eyes reminder"
+                        title="Heart eyes reminder"
+                      >
+                        😍
+                      </button>
+                    </div>
+                  </div>
+                  {hasVoteReminder(fight.fighter2_id) && (
+                    <button
+                      type="button"
+                      className="vote-reminder-clear-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearVoteReminder(fight.fighter2_id);
+                      }}
+                    >
+                      Clear Reminder
+                    </button>
+                  )}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter2_id) && (
@@ -827,11 +1220,18 @@ function Fights({ eventId, username, user_id, user_type }) {
 
           {selectedFights[fight.id] && !submittedFights[fight.id] && (
             <div className="selected-fighter-message">
-              <button className="submit-vote-button" onClick={() => handleSubmitVote(fight.id)}>
+              <button
+                className={`submit-vote-button ${
+                  String(selectedFights[fight.id]) === String(fight.fighter1_id)
+                    ? 'submit-vote-button--red'
+                    : 'submit-vote-button--blue'
+                }`}
+                onClick={() => handleSubmitVote(fight.id)}
+              >
                 Submit Vote for{' '}
                 <span style={{
                   fontFamily: '"Permanent Marker", cursive, sans-serif',
-                  color: '#8B0000'
+                  color: '#ffffff'
                 }}>
                   {String(selectedFights[fight.id]) === String(fight.fighter1_id) 
                     ? fight.fighter1_name 
@@ -934,7 +1334,7 @@ function Fights({ eventId, username, user_id, user_type }) {
                       {fightVotes[fight.id].fighter1Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <VoteCard key={index} vote={vote} username={username} />
+                          <VoteCard key={index} vote={vote} username={username} rivalMarker={getVoteRivalryMarker(vote)} />
                         ))}
                     </div>
                   </div>
@@ -944,7 +1344,7 @@ function Fights({ eventId, username, user_id, user_type }) {
                       {fightVotes[fight.id].fighter2Votes
                         .filter(vote => showAIVotes || !vote.is_bot)
                         .map((vote, index) => (
-                          <VoteCard key={index} vote={vote} username={username} />
+                          <VoteCard key={index} vote={vote} username={username} rivalMarker={getVoteRivalryMarker(vote)} />
                         ))}
                     </div>
                   </div>
@@ -1028,13 +1428,14 @@ function Fights({ eventId, username, user_id, user_type }) {
             </div>
           )}
         </div>
-      ))}
+        ))}
 
-      {fights.length === 0 && !loading && (
-        <div className="no-fights-message">
-          No fights available for this event yet. Check back later for updates!
-        </div>
-      )}
+        {fights.length === 0 && !loading && (
+          <div className="no-fights-message">
+            No fights available for this event yet. Check back later for updates!
+          </div>
+        )}
+      </div>
     </div>
   );
 }

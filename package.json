@@ -1,5 +1,13 @@
 {
-  "dependencies": {
-    "react-router-dom": "^7.4.1"
+  "name": "fight-prediction-app",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix Client run dev",
+    "dev:client": "npm --prefix Client run dev",
+    "dev:server": "npm --prefix Server run start",
+    "build": "npm --prefix Client run build",
+    "lint": "npm --prefix Client run lint",
+    "start": "npm --prefix Server run start",
+    "test": "npm --prefix Server run test"
   }
 }

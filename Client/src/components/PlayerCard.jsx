@@ -15,7 +15,7 @@ function PlayerCard({ username, playercard, size = 'medium', isCurrentUser = fal
   const cardCategory = playercard?.category || 'basic';
 
   // Fallback background (gradient)
-  const fallbackBg = 'linear-gradient(135deg, #4c1d95 0%, #a78bfa 100%)';
+  const fallbackBg = 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #ef4444 100%)';
 
   return (
     <div

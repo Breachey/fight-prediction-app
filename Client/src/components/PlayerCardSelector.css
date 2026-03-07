@@ -1,290 +1,322 @@
 .playercard-selector-root {
-  margin: 24px 0 0 0;
+  margin: 20px 0 0;
   width: 100%;
   display: flex;
   flex-direction: column;
+  gap: 12px;
 }
 
-/* Accordion Header */
 .playercard-selector-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, rgba(76, 29, 149, 0.2) 0%, rgba(167, 139, 250, 0.1) 100%);
-  border: 2px solid rgba(167, 139, 250, 0.3);
-  border-radius: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.18), rgba(37, 99, 235, 0.22));
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  outline: none;
   color: #fff;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .playercard-selector-header:hover {
-  background: linear-gradient(135deg, rgba(76, 29, 149, 0.3) 0%, rgba(167, 139, 250, 0.2) 100%);
-  border-color: rgba(167, 139, 250, 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.15);
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
 }
 
-.playercard-selector-header:active {
-  transform: translateY(0);
+.playercard-selector-header:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.95);
+  outline-offset: 2px;
+}
+
+.playercard-selector-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.playercard-selector-header-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .playercard-selector-header-text {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #a78bfa;
-  letter-spacing: 0.5px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.84);
 }
 
 .playercard-selector-chevron {
-  font-size: 1rem;
-  color: #a78bfa;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.13);
+  font-size: 0.75rem;
+  transition: transform 0.25s ease, background-color 0.2s ease;
 }
 
+.playercard-selector-root.is-open .playercard-selector-chevron,
 .playercard-selector-chevron.expanded {
   transform: rotate(180deg);
+  background: rgba(34, 211, 238, 0.28);
 }
 
-/* Accordion Content */
 .playercard-selector-content {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: max-height 0.35s ease, padding 0.35s ease;
   padding: 0;
 }
 
 .playercard-selector-content.expanded {
-  max-height: 600px;
-  padding: 20px 0;
-  overflow-y: auto;
+  max-height: 780px;
+  padding: 4px 0 2px;
 }
 
-.playercard-selector-content.expanded::-webkit-scrollbar {
-  width: 8px;
+.playercard-selector-mobile-hint {
+  display: none;
+  margin: 0 0 10px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  text-align: center;
 }
 
-.playercard-selector-content.expanded::-webkit-scrollbar-track {
-  background: rgba(76, 29, 149, 0.1);
-  border-radius: 4px;
-}
-
-.playercard-selector-content.expanded::-webkit-scrollbar-thumb {
-  background: rgba(167, 139, 250, 0.3);
-  border-radius: 4px;
-}
-
-.playercard-selector-content.expanded::-webkit-scrollbar-thumb:hover {
-  background: rgba(167, 139, 250, 0.5);
-}
-
-/* Grid Layout */
 .playercard-selector-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 24px;
-  padding: 8px;
-}
-.playercard-selector-item {
-  cursor: pointer;
-  border-radius: 20px;
-  box-shadow: 0 2px 10px rgba(76,29,149,0.08);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 2px solid transparent;
-  background: linear-gradient(135deg, rgba(34, 31, 47, 0.15) 0%, rgba(76, 29, 149, 0.08) 100%);
-  position: relative;
-  outline: none;
-  overflow: hidden;
-  backdrop-filter: blur(10px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
 }
 
-/* Make PlayerCard fill the container in selector */
+.playercard-selector-item {
+  appearance: none;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 234px;
+  padding: 8px;
+  cursor: pointer;
+  text-align: left;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.playercard-selector-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: radial-gradient(circle at 8% 8%, rgba(34, 211, 238, 0.18), transparent 42%);
+  pointer-events: none;
+}
+
+.playercard-selector-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(34, 211, 238, 0.42);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
+}
+
+.playercard-selector-item:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.95);
+  outline-offset: 2px;
+}
+
+.playercard-selector-item.selected {
+  border-color: rgba(34, 211, 238, 0.85);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.7), 0 10px 24px rgba(34, 211, 238, 0.18);
+}
+
+.playercard-selector-item.locked {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.playercard-selector-item:disabled {
+  cursor: wait;
+}
+
+.playercard-selector-card-shell {
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
 .playercard-selector-item .playercard-root {
   width: 100%;
-  height: 180px;
+  height: 156px;
+  min-height: 156px;
+  border-radius: 12px;
   padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16px;
-  min-height: 180px;
-}
-.playercard-selector-item:hover,
-.playercard-selector-item:focus {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.15), 0 2px 8px rgba(76,29,149,0.12);
-  border: 2px solid rgba(167, 139, 250, 0.6);
-}
-.playercard-selector-item.selected {
-  border: 3px solid #22d3ee;
-  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2), 0 4px 16px rgba(34, 211, 238, 0.15);
-  transform: translateY(-2px) scale(1.05);
-  z-index: 2;
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.1) 0%, rgba(167, 139, 250, 0.1) 100%);
 }
 
-/* Locked playercard styles */
-.playercard-selector-item.locked {
-  cursor: not-allowed;
-  filter: grayscale(0.7) brightness(0.6);
-  opacity: 0.8;
+.playercard-selector-item .playercard-username {
+  display: none;
 }
-.playercard-selector-item.locked:hover,
-.playercard-selector-item.locked:focus {
-  transform: none;
-  box-shadow: 0 4px 16px rgba(76,29,149,0.12);
-  border: 2px solid rgba(107, 114, 128, 0.5);
-}
-.playercard-selector-locked-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(107,114,128,0.8) 100%);
-  border-radius: 16px;
+
+.playercard-selector-item-footer {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 20px;
-  z-index: 3;
-  backdrop-filter: blur(8px);
-}
-.playercard-selector-lock-icon {
-  font-size: 2.5rem;
-  margin-bottom: 12px;
-  opacity: 0.9;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-.playercard-selector-lock-text {
-  color: #fff;
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.4;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.7);
-  max-width: 160px;
-  background: rgba(0,0,0,0.3);
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.1);
+  gap: 8px;
+  min-height: 54px;
 }
 
 .playercard-selector-label {
-  text-align: center;
   color: #fff;
-  font-weight: 600;
-  font-size: 1.1rem;
-  margin-top: 0;
-  letter-spacing: 0.02em;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
-  padding: 0 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* Hide username text in selector cards */
-.playercard-selector-item .playercard-username {
-  display: none;
+.playercard-selector-pill {
+  width: fit-content;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.playercard-selector-pill.selected {
+  color: #0b1220;
+  background: rgba(34, 211, 238, 0.88);
+  border-color: rgba(34, 211, 238, 1);
+}
+
+.playercard-selector-pill.locked {
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(0, 0, 0, 0.38);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.playercard-selector-locked-overlay {
+  position: absolute;
+  inset: 8px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6, 10, 20, 0.85), rgba(60, 60, 65, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 14px;
+  z-index: 2;
+}
+
+.playercard-selector-lock-text {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 .playercard-selector-loading,
 .playercard-selector-error,
 .playercard-selector-saving {
-  color: #a78bfa;
+  color: #fff;
   text-align: center;
-  font-size: 1.1rem;
-  margin: 20px 0;
-  padding: 16px;
-  background: rgba(167, 139, 250, 0.1);
+  font-size: 0.95rem;
+  margin: 0;
+  padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
 }
+
 .playercard-selector-error {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
+  color: #ffd0d0;
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(127, 29, 29, 0.35);
 }
+
 .playercard-selector-saving {
-  color: #22d3ee;
-  background: rgba(34, 211, 238, 0.1);
-  border-color: rgba(34, 211, 238, 0.3);
+  color: #b6f7ff;
+  border-color: rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.18);
 }
+
 @media (max-width: 768px) {
-  .playercard-selector-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 16px;
-    padding: 4px;
-  }
-  .playercard-selector-item {
-    border-radius: 16px;
-    padding: 8px;
-  }
-  .playercard-selector-item .playercard-root {
-    height: 140px;
-    min-height: 140px;
-  }
-  .playercard-selector-label {
-    font-size: 1rem;
-    margin-top: 0;
-  }
-  .playercard-selector-lock-text {
-    font-size: 0.85rem;
-    max-width: 140px;
-    padding: 6px 10px;
-  }
-  .playercard-selector-lock-icon {
-    font-size: 2rem;
-    margin-bottom: 8px;
-  }
-  .playercard-selector-header {
-    padding: 14px 18px;
-  }
-  .playercard-selector-header-text {
-    font-size: 1.1rem;
-  }
   .playercard-selector-content.expanded {
-    max-height: 500px;
-    padding: 16px 0;
+    max-height: 560px;
+  }
+
+  .playercard-selector-mobile-hint {
+    display: block;
+  }
+
+  .playercard-selector-grid {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(170px, 72vw);
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 12px;
+    padding: 2px 4px 10px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .playercard-selector-grid::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .playercard-selector-grid::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+  }
+
+  .playercard-selector-grid::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.5);
+    border-radius: 999px;
+  }
+
+  .playercard-selector-item {
+    min-height: 224px;
+    scroll-snap-align: start;
+  }
+
+  .playercard-selector-item .playercard-root {
+    height: 142px;
+    min-height: 142px;
   }
 }
-@media (max-width: 480px) {
-  .playercard-selector-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .playercard-selector-item {
-    border-radius: 16px;
-    padding: 6px;
-  }
-  .playercard-selector-item .playercard-root {
-    height: 120px;
-    min-height: 120px;
-  }
-  .playercard-selector-label {
-    font-size: 0.95rem;
-    margin-top: 0;
-  }
-  .playercard-selector-lock-text {
-    font-size: 0.8rem;
-    max-width: 120px;
-  }
+
+@media (max-width: 420px) {
   .playercard-selector-header {
-    padding: 12px 16px;
+    padding: 13px 14px;
   }
+
+  .playercard-selector-header-title {
+    font-size: 0.92rem;
+  }
+
   .playercard-selector-header-text {
-    font-size: 1rem;
+    font-size: 0.82rem;
   }
-  .playercard-selector-content.expanded {
-    max-height: 400px;
-    padding: 12px 0;
+
+  .playercard-selector-grid {
+    grid-auto-columns: minmax(160px, 80vw);
   }
-} 
+}

@@ -11,7 +11,7 @@ const getEventSeasonYear = (event) => {
   return Number.isFinite(year) ? year : null;
 };
 
-function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
+function EventSelector({ onEventSelect, selectedEventId, userType = 'user', onSelectedEventChange }) {
   const [allEvents, setAllEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -269,6 +269,22 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
   }, [activeSeasonYear, events.length]);
 
   const selectedEvent = events[currentIndex] || null;
+  const selectedEventDateStr = selectedEvent?.date
+    ? new Date(
+        Number(selectedEvent.date.split('T')[0].split('-')[0]),
+        Number(selectedEvent.date.split('T')[0].split('-')[1]) - 1,
+        Number(selectedEvent.date.split('T')[0].split('-')[2])
+      ).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+  const selectedEventLocationStr = selectedEvent
+    ? [selectedEvent.venue, selectedEvent.location_city, selectedEvent.location_state].filter(Boolean).join(', ')
+    : '';
+  const selectedEventLocationDisplay = selectedEventLocationStr || 'Location TBD';
+  useEffect(() => {
+    if (typeof onSelectedEventChange !== 'function') return;
+    onSelectedEventChange(selectedEvent || null);
+  }, [selectedEvent, onSelectedEventChange]);
+
   const isPrevSeasonEnabled = Boolean(previousSeasonYear) && isAtStart;
   const isNextSeasonEnabled = Boolean(nextSeasonYear) && isAtEnd;
 
@@ -515,34 +531,42 @@ function EventSelector({ onEventSelect, selectedEventId, userType = 'user' }) {
           </div>
         )}
       </div>
-      {userType === 'admin' && selectedEvent && (
+      {selectedEvent && (
         <div className="event-admin-panel">
           <div className="event-admin-panel__content">
             <div className="event-admin-panel__text">
-              <span className="event-admin-panel__label">Admin</span>
+              <span className="event-admin-panel__label">{userType === 'admin' ? 'Admin' : 'Event'}</span>
               <span className="event-admin-panel__title">{selectedEvent.name}</span>
-              <p className="event-admin-panel__hint">
-                Mark the event as Final once scores are verified to award crowns automatically.
-              </p>
-            </div>
-            <div className="event-admin-panel__actions">
-              {finalizeFeedback && (
-                <div className={`event-admin-feedback ${finalizeFeedback.type}`}>
-                  {finalizeFeedback.message}
-                </div>
+              {selectedEventDateStr && (
+                <div className="event-admin-panel__date">{selectedEventDateStr}</div>
               )}
-              <button
-                className="event-admin-finalize-button"
-                onClick={() => handleFinalizeEvent(selectedEvent)}
-                disabled={finalizingEventId === selectedEvent.id}
-              >
-                {finalizingEventId === selectedEvent.id
-                  ? 'Finalizing...'
-                  : selectedEvent.is_completed
-                  ? 'Recalculate Winners'
-                  : 'Mark Final & Crown Winners'}
-              </button>
+              <div className="event-admin-panel__location">{selectedEventLocationDisplay}</div>
+              {userType === 'admin' && (
+                <p className="event-admin-panel__hint">
+                  Mark the event as Final once scores are verified to award crowns automatically.
+                </p>
+              )}
             </div>
+            {userType === 'admin' && (
+              <div className="event-admin-panel__actions">
+                {finalizeFeedback && (
+                  <div className={`event-admin-feedback ${finalizeFeedback.type}`}>
+                    {finalizeFeedback.message}
+                  </div>
+                )}
+                <button
+                  className="event-admin-finalize-button"
+                  onClick={() => handleFinalizeEvent(selectedEvent)}
+                  disabled={finalizingEventId === selectedEvent.id}
+                >
+                  {finalizingEventId === selectedEvent.id
+                    ? 'Finalizing...'
+                    : selectedEvent.is_completed
+                    ? 'Recalculate Winners'
+                    : 'Mark Final & Crown Winners'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
