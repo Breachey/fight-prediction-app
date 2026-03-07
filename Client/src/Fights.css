@@ -408,24 +408,47 @@ button.expand-votes-button.disabled:hover {
 }
 
 button.submit-vote-button {
+  --submit-vote-border-rgb: var(--fights-neutral-border-rgb);
   width: 100%;
-  padding: 10px 4px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(var(--fights-neutral-border-rgb), 0.48);
-  border-radius: 0;
+  padding: 12px 14px;
+  background: rgba(var(--fights-neutral-surface-rgb), 0.56);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(var(--submit-vote-border-rgb), 0.72);
+  border-radius: 12px;
   color: rgba(var(--fights-neutral-ink-rgb), 0.98);
   font-weight: 700;
   cursor: pointer;
   font-size: 1rem;
-  box-shadow: none;
-  transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(var(--submit-vote-border-rgb), 0.18),
+    inset 0 1px 0 rgba(var(--fights-neutral-ink-rgb), 0.08);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+button.submit-vote-button.submit-vote-button--red {
+  --submit-vote-border-rgb: 239, 68, 68;
+}
+
+button.submit-vote-button.submit-vote-button--blue {
+  --submit-vote-border-rgb: 59, 130, 246;
 }
 
 button.submit-vote-button:hover {
-  border-bottom-color: rgba(var(--fights-neutral-border-rgb), 0.66);
+  background: rgba(var(--fights-neutral-surface-rgb), 0.68);
+  border-color: rgba(var(--submit-vote-border-rgb), 0.92);
   color: rgba(var(--fights-neutral-ink-rgb), 1);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(var(--submit-vote-border-rgb), 0.3),
+    inset 0 1px 0 rgba(var(--fights-neutral-ink-rgb), 0.11);
   transform: translateY(-1px);
+}
+
+button.submit-vote-button:focus-visible {
+  outline: 2px solid rgba(var(--submit-vote-border-rgb), 0.8);
+  outline-offset: 2px;
 }
 
 .votes-details {
