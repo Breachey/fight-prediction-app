@@ -82,6 +82,7 @@ function isImageProxyHostAllowed(hostname) {
 
 // Cache headers for frequently accessed, mostly-read endpoints
 const CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
+const LEADERBOARD_CACHE_CONTROL = 'no-store';
 app.use((req, res, next) => {
   const path = req.path;
   const isEvents = path === '/events';
@@ -90,7 +91,9 @@ app.use((req, res, next) => {
   const isPlayercards = path === '/playercards';
   const isHighlights = /^\/user\/[^/]+\/highlights\/(\d{4}|all-time)$/.test(path);
 
-  if (isEvents || isLeaderboard || isEventLeaderboard || isPlayercards || isHighlights) {
+  if (isLeaderboard || isEventLeaderboard) {
+    res.set('Cache-Control', LEADERBOARD_CACHE_CONTROL);
+  } else if (isEvents || isPlayercards || isHighlights) {
     res.set('Cache-Control', CACHE_CONTROL);
   }
   next();
@@ -3011,6 +3014,21 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
   }
 });
 
+const isMissingReminderTypeColumnError = (error) => {
+  const message = [
+    error?.message || '',
+    error?.details || '',
+    error?.hint || '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    message.includes('reminder_type') &&
+    (message.includes('column') || error?.code === '42703' || error?.code === 'PGRST204')
+  );
+};
+
 app.get('/user/:user_id/vote-reminders', async (req, res) => {
   try {
     const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
@@ -3023,6 +3041,25 @@ app.get('/user/:user_id/vote-reminders', async (req, res) => {
       .select('fighter_id, fighter_name, reminder_type, created_at, updated_at')
       .eq('user_id', normalizedUserId)
       .order('updated_at', { ascending: false });
+
+    if (error && isMissingReminderTypeColumnError(error)) {
+      const fallback = await supabase
+        .from('fighter_vote_reminders')
+        .select('fighter_id, fighter_name, created_at, updated_at')
+        .eq('user_id', normalizedUserId)
+        .order('updated_at', { ascending: false });
+
+      if (fallback.error) {
+        console.error('Error fetching vote reminders (fallback):', fallback.error);
+        return res.status(500).json({ error: 'Failed to fetch vote reminders' });
+      }
+
+      const normalizedFallback = (fallback.data || []).map((row) => ({
+        ...row,
+        reminder_type: 'broken_heart'
+      }));
+      return res.json(normalizedFallback);
+    }
 
     if (error) {
       console.error('Error fetching vote reminders:', error);
@@ -3068,6 +3105,28 @@ app.put('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
       }], { onConflict: 'user_id,fighter_id' })
       .select('fighter_id, fighter_name, reminder_type, created_at, updated_at')
       .single();
+
+    if (error && isMissingReminderTypeColumnError(error)) {
+      const fallback = await supabase
+        .from('fighter_vote_reminders')
+        .upsert([{
+          user_id: normalizedUserId,
+          fighter_id: normalizedFighterId,
+          fighter_name: fighterName || null
+        }], { onConflict: 'user_id,fighter_id' })
+        .select('fighter_id, fighter_name, created_at, updated_at')
+        .single();
+
+      if (fallback.error) {
+        console.error('Error saving vote reminder (fallback):', fallback.error);
+        return res.status(500).json({ error: 'Failed to save vote reminder' });
+      }
+
+      return res.json({
+        ...fallback.data,
+        reminder_type: reminderType
+      });
+    }
 
     if (error) {
       console.error('Error saving vote reminder:', error);

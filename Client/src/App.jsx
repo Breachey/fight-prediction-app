@@ -26,6 +26,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [leaderboardRefreshToken, setLeaderboardRefreshToken] = useState(0);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -86,6 +87,10 @@ function App() {
     localStorage.removeItem('user_type');
     setUser(null);
     setIsMenuOpen(false);
+  };
+
+  const handleLeaderboardRefreshRequest = () => {
+    setLeaderboardRefreshToken((current) => current + 1);
   };
 
   // Close menu when clicking outside
@@ -265,12 +270,23 @@ function App() {
               <div className="section-divider" aria-hidden="true"></div>
               {/* Fights list for selected event */}
               <div className="section fights-section">
-                <Fights eventId={selectedEventId} username={user.username} user_id={user.user_id} user_type={user.user_type} />
+                <Fights
+                  eventId={selectedEventId}
+                  username={user.username}
+                  user_id={user.user_id}
+                  user_type={user.user_type}
+                  onLeaderboardRefresh={handleLeaderboardRefreshRequest}
+                />
               </div>
               <div className="section-divider" aria-hidden="true"></div>
               {/* Leaderboard for selected event */}
               <div className="section leaderboard-section">
-                <Leaderboard eventId={selectedEventId} currentUser={user.username} currentUserId={user.user_id} />
+                <Leaderboard
+                  eventId={selectedEventId}
+                  currentUser={user.username}
+                  currentUserId={user.user_id}
+                  refreshToken={leaderboardRefreshToken}
+                />
               </div>
             </>
           } />
