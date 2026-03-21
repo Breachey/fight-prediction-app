@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
-import { cachedFetchJson } from './utils/apiCache';
+import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -72,7 +72,7 @@ const HEART_EYES_MESSAGES = [
   "We'll remember this is your certified killer."
 ];
 
-function Fights({ eventId, username, user_id, user_type }) {
+function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh }) {
   const currentSeasonYear = new Date().getFullYear();
   const reminderStorageKey = `voteReminders_${user_id || username || 'guest'}`;
   const normalizeReminderMap = useCallback((rows) => {
@@ -123,6 +123,20 @@ function Fights({ eventId, username, user_id, user_type }) {
     return saved ? JSON.parse(saved) : {};
   });
 
+  const invalidateLeaderboardCaches = useCallback((targetEventId) => {
+    const cacheKeys = [
+      `${API_URL}/leaderboard`,
+      `${API_URL}/leaderboard/season`,
+      `${API_URL}/leaderboard/2025`
+    ];
+
+    if (targetEventId) {
+      cacheKeys.push(`${API_URL}/events/${targetEventId}/leaderboard`);
+    }
+
+    cacheKeys.forEach((key) => invalidateCache(key));
+  }, []);
+
   // Admin function to handle fight result updates
   const handleResultUpdate = async (fightId, winner) => {
     try {
@@ -157,6 +171,8 @@ function Fights({ eventId, username, user_id, user_type }) {
       setFights(fights.map(fight => 
         fight.id === fightId ? mergedFight : fight
       ));
+      invalidateLeaderboardCaches(mergedFight.event_id || eventId);
+      onLeaderboardRefresh?.();
       setEditingFight(null);
     } catch (err) {
       console.error('Error updating fight result:', err);
@@ -191,6 +207,8 @@ function Fights({ eventId, username, user_id, user_type }) {
       setFights(fights.map(fight => 
         fight.id === fightId ? updatedFight : fight
       ));
+      invalidateLeaderboardCaches(updatedFight.event_id || eventId);
+      onLeaderboardRefresh?.();
       setEditingFight(null);
       
       // Show success message

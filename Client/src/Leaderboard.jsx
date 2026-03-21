@@ -8,7 +8,13 @@ import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import './Leaderboard.css';
 
-function Leaderboard({ eventId, currentUser, currentUserId }) {
+const LEADERBOARD_REFRESH_INTERVAL_MS = 15000;
+const getFreshLeaderboardUrl = (endpoint) => {
+  const separator = endpoint.includes('?') ? '&' : '?';
+  return `${endpoint}${separator}_refresh=${Date.now()}`;
+};
+
+function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) {
   // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
   // State for overall leaderboard data
@@ -29,6 +35,7 @@ function Leaderboard({ eventId, currentUser, currentUserId }) {
   // Add state for sorting
   const [sortConfig, setSortConfig] = useState({ key: 'total_points', direction: 'desc' });
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
+  const lastAppliedRefreshTokenRef = useRef(refreshToken);
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
@@ -64,11 +71,6 @@ function Leaderboard({ eventId, currentUser, currentUserId }) {
     }
 
     const hasLoaded = loadedRef.current[type];
-    const ttlMs = type === '2025'
-      ? 300000
-      : type === 'overall'
-      ? 120000
-      : 60000;
     const startLoading = () => {
       if (!skipGlobalLoading && !hasLoaded) {
         setIsLoading(true);
@@ -91,7 +93,11 @@ function Leaderboard({ eventId, currentUser, currentUserId }) {
 
     try {
       setError('');
-      const data = await cachedFetchJson(endpoint, { ttlMs, force: showManualIndicator });
+      const response = await fetch(getFreshLeaderboardUrl(endpoint), { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const data = await response.json();
       setLeaderboardData(type, data || []);
       loadedRef.current[type] = true;
     } catch (error) {
@@ -120,14 +126,26 @@ function Leaderboard({ eventId, currentUser, currentUserId }) {
     loadedRef.current.event = false;
   }, [eventId]);
 
-  // Fetch selected leaderboard and refresh every 60 seconds
+  // Fetch the selected leaderboard and keep it warm during active event updates.
   useEffect(() => {
     fetchLeaderboard(selectedLeaderboard);
     const refreshInterval = setInterval(() => {
       fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true });
-    }, 60000);
+    }, LEADERBOARD_REFRESH_INTERVAL_MS);
     return () => clearInterval(refreshInterval);
   }, [selectedLeaderboard, fetchLeaderboard]);
+
+  useEffect(() => {
+    if (refreshToken === lastAppliedRefreshTokenRef.current) {
+      return;
+    }
+
+    lastAppliedRefreshTokenRef.current = refreshToken;
+    fetchLeaderboard(selectedLeaderboard, {
+      skipGlobalLoading: true,
+      showManualIndicator: true
+    });
+  }, [refreshToken, selectedLeaderboard, fetchLeaderboard]);
 
   useEffect(() => {
     let cancelled = false;

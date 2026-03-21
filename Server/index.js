@@ -82,6 +82,7 @@ function isImageProxyHostAllowed(hostname) {
 
 // Cache headers for frequently accessed, mostly-read endpoints
 const CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
+const LEADERBOARD_CACHE_CONTROL = 'no-store';
 app.use((req, res, next) => {
   const path = req.path;
   const isEvents = path === '/events';
@@ -90,7 +91,9 @@ app.use((req, res, next) => {
   const isPlayercards = path === '/playercards';
   const isHighlights = /^\/user\/[^/]+\/highlights\/(\d{4}|all-time)$/.test(path);
 
-  if (isEvents || isLeaderboard || isEventLeaderboard || isPlayercards || isHighlights) {
+  if (isLeaderboard || isEventLeaderboard) {
+    res.set('Cache-Control', LEADERBOARD_CACHE_CONTROL);
+  } else if (isEvents || isPlayercards || isHighlights) {
     res.set('Cache-Control', CACHE_CONTROL);
   }
   next();
