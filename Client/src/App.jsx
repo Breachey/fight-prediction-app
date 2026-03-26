@@ -8,6 +8,7 @@ import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
 import { extractPosterAccents, DEFAULT_EVENT_ACCENTS } from './utils/posterAccentTheme';
+import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken } from './utils/adminSession';
 import './App.css';
 
 // Lazy load heavy components to improve initial load time
@@ -27,6 +28,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [leaderboardRefreshToken, setLeaderboardRefreshToken] = useState(0);
+  const [fightCardRefreshToken, setFightCardRefreshToken] = useState(0);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -36,6 +38,8 @@ function App() {
     const savedPhoneNumber = localStorage.getItem('phoneNumber');
     const savedUserId = localStorage.getItem('user_id');
     const savedUserType = localStorage.getItem('user_type');
+    const savedAdminSessionToken = getAdminSessionToken();
+    const savedAdminSessionExpiry = getAdminSessionExpiry();
 
     if (savedUsername && savedPhoneNumber && savedUserId) {
       // Render with cached user immediately
@@ -43,7 +47,9 @@ function App() {
         username: savedUsername, 
         phoneNumber: savedPhoneNumber, 
         user_id: savedUserId,
-        user_type: savedUserType || 'user'
+        user_type: savedUserType || 'user',
+        admin_session_token: savedAdminSessionToken || null,
+        admin_session_expires_at: savedAdminSessionExpiry || null,
       });
 
       // Fetch playercard in the background
@@ -52,12 +58,20 @@ function App() {
           const response = await fetch(`${API_URL}/user/by-id/${savedUserId}`);
           if (!response.ok) return;
           const userData = await response.json();
+          if (userData.user_type) {
+            localStorage.setItem('user_type', userData.user_type);
+          }
+          if (userData.user_type !== 'admin') {
+            clearAdminSession();
+          }
           if (isMounted) {
             setUser({ 
               username: savedUsername, 
               phoneNumber: savedPhoneNumber, 
               user_id: savedUserId,
-              user_type: savedUserType || 'user',
+              user_type: userData.user_type || savedUserType || 'user',
+              admin_session_token: userData.user_type === 'admin' ? (savedAdminSessionToken || null) : null,
+              admin_session_expires_at: userData.user_type === 'admin' ? (savedAdminSessionExpiry || null) : null,
               playercard: userData.playercards || null
             });
           }
@@ -80,17 +94,36 @@ function App() {
   };
 
   // Logs out user and clears localStorage
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const adminSessionToken = getAdminSessionToken();
+    if (adminSessionToken) {
+      try {
+        await fetch(`${API_URL}/admin/session/logout`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${adminSessionToken}`,
+          },
+        });
+      } catch (error) {
+        console.warn('Failed to revoke admin session during logout:', error);
+      }
+    }
+
     localStorage.removeItem('username');
     localStorage.removeItem('phoneNumber');
     localStorage.removeItem('user_id');
     localStorage.removeItem('user_type');
+    clearAdminSession();
     setUser(null);
     setIsMenuOpen(false);
   };
 
   const handleLeaderboardRefreshRequest = () => {
     setLeaderboardRefreshToken((current) => current + 1);
+  };
+
+  const handleFightCardImportComplete = () => {
+    setFightCardRefreshToken((current) => current + 1);
   };
 
   // Close menu when clicking outside
@@ -265,6 +298,7 @@ function App() {
                   selectedEventId={selectedEventId}
                   onSelectedEventChange={setSelectedEvent}
                   userType={user.user_type}
+                  onFightCardImportComplete={handleFightCardImportComplete}
                 />
               </div>
               <div className="section-divider" aria-hidden="true"></div>
@@ -276,6 +310,7 @@ function App() {
                   user_id={user.user_id}
                   user_type={user.user_type}
                   onLeaderboardRefresh={handleLeaderboardRefreshRequest}
+                  refreshToken={fightCardRefreshToken}
                 />
               </div>
               <div className="section-divider" aria-hidden="true"></div>

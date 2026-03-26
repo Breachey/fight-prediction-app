@@ -155,35 +155,48 @@
     inset 0 1px 0 rgba(var(--event-ink-rgb, 245, 247, 250), 0.14);
 }
 
-button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button),
+:where(button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button)),
 .logout-button {
-  padding: 8px 18px;
-  border-radius: 12px;
-  background: linear-gradient(
-    135deg,
-    rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.95) 0%,
-    rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.92) 100%
-  );
+  padding: 10px 18px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.16) 100%),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.12) 0%,
+      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.1) 100%
+    ),
+    rgba(255, 255, 255, 0.08);
   color: rgb(var(--event-button-text-rgb, 255, 255, 255));
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   cursor: pointer;
   font-size: 1rem;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.26);
-  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button):hover,
-.logout-button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.96) 0%,
-    rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.96) 100%
-  );
-  color: #ffffff;
   box-shadow:
-    0 8px 22px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.32),
-    0 4px 16px rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.22);
-  transform: translateY(-2px) scale(1.04);
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    0 2px 10px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+:where(button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button):hover),
+.logout-button:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.52) 0%, rgba(255, 255, 255, 0.22) 100%),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.16) 0%,
+      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.14) 100%
+    ),
+    rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: rgb(var(--event-button-text-rgb, 255, 255, 255));
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.18),
+    0 4px 16px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  transform: translateY(-1px);
 }
 
 .footer {
@@ -250,30 +263,46 @@ button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-n
   );
 }
 
-.app[data-event-theme='mono'] button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button),
+.app[data-event-theme='mono'] :where(button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button)),
 .app[data-event-theme='mono'] .logout-button {
-  background: linear-gradient(
-    180deg,
-    rgba(var(--event-ink-rgb, 245, 247, 250), 0.96) 0%,
-    rgba(var(--event-muted-rgb, 178, 186, 200), 0.82) 100%
-  );
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.84) 0%,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.48) 100%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.12) 0%,
+      rgba(var(--event-muted-rgb, 178, 186, 200), 0.06) 100%
+    ),
+    rgba(255, 255, 255, 0.14);
   color: rgb(var(--event-button-text-rgb, 8, 8, 10));
+  border-color: rgba(var(--event-ink-rgb, 245, 247, 250), 0.28);
   box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 10px 22px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
-.app[data-event-theme='mono'] button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button):hover,
+.app[data-event-theme='mono'] :where(button:not(.hamburger-menu-button):not(.hamburger-menu-item):not(.event-season-nav__button):not(.carousel-arrow):not(.ai-votes-toggle):not(.expand-stats-button):not(.expand-admin-button):not(.vote-reminder-button):not(.expand-votes-button):not(.submit-vote-button):hover),
 .app[data-event-theme='mono'] .logout-button:hover {
-  background: linear-gradient(
-    180deg,
-    rgba(var(--event-ink-rgb, 245, 247, 250), 1) 0%,
-    rgba(var(--event-muted-rgb, 178, 186, 200), 0.92) 100%
-  );
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.92) 0%,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.6) 100%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-ink-rgb, 245, 247, 250), 0.14) 0%,
+      rgba(var(--event-muted-rgb, 178, 186, 200), 0.08) 100%
+    ),
+    rgba(255, 255, 255, 0.18);
   color: rgb(var(--event-button-text-rgb, 8, 8, 10));
+  border-color: rgba(var(--event-ink-rgb, 245, 247, 250), 0.4);
   box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.34),
-    0 0 18px rgba(var(--event-ink-rgb, 245, 247, 250), 0.08);
+    0 12px 24px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* Hamburger Menu Styles */

@@ -33,6 +33,18 @@
   --event-glow-2-alpha: 0.22;
   --event-panel-glow-alpha: 0.12;
   --event-panel-glow-alpha-strong: 0.16;
+  --glass-button-border: rgba(255, 255, 255, 0.22);
+  --glass-button-border-hover: rgba(255, 255, 255, 0.34);
+  --glass-button-highlight: rgba(255, 255, 255, 0.38);
+  --glass-button-highlight-soft: rgba(255, 255, 255, 0.16);
+  --glass-button-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    0 2px 10px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  --glass-button-shadow-hover:
+    0 14px 28px rgba(0, 0, 0, 0.18),
+    0 4px 16px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
 
   /* Design System - Typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -96,24 +108,63 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 button {
-  border-radius: 12px;
-  border: none;
-  padding: 0.6em 1.2em;
+  border-radius: 14px;
+  border: 1px solid var(--glass-button-border);
+  padding: 0.65em 1.2em;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  background:
+    linear-gradient(180deg, var(--glass-button-highlight) 0%, var(--glass-button-highlight-soft) 100%),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.12) 0%,
+      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.1) 100%
+    ),
+    rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: border-color 0.25s;
-  color: #fff;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease, color 0.2s ease;
+  color: rgb(var(--event-button-text-rgb, 255, 255, 255));
+  box-shadow: var(--glass-button-shadow);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  letter-spacing: 0.01em;
 }
 button:hover {
-  background: linear-gradient(135deg, var(--color-accent-pink) 0%, var(--color-accent-cyan) 100%);
-  color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48) 0%, rgba(255, 255, 255, 0.2) 100%),
+    linear-gradient(
+      135deg,
+      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.16) 0%,
+      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.14) 100%
+    ),
+    rgba(255, 255, 255, 0.12);
+  border-color: var(--glass-button-border-hover);
+  color: rgb(var(--event-button-text-rgb, 255, 255, 255));
+  box-shadow: var(--glass-button-shadow-hover);
+  transform: translateY(-1px);
+}
+button:active {
+  transform: translateY(0);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.34);
+  box-shadow:
+    0 0 0 3px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.24),
+    var(--glass-button-shadow-hover);
+}
+button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 @media (prefers-color-scheme: light) {

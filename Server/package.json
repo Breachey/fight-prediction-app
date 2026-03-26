@@ -4,6 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "scrape:fight-card": "python3 scraper/scrape_full_ufc_event_with_tapology.py",
+    "smoke:fight-card-import": "node scripts/smokeFightCardImport.js",
+    "sync:fighter-style": "node scripts/syncFighterStyle.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

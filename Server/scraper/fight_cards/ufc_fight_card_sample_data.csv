@@ -1,0 +1,3 @@
+id,Event,EventId,Location,FightNumber,CardSegment,Corner,FighterId,FirstName,LastName,Nickname,Age,Stance,Height_in,Reach_in,Weight_lbs,Wins,Losses,Draws,NoContests,FightingOutOf_City,FightingOutOf_Country,Born_City,Born_Country,UFC_Profile,WeightClass,ImageURL
+27,Test Fights,9999,The Woods,1,Main,Red,9999,Cashew,The Dog,“Pup”,8,Gay,66.0,70.0,145.0,19,4,0,0,Salt Lake City,USA,Salt Lake City,USA,,Dogweight,https://iili.io/3Azbkv9.png 
+28,Test Fights,9999,The Woods,1,Main,Blue,6969,Sam,The Cat,“Wise”,6,Rude,20,10,200,6,9,0,0,Salt Lake City,USA,Salt Lake City,USA,,Catweight,https://iili.io/3A7bYOl.png

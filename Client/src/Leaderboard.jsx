@@ -431,37 +431,29 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     alignItems: 'center',
     justifyContent: 'center',
     gap: '10px',
+    flexWrap: 'wrap',
     marginBottom: '20px'
   };
 
-  // Style for toggle buttons (leaderboard selection)
-  const toggleButtonStyle = {
-    padding: '8px 16px',
-    borderRadius: '8px',
-    background: 'rgba(255, 255, 255, 0.08)',
-    color: 'rgba(255, 255, 255, 0.9)',
-    border: '1px solid rgba(255, 255, 255, 0.3)',
-    cursor: 'pointer',
-    fontSize: '0.9rem',
-    transition: 'all 0.2s ease'
-  };
-
-  // Style for AI users toggle button (matches Fights.jsx style)
+  // Match the AI toggle styling used in Fights.jsx.
   const aiToggleButtonStyle = useMemo(() => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px 12px',
-    borderRadius: '8px',
-    background: showBots ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(255, 255, 255, 0.3)',
+    padding: '8px 2px',
+    borderRadius: '0',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: `1px solid ${showBots ? 'rgba(147, 197, 253, 0.58)' : 'rgba(255, 255, 255, 0.28)'}`,
     cursor: 'pointer',
     fontSize: '0.875rem',
-    transition: 'all 0.2s ease',
-    margin: '0 auto 20px auto',
-    width: 'fit-content',
-    opacity: 0.8,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+    transition: 'color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease',
+    margin: '0 auto 18px auto',
+    width: 'auto',
+    color: showBots ? 'rgba(147, 197, 253, 0.92)' : 'rgba(255, 255, 255, 0.68)',
+    opacity: showBots ? 0.95 : 0.74
   }), [showBots]);
 
   const refreshButtonStyle = (disabled) => ({
@@ -895,49 +887,29 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     <div style={containerStyle} className="leaderboard-container">
       <h1 style={titleStyle}>Leaderboard</h1>
       {/* Leaderboard selection toggle */}
-      <div style={filterToggleStyle}>
+      <div style={filterToggleStyle} className="leaderboard-toggle-group">
         {eventId && (
           <button
-            style={{
-              ...toggleButtonStyle,
-              background: selectedLeaderboard === 'event' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.95)',
-              fontWeight: selectedLeaderboard === 'event' ? '700' : '500'
-            }}
+            className={`leaderboard-toggle-button${selectedLeaderboard === 'event' ? ' is-active' : ''}`}
             onClick={() => setSelectedLeaderboard('event')}
           >
             Event
           </button>
         )}
         <button
-          style={{
-            ...toggleButtonStyle,
-            background: selectedLeaderboard === 'season' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-            color: 'rgba(255, 255, 255, 0.95)',
-            fontWeight: selectedLeaderboard === 'season' ? '700' : '500'
-          }}
+          className={`leaderboard-toggle-button${selectedLeaderboard === 'season' ? ' is-active' : ''}`}
           onClick={() => setSelectedLeaderboard('season')}
         >
           Season
         </button>
         <button
-          style={{
-            ...toggleButtonStyle,
-            background: selectedLeaderboard === 'overall' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-            color: 'rgba(255, 255, 255, 0.95)',
-            fontWeight: selectedLeaderboard === 'overall' ? '700' : '500'
-          }}
+          className={`leaderboard-toggle-button${selectedLeaderboard === 'overall' ? ' is-active' : ''}`}
           onClick={() => setSelectedLeaderboard('overall')}
         >
           All Time
         </button>
         <button
-          style={{
-            ...toggleButtonStyle,
-            background: selectedLeaderboard === '2025' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-            color: 'rgba(255, 255, 255, 0.95)',
-            fontWeight: selectedLeaderboard === '2025' ? '700' : '500'
-          }}
+          className={`leaderboard-toggle-button${selectedLeaderboard === '2025' ? ' is-active' : ''}`}
           onClick={() => setSelectedLeaderboard('2025')}
         >
           2025
