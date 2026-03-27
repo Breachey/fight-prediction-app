@@ -10,6 +10,11 @@ ALTER TABLE IF EXISTS public.ufc_full_fight_card ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.weightclasses ENABLE ROW LEVEL SECURITY;
 
+-- Remove legacy permissive policies on users. Registration and privileged user
+-- access go through the backend using SUPABASE_SERVICE_ROLE_KEY instead.
+DROP POLICY IF EXISTS "Allow public registration" ON public.users;
+DROP POLICY IF EXISTS "Allow users to update themselves" ON public.users;
+
 -- Public read-only policies for data the app can expose publicly.
 DROP POLICY IF EXISTS public_read_badges ON public.badges;
 CREATE POLICY public_read_badges

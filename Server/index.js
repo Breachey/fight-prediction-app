@@ -1,5 +1,31 @@
 const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 require('dotenv').config();
+const {
+  createRequireAdminSession,
+  issueAdminSession,
+  readBearerToken,
+  revokeAdminSession,
+  revokeAdminSessionsForUser,
+} = require('./lib/adminSessionAuth');
+const {
+  writeAdminAuditLog,
+} = require('./lib/adminAuditLog');
+const {
+  syncFighterStyleFromFightCardRows,
+} = require('./lib/fighterStyleSync');
+const {
+  backfillEventImageIfMissing,
+  buildOddsRefreshPlan,
+  buildFightCardPreview,
+  cleanupExpiredFightCardPreviews,
+  deleteFightCardPreview,
+  getFightCardPreview,
+  parseFightCardCsvFile,
+  replaceFightCardPreview,
+  removePreviewAssets,
+  runFightCardScraper,
+} = require('./lib/fightCardImport');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,12 +39,14 @@ const supabase = createClient(
   supabaseUrl,
   supabaseServiceRoleKey
 );
+const requireAdminSession = createRequireAdminSession(supabase);
 
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const app = express();
 const PORT = process.env.PORT || 3001;
+const REPO_ROOT = path.resolve(__dirname, '..');
 
 // Enable gzip compression
 app.use(compression());
@@ -194,6 +222,42 @@ async function testSupabaseConnection() {
   }
 }
 
+async function buildAuthenticatedUserResponse(user) {
+  const baseResponse = {
+    user_id: user.user_id,
+    username: user.username,
+    phoneNumber: user.phone_number,
+    user_type: user.user_type || 'user',
+  };
+
+  if (baseResponse.user_type !== 'admin') {
+    return baseResponse;
+  }
+
+  const adminSession = await issueAdminSession({
+    supabase,
+    user: {
+      user_id: user.user_id,
+      username: user.username,
+      user_type: baseResponse.user_type,
+    },
+  });
+
+  return {
+    ...baseResponse,
+    ...adminSession,
+  };
+}
+
+async function logAdminAction(req, details) {
+  await writeAdminAuditLog({
+    supabase,
+    req,
+    adminUser: req.adminUser,
+    ...details,
+  });
+}
+
 // User Registration
 app.post('/register', async (req, res) => {
   try {
@@ -242,12 +306,24 @@ app.post('/register', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create user' });
     }
 
-    res.json({
-      user_id: newUser.user_id,
-      username: newUser.username,
-      phoneNumber: newUser.phone_number,
-      user_type: newUser.user_type || 'user'
-    });
+    const responsePayload = await buildAuthenticatedUserResponse(newUser);
+    if (responsePayload.admin_session_token) {
+      await writeAdminAuditLog({
+        supabase,
+        req,
+        adminUser: {
+          user_id: responsePayload.user_id,
+          username: responsePayload.username,
+        },
+        action: 'admin.session.login',
+        status: 'success',
+        metadata: {
+          source: 'register',
+          admin_session_expires_at: responsePayload.admin_session_expires_at,
+        },
+      });
+    }
+    res.json(responsePayload);
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -284,15 +360,54 @@ app.post('/login', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({
-      user_id: user.user_id,
-      username: user.username,
-      phoneNumber: user.phone_number,
-      user_type: user.user_type || 'user' // Default to 'user' if no user_type set
-    });
+    const responsePayload = await buildAuthenticatedUserResponse(user);
+    if (responsePayload.admin_session_token) {
+      await writeAdminAuditLog({
+        supabase,
+        req,
+        adminUser: {
+          user_id: responsePayload.user_id,
+          username: responsePayload.username,
+        },
+        action: 'admin.session.login',
+        status: 'success',
+        metadata: {
+          source: 'login',
+          admin_session_expires_at: responsePayload.admin_session_expires_at,
+        },
+      });
+    }
+    res.json(responsePayload);
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/admin/session/logout', requireAdminSession, async (req, res) => {
+  try {
+    const token = readBearerToken(req);
+    await revokeAdminSession({
+      supabase,
+      token,
+      reason: 'logout',
+    });
+
+    await writeAdminAuditLog({
+      supabase,
+      req,
+      adminUser: req.adminUser,
+      action: 'admin.session.logout',
+      status: 'success',
+      metadata: {
+        reason: 'logout',
+      },
+    });
+
+    return res.json({ message: 'Admin session ended' });
+  } catch (error) {
+    console.error('Admin logout error:', error);
+    return res.status(500).json({ error: 'Failed to end admin session' });
   }
 });
 
@@ -393,7 +508,13 @@ function transformFighterData(fighter) {
     weight: fighter.Weight_lbs || null,
     height: fighter.Height_in || null,
     reach: fighter.Reach_in || null,
-    streak: fighter.Streak
+    streak: fighter.Streak,
+    koTkoWins: fighter.KO_TKO_Wins ?? null,
+    koTkoLosses: fighter.KO_TKO_Losses ?? null,
+    submissionWins: fighter.Submission_Wins ?? null,
+    submissionLosses: fighter.Submission_Losses ?? null,
+    decisionWins: fighter.Decision_Wins ?? null,
+    decisionLosses: fighter.Decision_Losses ?? null
   };
 
   // Debug log for transformed fighter data
@@ -422,7 +543,7 @@ app.get('/fights', async (req, res) => {
     // Get all fights for the latest event
     const { data: fights, error: fightsError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, card_tier, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, card_tier, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('EventId', latestEvent[0].id);
 
     if (fightsError) {
@@ -510,6 +631,12 @@ app.get('/fights', async (req, res) => {
         fighter1_rank: redFighter.rank,
         fighter1_odds: redFighter.odds,
         fighter1_streak: redFighter.streak,
+        fighter1_ko_tko_wins: redFighter.koTkoWins,
+        fighter1_ko_tko_losses: redFighter.koTkoLosses,
+        fighter1_submission_wins: redFighter.submissionWins,
+        fighter1_submission_losses: redFighter.submissionLosses,
+        fighter1_decision_wins: redFighter.decisionWins,
+        fighter1_decision_losses: redFighter.decisionLosses,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -527,6 +654,12 @@ app.get('/fights', async (req, res) => {
         fighter2_rank: blueFighter.rank,
         fighter2_odds: blueFighter.odds,
         fighter2_streak: blueFighter.streak,
+        fighter2_ko_tko_wins: blueFighter.koTkoWins,
+        fighter2_ko_tko_losses: blueFighter.koTkoLosses,
+        fighter2_submission_wins: blueFighter.submissionWins,
+        fighter2_submission_losses: blueFighter.submissionLosses,
+        fighter2_decision_wins: blueFighter.decisionWins,
+        fighter2_decision_losses: blueFighter.decisionLosses,
         winner: result || null,
         is_completed: result ? true : false,
         card_tier: displayCardTier,
@@ -937,7 +1070,7 @@ app.get('/utils/image-proxy', async (req, res) => {
 });
 
 // Cancel a fight
-app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
+app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -979,7 +1112,7 @@ app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
     // Get the updated fight data to return
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -1028,6 +1161,12 @@ app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
       fighter1_rank: redFighter.rank,
       fighter1_odds: redFighter.odds,
       fighter1_streak: redFighter.Streak,
+      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
+      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
+      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
+      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
+      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
+      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -1042,6 +1181,12 @@ app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
       fighter2_image: blueFighter.ImageURL,
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
+      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
+      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
+      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
+      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
+      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
+      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
       winner: null, // No winner for canceled fights
       is_completed: false, // Canceled fights are not completed
       is_canceled: true, // Add canceled flag
@@ -1053,14 +1198,36 @@ app.post('/ufc_full_fight_card/:id/cancel', async (req, res) => {
       bout_order: redFighter.FightOrder
     };
 
+    await logAdminAction(req, {
+      action: 'fight.cancel',
+      status: 'success',
+      targetType: 'fight',
+      targetId: id,
+      eventId: event_id,
+      metadata: {
+        fight_id: id,
+        event_id,
+        fight_status: 'Canceled',
+      },
+    });
+
     res.json(transformedFight);
   } catch (error) {
     console.error('Error canceling fight:', error);
+    await logAdminAction(req, {
+      action: 'fight.cancel',
+      status: 'error',
+      targetType: 'fight',
+      targetId: req.params.id,
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ error: 'Failed to cancel fight' });
   }
 });
 
-app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
+app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
     const { winner } = req.body;
@@ -1076,7 +1243,7 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
     // First get the fight data to get the event_id and fighter IDs
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -1228,6 +1395,12 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       fighter1_image: redFighter.ImageURL,
       fighter1_country: redFighter.FightingOutOf_Country,
       fighter1_age: redFighter.Age,
+      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
+      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
+      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
+      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
+      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
+      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: blueFighter.FirstName + ' ' + blueFighter.LastName,
       fighter2_firstName: blueFighter.FirstName,
@@ -1242,6 +1415,12 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       fighter2_image: blueFighter.ImageURL,
       fighter2_country: blueFighter.FightingOutOf_Country,
       fighter2_age: blueFighter.Age,
+      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
+      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
+      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
+      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
+      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
+      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
       winner: updatedResult.fighter_id,
       is_completed: updatedResult.is_completed,
       card_tier: redFighter.CardSegment,
@@ -1251,9 +1430,32 @@ app.post('/ufc_full_fight_card/:id/result', async (req, res) => {
       bout_order: redFighter.FightOrder
     };
 
+    await logAdminAction(req, {
+      action: 'fight.result.set',
+      status: 'success',
+      targetType: 'fight',
+      targetId: id,
+      eventId: event_id,
+      metadata: {
+        fight_id: id,
+        event_id,
+        winner_id,
+        is_completed: winner_id !== null,
+      },
+    });
+
     res.json(transformedFight);
   } catch (error) {
     console.error('Error updating fight result:', error);
+    await logAdminAction(req, {
+      action: 'fight.result.set',
+      status: 'error',
+      targetType: 'fight',
+      targetId: req.params.id,
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ error: 'Failed to update fight result' });
   }
 });
@@ -2108,7 +2310,7 @@ app.get('/events', async (req, res) => {
     // Get unique EventIds from ufc_full_fight_card to check which events have fight data
     const { data: fightCardData, error: fightCardError } = await supabase
       .from('ufc_full_fight_card')
-      .select('EventId')
+      .select('EventId, StartTime')
       .order('EventId', { ascending: false });
 
     if (fightCardError) {
@@ -2118,9 +2320,20 @@ app.get('/events', async (req, res) => {
 
     // Create a set of EventIds that have fight data
     const eventIdsWithFights = new Set();
+    const eventStartTimes = new Map();
     if (fightCardData) {
       fightCardData.forEach(fight => {
         eventIdsWithFights.add(fight.EventId);
+
+        const startTime = typeof fight.StartTime === 'string' ? fight.StartTime.trim() : '';
+        if (!startTime) {
+          return;
+        }
+
+        const existingStartTime = eventStartTimes.get(fight.EventId);
+        if (!existingStartTime || Date.parse(startTime) < Date.parse(existingStartTime)) {
+          eventStartTimes.set(fight.EventId, startTime);
+        }
       });
     }
 
@@ -2138,6 +2351,7 @@ app.get('/events', async (req, res) => {
       location_city: event.location_city || null,
       location_state: event.location_state || null,
       location_country: event.location_country || null,
+      start_time: eventStartTimes.get(event.id) || null,
       image_url: event.image_url,
       has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
@@ -2151,6 +2365,480 @@ app.get('/events', async (req, res) => {
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  }
+});
+
+app.get('/events/:id/start-time', async (req, res) => {
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    res.set('Cache-Control', 'no-store');
+
+    const { data, error } = await supabase
+      .from('ufc_full_fight_card')
+      .select('StartTime, CardSegment, CardSegmentStartTime')
+      .eq('EventId', eventId)
+      .order('CardSegmentStartTime', { ascending: true, nullsFirst: false })
+      .order('StartTime', { ascending: true, nullsFirst: false });
+
+    if (error) {
+      console.error('Error fetching event start time:', error);
+      return res.status(500).json({ error: 'Failed to fetch event start time', details: error.message });
+    }
+
+    const earliestStartTime = (data || []).reduce((earliest, row) => {
+      const candidate = typeof row?.StartTime === 'string' ? row.StartTime.trim() : '';
+      if (!candidate) return earliest;
+      if (!earliest || Date.parse(candidate) < Date.parse(earliest)) {
+        return candidate;
+      }
+      return earliest;
+    }, null);
+
+    const cardStartTimes = {
+      early_prelims: null,
+      prelims: null,
+      main_card: null,
+    };
+
+    (data || []).forEach((row) => {
+      const segment = typeof row?.CardSegment === 'string' ? row.CardSegment.trim() : '';
+      const segmentStartTime = typeof row?.CardSegmentStartTime === 'string'
+        ? row.CardSegmentStartTime.trim()
+        : '';
+
+      if (!segment || !segmentStartTime) {
+        return;
+      }
+
+      let key = null;
+      if (segment === 'Prelims2') {
+        key = 'early_prelims';
+      } else if (segment === 'Prelims1') {
+        key = 'prelims';
+      } else if (segment === 'Main') {
+        key = 'main_card';
+      }
+
+      if (!key) {
+        return;
+      }
+
+      if (!cardStartTimes[key] || Date.parse(segmentStartTime) < Date.parse(cardStartTimes[key])) {
+        cardStartTimes[key] = segmentStartTime;
+      }
+    });
+
+    return res.json({
+      start_time: earliestStartTime,
+      card_start_times: cardStartTimes,
+    });
+  } catch (error) {
+    console.error('Unexpected error in GET /events/:id/start-time:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  let scraperOutput = null;
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    await cleanupExpiredFightCardPreviews();
+
+    const [
+      { data: eventRecord, error: eventError },
+      { data: existingFightCardRows, error: existingFightCardError },
+    ] = await Promise.all([
+      supabase
+        .from('events')
+        .select('id, name, date, venue, location_city, location_state, location_country, image_url')
+        .eq('id', eventId)
+        .maybeSingle(),
+      supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, FighterId, Corner')
+        .eq('EventId', eventId),
+    ]);
+
+    if (eventError) {
+      console.error('Error fetching event for fight-card preview:', eventError);
+      return res.status(500).json({ error: 'Failed to load event metadata' });
+    }
+
+    if (existingFightCardError) {
+      console.error('Error fetching existing fight-card rows for preview:', existingFightCardError);
+      return res.status(500).json({ error: 'Failed to load existing fight-card rows' });
+    }
+
+    const existingFightIds = Array.from(
+      new Set((existingFightCardRows || []).map((row) => row.FightId).filter(Boolean))
+    );
+
+    let existingFightResults = [];
+    if (existingFightIds.length > 0) {
+      const { data, error } = await supabase
+        .from('fight_results')
+        .select('fight_id, fighter_id, is_completed')
+        .in('fight_id', existingFightIds);
+
+      if (error) {
+        console.error('Error fetching existing fight results for preview:', error);
+        return res.status(500).json({ error: 'Failed to load existing fight results' });
+      }
+
+      existingFightResults = data || [];
+    }
+
+    scraperOutput = await runFightCardScraper({
+      eventId,
+      repoRoot: REPO_ROOT,
+    });
+
+    const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
+    const preview = await buildFightCardPreview({
+      eventId,
+      csvPath: scraperOutput.csvPath,
+      headers: parsedCsv.headers,
+      rows: parsedCsv.rows,
+      headerErrors: parsedCsv.headerErrors,
+      eventRecord,
+      existingFightCardRows,
+      existingFightResults,
+      scraperOutput,
+    });
+
+    const { rows, ...previewSummary } = preview;
+
+    if (preview.blockers.length > 0) {
+      await logAdminAction(req, {
+        action: 'fight_card.preview',
+        status: 'error',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: {
+          rowCount: preview.rowCount,
+          fightCount: preview.fightCount,
+          blockerCount: preview.blockers.length,
+          blockers: preview.blockers,
+          csvFileName: preview.csvFileName,
+        },
+      });
+      await removePreviewAssets(scraperOutput.scratchDir);
+      return res.json({
+        ...previewSummary,
+        previewToken: null,
+        expiresAt: null,
+      });
+    }
+
+    const storedPreview = await replaceFightCardPreview({
+      ...preview,
+      scratchDir: scraperOutput.scratchDir,
+    });
+
+    await logAdminAction(req, {
+      action: 'fight_card.preview',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowCount: preview.rowCount,
+        fightCount: preview.fightCount,
+        warningCount: preview.warnings.length,
+        warnings: preview.warnings,
+        csvFileName: preview.csvFileName,
+        changedFightCard: preview.changedFightCard,
+        existingFightCardRowCount: preview.existingFightCardRowCount,
+        existingFightResultCount: preview.existingFightResultCount,
+      },
+    });
+
+    return res.json({
+      ...previewSummary,
+      previewToken: storedPreview.previewToken,
+      expiresAt: storedPreview.expiresAt,
+    });
+  } catch (error) {
+    if (scraperOutput?.scratchDir) {
+      await removePreviewAssets(scraperOutput.scratchDir);
+    }
+
+    console.error('Error building fight-card preview:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.preview',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to build fight-card preview',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    const previewToken = typeof req.body?.previewToken === 'string'
+      ? req.body.previewToken.trim()
+      : '';
+
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    if (!previewToken) {
+      return res.status(400).json({ error: 'previewToken is required' });
+    }
+
+    await cleanupExpiredFightCardPreviews();
+
+    const preview = getFightCardPreview(previewToken, eventId);
+    if (!preview) {
+      return res.status(404).json({ error: 'Preview token was not found or has expired' });
+    }
+
+    if (preview.blockers.length > 0) {
+      return res.status(400).json({
+        error: 'Preview contains blockers and cannot be imported',
+        blockers: preview.blockers,
+      });
+    }
+
+    const { data: importResult, error: importError } = await supabase.rpc(
+      'replace_ufc_full_fight_card_event',
+      {
+        p_event_id: eventId,
+        p_event_name: preview.previewEvent.name,
+        p_event_date: preview.previewEvent.date,
+        p_venue: preview.previewEvent.venue,
+        p_location_city: preview.previewEvent.location_city,
+        p_location_state: preview.previewEvent.location_state,
+        p_location_country: preview.previewEvent.location_country,
+        p_rows: preview.rows,
+      }
+    );
+
+    if (importError) {
+      console.error('Error importing fight card:', importError);
+      return res.status(500).json({
+        error: 'Failed to import fight card',
+        details: importError.message,
+      });
+    }
+
+    const eventImageUpdate = await backfillEventImageIfMissing({
+      supabase,
+      eventId,
+      currentImageUrl: preview.currentEvent?.image_url,
+      fallbackImageUrl: preview.previewEvent?.tapology_event_image_url,
+    });
+
+    const fighterStyleSync = await syncFighterStyleFromFightCardRows({
+      supabase,
+      fightCardRows: preview.rows,
+    });
+
+    await deleteFightCardPreview(previewToken);
+
+    await logAdminAction(req, {
+      action: 'fight_card.import',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowCount: preview.rowCount,
+        fightCount: preview.fightCount,
+        csvFileName: preview.csvFileName,
+        deleted_count: importResult?.deleted_count ?? null,
+        inserted_count: importResult?.inserted_count ?? null,
+        event_image_update: eventImageUpdate,
+        warnings: preview.warnings,
+        fighter_style_sync: fighterStyleSync,
+      },
+    });
+
+    return res.json({
+      event_id: eventId,
+      rowCount: preview.rowCount,
+      fightCount: preview.fightCount,
+      previewEvent: preview.previewEvent,
+      importResult,
+      eventImageUpdate,
+      fighterStyleSync,
+    });
+  } catch (error) {
+    console.error('Error importing fight card:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.import',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to import fight card',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  let scraperOutput = null;
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const { data: existingFightCardRows, error: existingFightCardError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('id, FightId, FighterId, Corner, odds')
+      .eq('EventId', eventId);
+
+    if (existingFightCardError) {
+      console.error('Error loading existing fight-card rows for odds refresh:', existingFightCardError);
+      return res.status(500).json({ error: 'Failed to load existing fight-card rows' });
+    }
+
+    scraperOutput = await runFightCardScraper({
+      eventId,
+      repoRoot: REPO_ROOT,
+    });
+
+    const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
+    if (parsedCsv.headerErrors.length > 0) {
+      await logAdminAction(req, {
+        action: 'fight_card.refresh_odds',
+        status: 'error',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: {
+          blockerCount: parsedCsv.headerErrors.length,
+          blockers: parsedCsv.headerErrors,
+        },
+      });
+      return res.status(400).json({
+        error: 'Scraper CSV headers were invalid',
+        blockers: parsedCsv.headerErrors,
+      });
+    }
+
+    const refreshPlan = buildOddsRefreshPlan({
+      eventId,
+      scrapedRows: parsedCsv.rows,
+      existingFightCardRows: existingFightCardRows || [],
+    });
+
+    if (refreshPlan.blockers.length > 0) {
+      await logAdminAction(req, {
+        action: 'fight_card.refresh_odds',
+        status: 'error',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: {
+          blockerCount: refreshPlan.blockers.length,
+          blockers: refreshPlan.blockers,
+          warningCount: refreshPlan.warnings.length,
+          warnings: refreshPlan.warnings,
+        },
+      });
+      return res.status(409).json({
+        error: 'Odds refresh could not be completed',
+        blockers: refreshPlan.blockers,
+        warnings: refreshPlan.warnings,
+      });
+    }
+
+    for (const update of refreshPlan.updates) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update({ odds: update.to })
+        .eq('id', update.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update odds for fight ${update.FightId}: ${updateError.message}`);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.refresh_odds',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        updatedCount: refreshPlan.updatedCount,
+        unchangedCount: refreshPlan.unchangedCount,
+        missingOddsCount: refreshPlan.missingOddsCount,
+        warningCount: refreshPlan.warnings.length,
+        warnings: refreshPlan.warnings,
+      },
+    });
+
+    return res.json({
+      eventId,
+      updatedCount: refreshPlan.updatedCount,
+      unchangedCount: refreshPlan.unchangedCount,
+      missingOddsCount: refreshPlan.missingOddsCount,
+      warnings: refreshPlan.warnings,
+      updatedRows: refreshPlan.updates.map((update) => ({
+        FightId: update.FightId,
+        FighterId: update.FighterId,
+        Corner: update.Corner,
+        fighterName: update.fighterName,
+        from: update.from,
+        to: update.to,
+      })),
+    });
+  } catch (error) {
+    console.error('Error refreshing odds:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.refresh_odds',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to refresh odds',
+      details: error.message,
+    });
+  } finally {
+    if (scraperOutput?.scratchDir) {
+      await removePreviewAssets(scraperOutput.scratchDir);
+    }
   }
 });
 
@@ -2174,7 +2862,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // Get fights for the event from ufc_full_fight_card
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('EventId', id)
       .order('FightOrder');
 
@@ -2277,6 +2965,12 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter1_rank: redFighter.rank,
         fighter1_odds: redFighter.odds,
         fighter1_streak: redFighter.streak,
+        fighter1_ko_tko_wins: redFighter.koTkoWins,
+        fighter1_ko_tko_losses: redFighter.koTkoLosses,
+        fighter1_submission_wins: redFighter.submissionWins,
+        fighter1_submission_losses: redFighter.submissionLosses,
+        fighter1_decision_wins: redFighter.decisionWins,
+        fighter1_decision_losses: redFighter.decisionLosses,
         fighter2_id: blueFighter.id,
         fighter2_name: blueFighter.name,
         fighter2_firstName: blueFighter.firstName,
@@ -2294,6 +2988,12 @@ app.get('/events/:id/fights', async (req, res) => {
         fighter2_rank: blueFighter.rank,
         fighter2_odds: blueFighter.odds,
         fighter2_streak: blueFighter.streak,
+        fighter2_ko_tko_wins: blueFighter.koTkoWins,
+        fighter2_ko_tko_losses: blueFighter.koTkoLosses,
+        fighter2_submission_wins: blueFighter.submissionWins,
+        fighter2_submission_losses: blueFighter.submissionLosses,
+        fighter2_decision_wins: blueFighter.decisionWins,
+        fighter2_decision_losses: blueFighter.decisionLosses,
         winner: result?.winner || null,
         is_completed: result?.is_completed || false,
         is_canceled: fighters.red.FightStatus === 'Canceled' || fighters.blue.FightStatus === 'Canceled',
@@ -2405,7 +3105,7 @@ app.get('/events/:id/leaderboard', async (req, res) => {
 });
 
 // Finalize an event, update Supabase status, and persist winners
-app.post('/events/:id/finalize', async (req, res) => {
+app.post('/events/:id/finalize', requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
     const eventId = Number(id);
@@ -2478,6 +3178,19 @@ app.post('/events/:id/finalize', async (req, res) => {
       }
     }
 
+    await logAdminAction(req, {
+      action: 'event.finalize',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        status: targetStatus,
+        leaderboard_size: leaderboard.length,
+        winner_count: winners.length,
+      },
+    });
+
     res.json({
       event_id: eventId,
       status: targetStatus,
@@ -2485,6 +3198,16 @@ app.post('/events/:id/finalize', async (req, res) => {
     });
   } catch (error) {
     console.error('Error finalizing event:', error);
+    await logAdminAction(req, {
+      action: 'event.finalize',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ 
       error: 'Failed to finalize event',
       details: error.message
@@ -2493,7 +3216,7 @@ app.post('/events/:id/finalize', async (req, res) => {
 });
 
 // Backfill event winners for events that are already Final/completed
-app.post('/events/backfill-winners', async (req, res) => {
+app.post('/events/backfill-winners', requireAdminSession, async (req, res) => {
   try {
     const body = req.body || {};
     let targetIds = [];
@@ -2600,6 +3323,17 @@ app.post('/events/backfill-winners', async (req, res) => {
       }
     }
 
+    await logAdminAction(req, {
+      action: 'event.backfill_winners',
+      status: 'success',
+      targetType: 'event_batch',
+      metadata: {
+        requested_event_ids: targetIds,
+        processed_count: processed.length,
+        skipped_count: skipped.length,
+      },
+    });
+
     res.json({
       processed: processed.length,
       processed_events: processed,
@@ -2607,6 +3341,14 @@ app.post('/events/backfill-winners', async (req, res) => {
     });
   } catch (error) {
     console.error('Error backfilling event winners:', error);
+    await logAdminAction(req, {
+      action: 'event.backfill_winners',
+      status: 'error',
+      targetType: 'event_batch',
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({
       error: 'Failed to backfill event winners',
       details: error.message
@@ -2622,7 +3364,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
       .eq('FightId', id);
 
     if (getFightError) {
@@ -2683,6 +3425,12 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter1_rank: redFighter.rank,
       fighter1_odds: redFighter.odds,
       fighter1_streak: redFighter.Streak,
+      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
+      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
+      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
+      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
+      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
+      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
       fighter2_id: blueFighter.FighterId,
       fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
       fighter2_firstName: blueFighter.FirstName,
@@ -2700,6 +3448,12 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       fighter2_rank: blueFighter.rank,
       fighter2_odds: blueFighter.odds,
       fighter2_streak: blueFighter.Streak,
+      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
+      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
+      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
+      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
+      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
+      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
       winner: fightResult?.fighter_id || null,
       is_completed: fightResult?.is_completed || false,
       card_tier: redFighter.CardSegment,
@@ -2717,7 +3471,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
 });
 
 // Migration endpoint to fix fight results
-app.post('/migrate/fight-results', async (req, res) => {
+app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
   try {
     // Get all fight results
     const { data: fightResults, error: resultsError } = await supabase
@@ -2843,9 +3597,26 @@ app.post('/migrate/fight-results', async (req, res) => {
       }
     }
 
+    await logAdminAction(req, {
+      action: 'migration.fight_results',
+      status: 'success',
+      targetType: 'migration',
+      metadata: {
+        updated_count: updates.length,
+      },
+    });
+
     res.json({ message: `Successfully updated ${updates.length} fight results` });
   } catch (error) {
     console.error('Error in migration:', error);
+    await logAdminAction(req, {
+      action: 'migration.fight_results',
+      status: 'error',
+      targetType: 'migration',
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ error: 'Migration failed' });
   }
 });
@@ -2862,6 +3633,7 @@ app.get('/user/:username', async (req, res) => {
       .select(`
         username, 
         phone_number, 
+        user_type,
         created_at, 
         selected_playercard_id,
         playercards!selected_playercard_id (
@@ -2899,6 +3671,7 @@ app.get('/user/by-id/:user_id', async (req, res) => {
       .select(`
         username, 
         phone_number, 
+        user_type,
         created_at, 
         selected_playercard_id,
         playercards!selected_playercard_id (
@@ -4468,14 +5241,9 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
 });
 
 // Admin endpoint to set user type (for development/setup purposes)
-app.post('/admin/set-user-type', async (req, res) => {
+app.post('/admin/set-user-type', requireAdminSession, async (req, res) => {
   try {
-    const { username, user_type, admin_key } = req.body;
-    
-    // Simple admin key check (you should change this in production)
-    if (admin_key !== 'fight_picker_admin_2024') {
-      return res.status(403).json({ error: 'Invalid admin key' });
-    }
+    const { username, user_type } = req.body;
     
     if (!username || !user_type) {
       return res.status(400).json({ error: 'Username and user_type are required' });
@@ -4489,7 +5257,7 @@ app.post('/admin/set-user-type', async (req, res) => {
       .from('users')
       .update({ user_type })
       .eq('username', username)
-      .select('username, user_type')
+      .select('user_id, username, user_type')
       .single();
     
     if (error) {
@@ -4500,6 +5268,25 @@ app.post('/admin/set-user-type', async (req, res) => {
     if (!data) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    if (user_type !== 'admin') {
+      await revokeAdminSessionsForUser({
+        supabase,
+        userId: data.user_id,
+        reason: 'user_role_changed',
+      });
+    }
+
+    await logAdminAction(req, {
+      action: 'user.role.update',
+      status: 'success',
+      targetType: 'user',
+      targetId: data.user_id,
+      metadata: {
+        username: data.username,
+        user_type: data.user_type,
+      },
+    });
     
     res.json({ 
       message: `User ${username} has been set to ${user_type}`,
@@ -4507,6 +5294,16 @@ app.post('/admin/set-user-type', async (req, res) => {
     });
   } catch (error) {
     console.error('Set user type error:', error);
+    await logAdminAction(req, {
+      action: 'user.role.update',
+      status: 'error',
+      targetType: 'user',
+      targetId: req.body?.username || null,
+      metadata: {
+        message: error.message,
+        requested_user_type: req.body?.user_type || null,
+      },
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -4761,7 +5558,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
 });
 
 // Database migration endpoint (run once to add required_event_id column)
-app.post('/migrate/add-playercard-event-requirements', async (req, res) => {
+app.post('/migrate/add-playercard-event-requirements', requireAdminSession, async (req, res) => {
   try {
     // Add required_event_id column to playercards table
     const { error } = await supabase.rpc('exec_sql', {
@@ -4776,15 +5573,29 @@ app.post('/migrate/add-playercard-event-requirements', async (req, res) => {
       return res.status(500).json({ error: 'Migration failed', details: error.message });
     }
     
+    await logAdminAction(req, {
+      action: 'migration.playercard_event_requirements',
+      status: 'success',
+      targetType: 'migration',
+    });
+
     res.json({ message: 'Migration completed successfully' });
   } catch (error) {
     console.error('Migration error:', error);
+    await logAdminAction(req, {
+      action: 'migration.playercard_event_requirements',
+      status: 'error',
+      targetType: 'migration',
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ error: 'Migration failed', details: error.message });
   }
 });
 
 // Endpoint to set event requirements for specific playercards
-app.patch('/playercards/:id/event-requirement', async (req, res) => {
+app.patch('/playercards/:id/event-requirement', requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
     const { required_event_id } = req.body;
@@ -4823,12 +5634,34 @@ app.patch('/playercards/:id/event-requirement', async (req, res) => {
       return res.status(404).json({ error: 'Playercard not found' });
     }
     
+    await logAdminAction(req, {
+      action: 'playercard.event_requirement.update',
+      status: 'success',
+      targetType: 'playercard',
+      targetId: id,
+      eventId: required_event_id,
+      metadata: {
+        required_event_id,
+        playercard_name: updatedCard.name,
+      },
+    });
+
     res.json({
       message: 'Playercard event requirement updated successfully',
       playercard: updatedCard
     });
   } catch (error) {
     console.error('Update playercard requirement error:', error);
+    await logAdminAction(req, {
+      action: 'playercard.event_requirement.update',
+      status: 'error',
+      targetType: 'playercard',
+      targetId: req.params.id,
+      eventId: req.body?.required_event_id,
+      metadata: {
+        message: error.message,
+      },
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

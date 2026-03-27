@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
+import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -72,8 +73,143 @@ const HEART_EYES_MESSAGES = [
   "We'll remember this is your certified killer."
 ];
 
-function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh }) {
+const FINISH_METHOD_BREAKDOWN = [
+  {
+    label: 'KO/TKO',
+    winsKey: 'ko_tko_wins',
+    lossesKey: 'ko_tko_losses'
+  },
+  {
+    label: 'Submission',
+    winsKey: 'submission_wins',
+    lossesKey: 'submission_losses'
+  },
+  {
+    label: 'Decision',
+    winsKey: 'decision_wins',
+    lossesKey: 'decision_losses'
+  }
+];
+
+function parseMethodCount(value) {
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+}
+
+function parseRecordTotals(record) {
+  const match = String(record || '').match(/(\d+)\s*-\s*(\d+)/);
+
+  return {
+    wins: match ? Number(match[1]) : 0,
+    losses: match ? Number(match[2]) : 0
+  };
+}
+
+function hasMethodValue(value) {
+  return value !== null && value !== undefined && value !== '';
+}
+
+function getMethodWidth(count, total) {
+  if (!total || count <= 0) {
+    return 0;
+  }
+
+  return Math.min((count / total) * 100, 100);
+}
+
+function getMethodPercentLabel(count, total) {
+  if (!total) {
+    return '--';
+  }
+
+  return `${Math.round((count / total) * 100)}%`;
+}
+
+function FinishMethodBreakdown({ fight, fighterKey }) {
+  const recordTotals = parseRecordTotals(fight?.[`${fighterKey}_record`]);
+  const hasAnyMethodData = FINISH_METHOD_BREAKDOWN.some(({ winsKey, lossesKey }) => (
+    hasMethodValue(fight?.[`${fighterKey}_${winsKey}`]) ||
+    hasMethodValue(fight?.[`${fighterKey}_${lossesKey}`])
+  ));
+
+  if (!hasAnyMethodData) {
+    return (
+      <div className="finish-method-breakdown finish-method-breakdown--empty">
+        <div className="finish-method-breakdown-header">
+          <span className="finish-method-breakdown-title">Method Breakdown</span>
+          <span className="finish-method-breakdown-empty-copy">Unavailable</span>
+        </div>
+      </div>
+    );
+  }
+
+  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey }) => ({
+    label,
+    wins: parseMethodCount(fight?.[`${fighterKey}_${winsKey}`]),
+    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`])
+  }));
+
+  const fallbackWins = rows.reduce((total, row) => total + row.wins, 0);
+  const fallbackLosses = rows.reduce((total, row) => total + row.losses, 0);
+  const totalWins = recordTotals.wins || fallbackWins;
+  const totalLosses = recordTotals.losses || fallbackLosses;
+
+  return (
+    <div className="finish-method-breakdown">
+      <div className="finish-method-breakdown-header">
+        <span className="finish-method-breakdown-title">Method Breakdown</span>
+        <span className="finish-method-breakdown-summary">
+          {totalWins}W • {totalLosses}L
+        </span>
+      </div>
+      <div className="finish-method-breakdown-list">
+        {rows.map((row) => {
+          const winWidth = getMethodWidth(row.wins, totalWins);
+          const lossWidth = getMethodWidth(row.losses, totalLosses);
+
+          return (
+            <div
+              key={row.label}
+              className="finish-method-row"
+              aria-label={`${row.label}: ${row.wins} wins and ${row.losses} losses by this method`}
+            >
+              <div className="finish-method-row-top">
+                <span className="finish-method-name">{row.label}</span>
+                <span className="finish-method-counts">{row.wins}W • {row.losses}L</span>
+              </div>
+              <div className="finish-method-lanes">
+                <div className="finish-method-lane">
+                  <span className="finish-method-lane-label finish-method-lane-label--win">W</span>
+                  <div className="finish-method-track" aria-hidden="true">
+                    <div
+                      className="finish-method-fill finish-method-fill--win"
+                      style={{ width: `${winWidth}%` }}
+                    />
+                  </div>
+                  <span className="finish-method-percent">{getMethodPercentLabel(row.wins, totalWins)}</span>
+                </div>
+                <div className="finish-method-lane">
+                  <span className="finish-method-lane-label finish-method-lane-label--loss">L</span>
+                  <div className="finish-method-track" aria-hidden="true">
+                    <div
+                      className="finish-method-fill finish-method-fill--loss"
+                      style={{ width: `${lossWidth}%` }}
+                    />
+                  </div>
+                  <span className="finish-method-percent">{getMethodPercentLabel(row.losses, totalLosses)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, refreshToken = 0 }) {
   const currentSeasonYear = new Date().getFullYear();
+  const canManageAdminActions = user_type === 'admin' && hasActiveAdminSession();
   const reminderStorageKey = `voteReminders_${user_id || username || 'guest'}`;
   const normalizeReminderMap = useCallback((rows) => {
     if (!Array.isArray(rows)) {
@@ -97,6 +233,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openRankTooltipId, setOpenRankTooltipId] = useState(null);
   const [selectedFights, setSelectedFights] = useState(() => {
     // Initialize from localStorage if available
     const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
@@ -137,10 +274,84 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
     cacheKeys.forEach((key) => invalidateCache(key));
   }, []);
 
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (event.target.closest('.rank-tooltip-wrap')) {
+        return;
+      }
+      setOpenRankTooltipId(null);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setOpenRankTooltipId(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const renderFighterRank = (rank, tooltipId) => {
+    if (rank === 0) {
+      return <span className="champion-rank">C</span>;
+    }
+
+    if (!rank) {
+      return 'NR';
+    }
+
+    const numericRank = Number(rank);
+    const isUnofficialRank = Number.isFinite(numericRank) && numericRank > 15;
+    const isTooltipOpen = openRankTooltipId === tooltipId;
+
+    return (
+      <span className="fighter-rank-value">
+        <span>{rank}</span>
+        {isUnofficialRank && (
+          <span
+            className={`rank-tooltip-wrap ${isTooltipOpen ? 'is-open' : ''}`}
+            onMouseEnter={() => setOpenRankTooltipId(tooltipId)}
+            onMouseLeave={() => setOpenRankTooltipId((prev) => (prev === tooltipId ? null : prev))}
+          >
+            <span
+              role="button"
+              tabIndex={0}
+              className="rank-tooltip-trigger"
+              aria-label="Unofficial rank by Tapology"
+              aria-expanded={isTooltipOpen ? 'true' : 'false'}
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpenRankTooltipId((prev) => (prev === tooltipId ? null : tooltipId));
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setOpenRankTooltipId((prev) => (prev === tooltipId ? null : tooltipId));
+                }
+              }}
+            >
+              *
+            </span>
+            <span className="rank-tooltip" role="tooltip">
+              Unofficial rank by Tapology
+            </span>
+          </span>
+        )}
+      </span>
+    );
+  };
+
   // Admin function to handle fight result updates
   const handleResultUpdate = async (fightId, winner) => {
     try {
-      const response = await fetch(`${API_URL}/ufc_full_fight_card/${fightId}/result`, {
+      const response = await fetchWithAdminSession(`${API_URL}/ufc_full_fight_card/${fightId}/result`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -188,7 +399,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
     }
 
     try {
-      const response = await fetch(`${API_URL}/ufc_full_fight_card/${fightId}/cancel`, {
+      const response = await fetchWithAdminSession(`${API_URL}/ufc_full_fight_card/${fightId}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -263,7 +474,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
           setLoading(false);
         });
     }
-  }, [eventId, user_id]);
+  }, [eventId, user_id, refreshToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -951,7 +1162,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter1_rank === 0 ? <span className="champion-rank">C</span> : (fight.fighter1_rank || 'N/A')}</span>
+                  <span>{renderFighterRank(fight.fighter1_rank, `${fight.id}-fighter1-rank`)}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -994,6 +1205,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
                     <span className="stat-label">Streak</span>
                     <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
                   </div>
+                  <FinishMethodBreakdown fight={fight} fighterKey="fighter1" />
                   {(() => {
                     const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter1_id);
                     if (!lastVoteOutcome) return null;
@@ -1118,7 +1330,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
               <div className="stat-container">
                 <div className="stat-row">
                   <span className="stat-label">Rank</span>
-                  <span>{fight.fighter2_rank === 0 ? <span className="champion-rank">C</span> : (fight.fighter2_rank || 'N/A')}</span>
+                  <span>{renderFighterRank(fight.fighter2_rank, `${fight.id}-fighter2-rank`)}</span>
                 </div>
                 <div className="stat-row">
                   <span className="stat-label">Record</span>
@@ -1161,6 +1373,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
                     <span className="stat-label">Streak</span>
                     <span>{fight.fighter2_streak !== null ? formatStreak(fight.fighter2_streak) : 'N/A'}</span>
                   </div>
+                  <FinishMethodBreakdown fight={fight} fighterKey="fighter2" />
                   {(() => {
                     const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter2_id);
                     if (!lastVoteOutcome) return null;
@@ -1372,7 +1585,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh })
           </div>
 
           {/* Admin Controls - only show for admin users */}
-          {user_type === 'admin' && (
+          {canManageAdminActions && (
             <div className="admin-controls">
               <button 
                 className="expand-admin-button"
