@@ -16,6 +16,7 @@ const {
 } = require('./lib/fighterStyleSync');
 const {
   backfillEventImageIfMissing,
+  buildOddsRefreshPlan,
   buildFightCardPreview,
   cleanupExpiredFightCardPreviews,
   deleteFightCardPreview,
@@ -2702,6 +2703,142 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       error: 'Failed to import fight card',
       details: error.message,
     });
+  }
+});
+
+app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  let scraperOutput = null;
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const { data: existingFightCardRows, error: existingFightCardError } = await supabase
+      .from('ufc_full_fight_card')
+      .select('id, FightId, FighterId, Corner, odds')
+      .eq('EventId', eventId);
+
+    if (existingFightCardError) {
+      console.error('Error loading existing fight-card rows for odds refresh:', existingFightCardError);
+      return res.status(500).json({ error: 'Failed to load existing fight-card rows' });
+    }
+
+    scraperOutput = await runFightCardScraper({
+      eventId,
+      repoRoot: REPO_ROOT,
+    });
+
+    const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
+    if (parsedCsv.headerErrors.length > 0) {
+      await logAdminAction(req, {
+        action: 'fight_card.refresh_odds',
+        status: 'error',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: {
+          blockerCount: parsedCsv.headerErrors.length,
+          blockers: parsedCsv.headerErrors,
+        },
+      });
+      return res.status(400).json({
+        error: 'Scraper CSV headers were invalid',
+        blockers: parsedCsv.headerErrors,
+      });
+    }
+
+    const refreshPlan = buildOddsRefreshPlan({
+      eventId,
+      scrapedRows: parsedCsv.rows,
+      existingFightCardRows: existingFightCardRows || [],
+    });
+
+    if (refreshPlan.blockers.length > 0) {
+      await logAdminAction(req, {
+        action: 'fight_card.refresh_odds',
+        status: 'error',
+        targetType: 'event',
+        targetId: eventId,
+        eventId,
+        metadata: {
+          blockerCount: refreshPlan.blockers.length,
+          blockers: refreshPlan.blockers,
+          warningCount: refreshPlan.warnings.length,
+          warnings: refreshPlan.warnings,
+        },
+      });
+      return res.status(409).json({
+        error: 'Odds refresh could not be completed',
+        blockers: refreshPlan.blockers,
+        warnings: refreshPlan.warnings,
+      });
+    }
+
+    for (const update of refreshPlan.updates) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update({ odds: update.to })
+        .eq('id', update.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update odds for fight ${update.FightId}: ${updateError.message}`);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.refresh_odds',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        updatedCount: refreshPlan.updatedCount,
+        unchangedCount: refreshPlan.unchangedCount,
+        missingOddsCount: refreshPlan.missingOddsCount,
+        warningCount: refreshPlan.warnings.length,
+        warnings: refreshPlan.warnings,
+      },
+    });
+
+    return res.json({
+      eventId,
+      updatedCount: refreshPlan.updatedCount,
+      unchangedCount: refreshPlan.unchangedCount,
+      missingOddsCount: refreshPlan.missingOddsCount,
+      warnings: refreshPlan.warnings,
+      updatedRows: refreshPlan.updates.map((update) => ({
+        FightId: update.FightId,
+        FighterId: update.FighterId,
+        Corner: update.Corner,
+        fighterName: update.fighterName,
+        from: update.from,
+        to: update.to,
+      })),
+    });
+  } catch (error) {
+    console.error('Error refreshing odds:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.refresh_odds',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to refresh odds',
+      details: error.message,
+    });
+  } finally {
+    if (scraperOutput?.scratchDir) {
+      await removePreviewAssets(scraperOutput.scratchDir);
+    }
   }
 });
 

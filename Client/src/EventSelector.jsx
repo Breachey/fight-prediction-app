@@ -111,6 +111,7 @@ function EventSelector({
   const [finalizeFeedback, setFinalizeFeedback] = useState(null);
   const [previewingEventId, setPreviewingEventId] = useState(null);
   const [importingEventId, setImportingEventId] = useState(null);
+  const [refreshingOddsEventId, setRefreshingOddsEventId] = useState(null);
   const [fightCardFeedback, setFightCardFeedback] = useState(null);
   const [fightCardPreview, setFightCardPreview] = useState(null);
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
@@ -396,7 +397,9 @@ function EventSelector({
     && (fightCardPreview?.blockers?.length || 0) === 0;
   const hasFightCardPreview = Boolean(fightCardPreview);
   const isFightCardActionBusy = selectedEvent
-    ? previewingEventId === selectedEvent.id || importingEventId === selectedEvent.id
+    ? previewingEventId === selectedEvent.id
+      || importingEventId === selectedEvent.id
+      || refreshingOddsEventId === selectedEvent.id
     : false;
   const previewStatusMessage = fightCardPreview
     ? fightCardPreview.existingFightCardRowCount > 0
@@ -621,6 +624,51 @@ function EventSelector({
       });
     } finally {
       setImportingEventId(null);
+    }
+  };
+
+  const handleRefreshOdds = async (event) => {
+    if (!event?.id) return;
+
+    setAdminAccessFeedback(null);
+    setFightCardFeedback(null);
+    setRefreshingOddsEventId(event.id);
+
+    try {
+      const response = await fetchWithAdminSession(
+        `${API_URL}/admin/events/${event.id}/refresh-odds`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(buildApiErrorMessage(payload, 'Failed to refresh odds'));
+      }
+
+      invalidateEventCaches(event.id);
+      onFightCardImportComplete?.(event.id);
+      const baseMessage = payload.updatedCount > 0
+        ? `Updated odds on ${payload.updatedCount} fighter row${payload.updatedCount === 1 ? '' : 's'}.`
+        : `No odds changed. ${payload.unchangedCount || 0} fighter row${payload.unchangedCount === 1 ? '' : 's'} already matched.`;
+      const warningSuffix = payload.missingOddsCount > 0
+        ? ` ${payload.missingOddsCount} row${payload.missingOddsCount === 1 ? '' : 's'} came back without odds and were left unchanged.`
+        : '';
+      setFightCardFeedback({
+        type: 'success',
+        message: `${baseMessage}${warningSuffix}`
+      });
+    } catch (err) {
+      setFightCardFeedback({
+        type: 'error',
+        message: err.message || 'Failed to refresh odds'
+      });
+    } finally {
+      setRefreshingOddsEventId(null);
     }
   };
 
@@ -908,6 +956,13 @@ function EventSelector({
                   )}
                 </div>
                 <div className="event-admin-secondary-actions">
+                  <button
+                    className="event-admin-secondary-button"
+                    onClick={() => handleRefreshOdds(selectedEvent)}
+                    disabled={isFightCardActionBusy || selectedEvent.has_fight_data === false}
+                  >
+                    {refreshingOddsEventId === selectedEvent.id ? 'Refreshing Odds...' : 'Refresh Odds'}
+                  </button>
                   {hasFightCardPreview && (
                     <button
                       className="event-admin-secondary-button"

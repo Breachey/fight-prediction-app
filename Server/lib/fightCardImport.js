@@ -263,6 +263,103 @@ function compareFightCardShape(existingRows, previewRows) {
   return false;
 }
 
+function buildFightCardSignature(row) {
+  return [
+    parseInteger(row?.FightId),
+    normalizeText(row?.Corner),
+    parseInteger(row?.FighterId),
+  ].join('|');
+}
+
+function buildOddsRefreshPlan({
+  eventId,
+  scrapedRows,
+  existingFightCardRows,
+}) {
+  const blockers = [];
+  const warnings = [];
+  const existingRows = existingFightCardRows || [];
+  const sanitizedRows = (scrapedRows || []).map(sanitizeRowForDatabase);
+
+  if (existingRows.length === 0) {
+    blockers.push(`Event ${eventId} has no stored fight-card rows. Import the fight card before refreshing odds.`);
+  }
+
+  if (sanitizedRows.length === 0) {
+    blockers.push('The scraper returned zero fight-card rows.');
+  }
+
+  const changedFightCard = compareFightCardShape(
+    existingRows,
+    sanitizedRows.map((row) => ({
+      FightId: parseInteger(row.FightId),
+      Corner: row.Corner,
+      FighterId: parseInteger(row.FighterId),
+    }))
+  );
+
+  if (changedFightCard) {
+    blockers.push('The scraped fight card no longer matches the stored event fights. Run a full fight-card refresh instead.');
+  }
+
+  const existingBySignature = new Map(
+    existingRows.map((row) => [buildFightCardSignature(row), row])
+  );
+
+  const updates = [];
+  let matchedRowCount = 0;
+  let missingOddsCount = 0;
+
+  for (const row of sanitizedRows) {
+    const signature = buildFightCardSignature(row);
+    const existingRow = existingBySignature.get(signature);
+    if (!existingRow) {
+      continue;
+    }
+
+    matchedRowCount += 1;
+
+    const nextOdds = normalizeText(row.odds) || null;
+    const currentOdds = normalizeText(existingRow.odds) || null;
+
+    if (!nextOdds) {
+      missingOddsCount += 1;
+      continue;
+    }
+
+    if (nextOdds === currentOdds) {
+      continue;
+    }
+
+    updates.push({
+      id: existingRow.id,
+      FightId: parseInteger(row.FightId),
+      FighterId: parseInteger(row.FighterId),
+      Corner: normalizeText(row.Corner) || null,
+      fighterName: [normalizeText(row.FirstName), normalizeText(row.LastName)].filter(Boolean).join(' ') || null,
+      from: currentOdds,
+      to: nextOdds,
+    });
+  }
+
+  if (missingOddsCount > 0) {
+    warnings.push(
+      `Scraper returned blank odds for ${missingOddsCount} row(s); existing stored odds were left unchanged for those fighters.`
+    );
+  }
+
+  return {
+    blockers,
+    warnings,
+    updates,
+    changedFightCard,
+    matchedRowCount,
+    updatedCount: updates.length,
+    unchangedCount: Math.max(matchedRowCount - updates.length - missingOddsCount, 0),
+    missingOddsCount,
+  };
+}
+
 function buildEventFieldChanges(currentEvent, previewEvent) {
   const fields = [
     ['name', 'name'],
@@ -713,6 +810,7 @@ module.exports = {
   parseFightCardCsvFile,
   removePreviewAssets,
   runFightCardScraper,
+  buildOddsRefreshPlan,
   backfillEventImageIfMissing,
   storeFightCardPreview,
   replaceFightCardPreview,
