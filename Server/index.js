@@ -455,7 +455,12 @@ app.post('/register', async (req, res) => {
       .from('users')
       .select('username')
       .eq('username', username)
-      .single();
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking username availability:', checkError);
+      return res.status(500).json({ error: 'Failed to check username availability' });
+    }
 
     if (existingUser) {
       return res.status(400).json({ error: 'Username already taken' });
@@ -467,7 +472,7 @@ app.post('/register', async (req, res) => {
       .insert([
         { phone_number: phoneNumber, username: username, user_type: 'user' }
       ])
-      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
+      .select('user_id, username, phone_number, user_type')
       .single();
 
     if (insertError) {
@@ -525,9 +530,9 @@ app.post('/login', async (req, res) => {
     // Find user by phone number
     const { data: user, error } = await supabase
       .from('users')
-      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
+      .select('user_id, username, phone_number, user_type')
       .eq('phone_number', phoneNumber)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error finding user:', error);
