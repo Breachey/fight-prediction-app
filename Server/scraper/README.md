@@ -14,7 +14,7 @@ Legacy helpers are kept in `legacy/` for reference while we finish folding any r
 Useful commands from the repo root:
 
 ```bash
-python3 -m pip install -r "Server/scraper/requirements.txt"
+npm --prefix Server run install:scraper-deps
 npm run scrape:fight-card -- 1302
 npm run smoke:fight-card-import -- 1302
 ```

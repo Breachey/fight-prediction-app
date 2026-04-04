@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { API_URL } from './config';
+import { appendViewerUserId } from './utils/audienceMode';
 import { useParams } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import PlayerCardSelector from './components/PlayerCardSelector';
@@ -84,7 +85,7 @@ function ProfilePage({ user: loggedInUser }) {
     // Determine which user_id to show
     const userIdToShow = routeUserId || loggedInUser.user_id;
     
-    fetch(`${API_URL}/leaderboard`)
+    fetch(appendViewerUserId(`${API_URL}/leaderboard`, loggedInUser.user_id))
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch leaderboard');
         return res.json();

@@ -94,7 +94,7 @@ Notes:
 Install the local scraper dependencies before using the admin fight-card import flow:
 
 ```bash
-python3 -m pip install -r "Server/scraper/requirements.txt"
+npm --prefix Server run install:scraper-deps
 ```
 
 ### 3. Run the app locally
@@ -149,6 +149,8 @@ This repository includes Vercel configuration for both app layers:
 
 - [`Client/vercel.json`](./Client/vercel.json) handles client-side route rewrites for profile pages.
 - [`Server/vercel.json`](./Server/vercel.json) routes all API traffic through the Node server entry point.
+
+For Node hosts like Render, make sure the server install step runs from `Server/` or otherwise executes `npm --prefix Server install` so the `postinstall` hook installs the scraper's Python dependencies from `Server/scraper/requirements.txt`.
 
 ## Architecture
 

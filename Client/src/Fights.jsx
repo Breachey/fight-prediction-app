@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
+import { appendViewerUserId } from './utils/audienceMode';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -259,20 +260,21 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     const saved = localStorage.getItem(reminderStorageKey);
     return saved ? JSON.parse(saved) : {};
   });
+  const withViewerUserId = useCallback((url) => appendViewerUserId(url, user_id), [user_id]);
 
   const invalidateLeaderboardCaches = useCallback((targetEventId) => {
     const cacheKeys = [
-      `${API_URL}/leaderboard`,
-      `${API_URL}/leaderboard/season`,
-      `${API_URL}/leaderboard/2025`
+      withViewerUserId(`${API_URL}/leaderboard`),
+      withViewerUserId(`${API_URL}/leaderboard/season`),
+      withViewerUserId(`${API_URL}/leaderboard/2025`)
     ];
 
     if (targetEventId) {
-      cacheKeys.push(`${API_URL}/events/${targetEventId}/leaderboard`);
+      cacheKeys.push(withViewerUserId(`${API_URL}/events/${targetEventId}/leaderboard`));
     }
 
     cacheKeys.forEach((key) => invalidateCache(key));
-  }, []);
+  }, [withViewerUserId]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -575,7 +577,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   const fetchEventVoteCounts = useCallback(async () => {
     if (!eventId) return;
     try {
-      const data = await cachedFetchJson(`${API_URL}/events/${eventId}/vote-counts`, { ttlMs: 30000 });
+      const data = await cachedFetchJson(withViewerUserId(`${API_URL}/events/${eventId}/vote-counts`), { ttlMs: 30000 });
       const mappedCounts = {};
       fights.forEach(fight => {
         const fightKey = String(fight.id);
@@ -591,7 +593,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     } catch (err) {
       console.error('Error fetching event vote counts:', err);
     }
-  }, [eventId, fights]);
+  }, [eventId, fights, withViewerUserId]);
 
   useEffect(() => {
     if (eventId && fights.length > 0) {
@@ -723,8 +725,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         const fight = fights.find(f => f.id === fightId);
         if (fight) {
           const [fighter1Response, fighter2Response] = await Promise.all([
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+            fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`)),
+            fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`))
           ]);
 
           const [fighter1Votes, fighter2Votes] = await Promise.all([
@@ -782,8 +784,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+          fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`)),
+          fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`))
         ]);
 
         if (!fighter1Response.ok) {

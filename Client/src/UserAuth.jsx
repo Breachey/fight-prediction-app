@@ -38,6 +38,12 @@ function UserAuth({ onAuthenticate }) {
       localStorage.setItem('username', userData.username);
       localStorage.setItem('phoneNumber', userData.phoneNumber);
       localStorage.setItem('user_type', userData.user_type);
+      localStorage.setItem('is_test_account', String(Boolean(userData.is_test_account)));
+      if (userData.linked_live_user_id != null) {
+        localStorage.setItem('linked_live_user_id', String(userData.linked_live_user_id));
+      } else {
+        localStorage.removeItem('linked_live_user_id');
+      }
       if (userData.admin_session_token) {
         storeAdminSession(userData.admin_session_token, userData.admin_session_expires_at);
       } else {

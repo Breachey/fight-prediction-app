@@ -169,6 +169,182 @@ async function fetchAllFromSupabase(query) {
   return allData;
 }
 
+function normalizeBooleanFlag(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+
+  const normalized = (value || '').toString().trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function normalizeUserId(value) {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeAudience(value) {
+  return value === 'test' ? 'test' : 'live';
+}
+
+function getAudienceForUserRecord(user) {
+  return normalizeBooleanFlag(user?.is_test_account) ? 'test' : 'live';
+}
+
+async function fetchUserById(userId, selectClause = 'user_id, username, phone_number, user_type, is_test_account, linked_live_user_id') {
+  const normalizedUserId = normalizeUserId(userId);
+  if (!normalizedUserId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .select(selectClause)
+    .eq('user_id', normalizedUserId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function resolveAudienceForUserId(userId) {
+  const user = await fetchUserById(userId, 'user_id, is_test_account');
+  return getAudienceForUserRecord(user);
+}
+
+async function fetchAudienceUsers(selectClause, audience = 'live') {
+  const normalizedAudience = normalizeAudience(audience);
+  const usersQuery = supabase
+    .from('users')
+    .select(selectClause)
+    .eq('is_test_account', normalizedAudience === 'test');
+
+  return fetchAllFromSupabase(usersQuery);
+}
+
+function buildAudienceUserMaps(users) {
+  const safeUsers = users || [];
+
+  return {
+    byId: new Map(safeUsers.map(user => [String(user.user_id), user])),
+    byUsername: new Map(
+      safeUsers
+        .filter(user => user?.username)
+        .map(user => [String(user.username), user])
+    ),
+  };
+}
+
+function resolveAudienceUserForRow(row, userMaps) {
+  if (!row || !userMaps) {
+    return null;
+  }
+
+  const directUserId = row.user_id != null ? String(row.user_id) : null;
+  if (directUserId && userMaps.byId.has(directUserId)) {
+    return userMaps.byId.get(directUserId);
+  }
+
+  const directUsername = row.username != null ? String(row.username) : null;
+  if (directUsername && userMaps.byUsername.has(directUsername)) {
+    return userMaps.byUsername.get(directUsername);
+  }
+
+  return null;
+}
+
+function filterRowsToAudience(rows, audienceUsers) {
+  const userMaps = buildAudienceUserMaps(audienceUsers);
+  return (rows || []).filter(row => Boolean(resolveAudienceUserForRow(row, userMaps)));
+}
+
+function buildAudienceUserIdList(audienceUsers) {
+  return Array.from(
+    new Set((audienceUsers || []).map(user => String(user.user_id)).filter(Boolean))
+  );
+}
+
+async function generateUniqueSandboxUsername(baseUsername) {
+  const sanitizedBase = (baseUsername || 'user')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'user';
+
+  const baseCandidate = `${sanitizedBase}-test`;
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const candidate = attempt === 0
+      ? baseCandidate
+      : `${baseCandidate}-${attempt + 1}`;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', candidate)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return candidate;
+    }
+  }
+
+  throw new Error('Unable to generate a unique sandbox username');
+}
+
+async function generateUniqueSandboxPhoneNumber(liveUserId) {
+  const preferredSeed = normalizeUserId(liveUserId) || Date.now();
+  const preferredCandidate = `88${String(preferredSeed % 100000000).padStart(8, '0')}`;
+  const candidates = [preferredCandidate];
+
+  for (let attempt = 0; attempt < 49; attempt += 1) {
+    candidates.push(`88${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`);
+  }
+
+  for (const candidate of candidates) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('phone_number')
+      .eq('phone_number', candidate)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return candidate;
+    }
+  }
+
+  throw new Error('Unable to generate a unique sandbox phone number');
+}
+
+async function clearEventWinnersForAudience(eventId, audienceUsers) {
+  const audienceUserIds = buildAudienceUserIdList(audienceUsers);
+  if (!eventId || audienceUserIds.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('event_winners')
+    .delete()
+    .eq('event_id', eventId)
+    .in('user_id', audienceUserIds);
+
+  if (error) {
+    throw error;
+  }
+}
+
 // Add connection test
 async function testSupabaseConnection() {
   try {
@@ -228,6 +404,8 @@ async function buildAuthenticatedUserResponse(user) {
     username: user.username,
     phoneNumber: user.phone_number,
     user_type: user.user_type || 'user',
+    is_test_account: normalizeBooleanFlag(user.is_test_account),
+    linked_live_user_id: user.linked_live_user_id || null,
   };
 
   if (baseResponse.user_type !== 'admin') {
@@ -289,7 +467,7 @@ app.post('/register', async (req, res) => {
       .insert([
         { phone_number: phoneNumber, username: username, user_type: 'user' }
       ])
-      .select('user_id, username, phone_number, user_type')
+      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
       .single();
 
     if (insertError) {
@@ -347,7 +525,7 @@ app.post('/login', async (req, res) => {
     // Find user by phone number
     const { data: user, error } = await supabase
       .from('users')
-      .select('user_id, username, phone_number, user_type')
+      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
       .eq('phone_number', phoneNumber)
       .single();
 
@@ -381,6 +559,85 @@ app.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/auth/test-mode', async (req, res) => {
+  try {
+    const currentUserId = normalizeUserId(req.body?.user_id);
+    if (!currentUserId) {
+      return res.status(400).json({ error: 'A valid user_id is required' });
+    }
+
+    const currentUser = await fetchUserById(currentUserId);
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const linkedLiveUser = normalizeBooleanFlag(currentUser.is_test_account) && currentUser.linked_live_user_id
+      ? await fetchUserById(currentUser.linked_live_user_id)
+      : null;
+    const isAdminEligible = currentUser.user_type === 'admin' || linkedLiveUser?.user_type === 'admin';
+
+    if (!isAdminEligible) {
+      return res.status(403).json({ error: 'Only admins can use test mode' });
+    }
+
+    if (normalizeBooleanFlag(currentUser.is_test_account)) {
+      if (!currentUser.linked_live_user_id) {
+        return res.status(400).json({ error: 'This test account is not linked to a live account' });
+      }
+
+      const liveUser = linkedLiveUser || await fetchUserById(currentUser.linked_live_user_id);
+      if (!liveUser) {
+        return res.status(404).json({ error: 'Linked live account could not be found' });
+      }
+
+      return res.json(await buildAuthenticatedUserResponse(liveUser));
+    }
+
+    const { data: existingSandbox, error: existingSandboxError } = await supabase
+      .from('users')
+      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
+      .eq('linked_live_user_id', currentUser.user_id)
+      .eq('is_test_account', true)
+      .maybeSingle();
+
+    if (existingSandboxError) {
+      console.error('Error checking for existing sandbox account:', existingSandboxError);
+      return res.status(500).json({ error: 'Failed to check for an existing test account' });
+    }
+
+    if (existingSandbox) {
+      return res.json(await buildAuthenticatedUserResponse(existingSandbox));
+    }
+
+    const sandboxUsername = await generateUniqueSandboxUsername(currentUser.username);
+    const sandboxPhoneNumber = await generateUniqueSandboxPhoneNumber(currentUser.user_id);
+
+    const { data: createdSandbox, error: createSandboxError } = await supabase
+      .from('users')
+      .insert([
+        {
+          phone_number: sandboxPhoneNumber,
+          username: sandboxUsername,
+          user_type: currentUser.user_type || 'user',
+          is_test_account: true,
+          linked_live_user_id: currentUser.user_id,
+        }
+      ])
+      .select('user_id, username, phone_number, user_type, is_test_account, linked_live_user_id')
+      .single();
+
+    if (createSandboxError) {
+      console.error('Error creating sandbox account:', createSandboxError);
+      return res.status(500).json({ error: 'Failed to create a test account' });
+    }
+
+    return res.status(201).json(await buildAuthenticatedUserResponse(createdSandbox));
+  } catch (error) {
+    console.error('Error switching test mode:', error);
+    return res.status(500).json({ error: 'Failed to switch test mode' });
   }
 });
 
@@ -900,13 +1157,15 @@ app.get('/predictions/history', async (req, res) => {
 });
 
 app.get('/predictions/filter', async (req, res) => {
-  const { fight_id, fighter_id } = req.query;
+  const { fight_id, fighter_id, viewer_user_id: viewerUserId } = req.query;
 
   if (!fight_id || !fighter_id) {
     return res.status(400).json({ error: "Missing required parameters" });
   }
 
   try {
+    const audience = await resolveAudienceForUserId(viewerUserId);
+
     // Get predictions
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
@@ -920,30 +1179,35 @@ app.get('/predictions/filter', async (req, res) => {
     }
 
     // Get user information including is_bot status and playercard info
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select(`
-        user_id, 
-        username, 
-        is_bot, 
-        selected_playercard_id,
-        playercards!selected_playercard_id (
-          id,
-          name,
-          image_url,
-          category
-        )
-      `);
+    const users = await fetchAudienceUsers(`
+      user_id, 
+      username, 
+      is_bot, 
+      selected_playercard_id,
+      playercards!selected_playercard_id (
+        id,
+        name,
+        image_url,
+        category
+      )
+    `, audience);
+    const audienceUsers = users || [];
+    const audienceUserMaps = buildAudienceUserMaps(audienceUsers);
+    const filteredPredictions = (predictions || []).filter(
+      (prediction) => Boolean(resolveAudienceUserForRow(prediction, audienceUserMaps))
+    );
 
-    if (usersError) {
-      console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: "Error fetching user data" });
+    if (filteredPredictions.length === 0) {
+      return res.status(200).json([]);
     }
 
     // Get leaderboard data for rankings
+    const audienceUserIds = buildAudienceUserIdList(audienceUsers);
     const { data: results, error: resultsError } = await supabase
       .from('prediction_results')
-      .select('user_id, predicted_correctly, points');
+      .select('user_id, predicted_correctly, points')
+      .in('user_id', audienceUserIds);
+    const filteredResults = results || [];
 
     if (resultsError) {
       console.error('Error fetching prediction results:', resultsError);
@@ -952,13 +1216,14 @@ app.get('/predictions/filter', async (req, res) => {
 
     // Process leaderboard data
     const userStats = {};
-    results.forEach(result => {
+    filteredResults.forEach(result => {
       const userIdStr = String(result.user_id);
+      const user = audienceUserMaps.byId.get(userIdStr);
       if (!userStats[userIdStr]) {
         userStats[userIdStr] = {
           user_id: userIdStr,
-          username: result.user_id, // Store username since user_id is actually the username
-          is_bot: result.is_bot || false,
+          username: user?.username || 'Unknown',
+          is_bot: Boolean(user?.is_bot),
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -980,18 +1245,22 @@ app.get('/predictions/filter', async (req, res) => {
         ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions)) // Then by accuracy
       );
 
-    // Create maps for user data - use username instead of user_id for rankMap
-    const userMap = new Map(users.map(user => [user.username, user.is_bot]));
-    const playercardMap = new Map(users.map(user => [user.username, user.playercards]));
-    const rankMap = new Map(leaderboard.map((user, index) => [user.username, index + 1]));
+    const rankMap = new Map(leaderboard.map((user, index) => [String(user.user_id), index + 1]));
 
     // Add is_bot status, playercard, and ranking to each prediction
-    const predictionsWithMetadata = predictions.map(prediction => ({
-      ...prediction,
-      is_bot: userMap.get(prediction.username) || false,
-      playercard: playercardMap.get(prediction.username) || null,
-      rank: rankMap.get(prediction.username) || null
-    }));
+    const predictionsWithMetadata = filteredPredictions.map(prediction => {
+      const predictionUser = resolveAudienceUserForRow(prediction, audienceUserMaps);
+      const predictionUserId = predictionUser ? String(predictionUser.user_id) : null;
+
+      return {
+        ...prediction,
+        user_id: predictionUserId || prediction.user_id || null,
+        username: predictionUser?.username || prediction.username || 'Unknown',
+        is_bot: Boolean(predictionUser?.is_bot),
+        playercard: predictionUser?.playercards || null,
+        rank: predictionUserId ? (rankMap.get(predictionUserId) || null) : null
+      };
+    });
 
     res.status(200).json(predictionsWithMetadata);
   } catch (err) {
@@ -1542,26 +1811,24 @@ function calculateLongestWinStreak(orderedResults) {
 /**
  * Fetches all users along with their playercard metadata and returns lookup maps.
  */
-async function fetchUsersWithPlayercards() {
-  const usersQuery = supabase
-    .from('users')
-    .select(`
-      user_id,
-      username,
-      is_bot,
-      selected_playercard_id,
-      playercards!selected_playercard_id (
-        id,
-        name,
-        image_url,
-        category
-      )
-    `);
-
-  const users = await fetchAllFromSupabase(usersQuery);
+async function fetchUsersWithPlayercards(audience = 'live') {
+  const users = await fetchAudienceUsers(`
+    user_id,
+    username,
+    is_bot,
+    is_test_account,
+    selected_playercard_id,
+    playercards!selected_playercard_id (
+      id,
+      name,
+      image_url,
+      category
+    )
+  `, audience);
   const safeUsers = users || [];
 
   return {
+    users: safeUsers,
     userIdToUsername: new Map(safeUsers.map(user => [String(user.user_id), user.username])),
     userIdToIsBot: new Map(safeUsers.map(user => [String(user.user_id), user.is_bot])),
     userIdToPlayercard: new Map(safeUsers.map(user => [String(user.user_id), user.playercards]))
@@ -1582,24 +1849,33 @@ function determineEventWinners(sortedEntries) {
 /**
  * Builds the per-event leaderboard and identifies winners.
  */
-async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}) {
+async function buildEventLeaderboard(eventId, { allTimeResults, userCache, audience = 'live' } = {}) {
   if (!eventId) {
     throw new Error('eventId is required to build leaderboard');
   }
 
   const numericEventId = Number(eventId);
   const eventIdFilter = Number.isNaN(numericEventId) ? eventId : numericEventId;
+  const effectiveUserCache = userCache || await fetchUsersWithPlayercards(audience);
+  const audienceUserIds = buildAudienceUserIdList(effectiveUserCache.users);
+
+  if (audienceUserIds.length === 0) {
+    return { leaderboard: [], winners: [] };
+  }
 
   const eventResultsQuery = supabase
     .from('prediction_results')
     .select('event_id, user_id, predicted_correctly, points')
-    .eq('event_id', eventIdFilter);
+    .eq('event_id', eventIdFilter)
+    .in('user_id', audienceUserIds);
   const eventResults = await fetchAllFromSupabase(eventResultsQuery);
 
   const effectiveAllTimeResults = allTimeResults || await fetchAllFromSupabase(
-    supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
+    supabase
+      .from('prediction_results')
+      .select('user_id, predicted_correctly, created_at')
+      .in('user_id', audienceUserIds)
   );
-  const effectiveUserCache = userCache || await fetchUsersWithPlayercards();
   const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = effectiveUserCache;
 
   const userStats = {};
@@ -1828,31 +2104,23 @@ async function fetchHumanEventWinCounts(userIds, year) {
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
+    const userCache = await fetchUsersWithPlayercards(audience);
+    const audienceUserIds = buildAudienceUserIdList(userCache.users);
+
+    if (audienceUserIds.length === 0) {
+      return res.json([]);
+    }
+
     // Get all prediction results using the pagination helper
-    const resultsQuery = supabase.from('prediction_results').select('user_id, predicted_correctly, points, created_at');
+    const resultsQuery = supabase
+      .from('prediction_results')
+      .select('user_id, predicted_correctly, points, created_at')
+      .in('user_id', audienceUserIds);
     const results = await fetchAllFromSupabase(resultsQuery);
 
-    // Get all users with their user_id, username, is_bot, and playercard info
-    const usersQuery = supabase
-      .from('users')
-      .select(`
-        user_id, 
-        username, 
-        is_bot, 
-        selected_playercard_id,
-        playercards!selected_playercard_id (
-          id,
-          name,
-          image_url,
-          category
-        )
-      `);
-    const users = await fetchAllFromSupabase(usersQuery);
-
     // Map user_id to username, is_bot, and playercard info
-    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
-    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group results by user for streak calculation
     const userResultsMap = {};
@@ -1935,6 +2203,14 @@ app.get('/leaderboard', async (req, res) => {
 // Get 2025 season leaderboard
 app.get('/leaderboard/2025', async (req, res) => {
   try {
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
+    const userCache = await fetchUsersWithPlayercards(audience);
+    const audienceUserIds = buildAudienceUserIdList(userCache.users);
+
+    if (audienceUserIds.length === 0) {
+      return res.json([]);
+    }
+
     // Get all events from 2025
     const events2025Query = supabase
       .from('events')
@@ -1945,7 +2221,10 @@ app.get('/leaderboard/2025', async (req, res) => {
     const eventIds2025 = new Set((events2025 || []).map(e => Number(e.id)));
 
     // Get all prediction results for 2025 events
-    const allResultsQuery = supabase.from('prediction_results').select('user_id, event_id, predicted_correctly, points');
+    const allResultsQuery = supabase
+      .from('prediction_results')
+      .select('user_id, event_id, predicted_correctly, points')
+      .in('user_id', audienceUserIds);
     const allResults = await fetchAllFromSupabase(allResultsQuery);
     
     // Filter results to only 2025 events
@@ -1956,30 +2235,14 @@ app.get('/leaderboard/2025', async (req, res) => {
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
     const allTimeResults = await fetchAllFromSupabase(
-      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
+      supabase
+        .from('prediction_results')
+        .select('user_id, predicted_correctly, created_at')
+        .in('user_id', audienceUserIds)
     );
 
-    // Get all users with their user_id, username, is_bot, and playercard info
-    const usersQuery = supabase
-      .from('users')
-      .select(`
-        user_id, 
-        username, 
-        is_bot, 
-        selected_playercard_id,
-        playercards!selected_playercard_id (
-          id,
-          name,
-          image_url,
-          category
-        )
-      `);
-    const users = await fetchAllFromSupabase(usersQuery);
-
     // Map user_id to username, is_bot, and playercard info
-    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
-    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -2059,6 +2322,14 @@ app.get('/leaderboard/2025', async (req, res) => {
 // Get current season (current year) leaderboard
 app.get('/leaderboard/season', async (req, res) => {
   try {
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
+    const userCache = await fetchUsersWithPlayercards(audience);
+    const audienceUserIds = buildAudienceUserIdList(userCache.users);
+
+    if (audienceUserIds.length === 0) {
+      return res.json([]);
+    }
+
     const currentYear = new Date().getFullYear();
     const seasonStart = `${currentYear}-01-01`;
     const nextSeasonStart = `${currentYear + 1}-01-01`;
@@ -2073,7 +2344,10 @@ app.get('/leaderboard/season', async (req, res) => {
     const seasonEventIds = new Set((seasonEvents || []).map(e => Number(e.id)));
 
     // Get all prediction results for current year events
-    const allResultsQuery = supabase.from('prediction_results').select('user_id, event_id, predicted_correctly, points');
+    const allResultsQuery = supabase
+      .from('prediction_results')
+      .select('user_id, event_id, predicted_correctly, points')
+      .in('user_id', audienceUserIds);
     const allResults = await fetchAllFromSupabase(allResultsQuery);
     
     // Filter results to only current year events
@@ -2084,30 +2358,14 @@ app.get('/leaderboard/season', async (req, res) => {
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
     const allTimeResults = await fetchAllFromSupabase(
-      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
+      supabase
+        .from('prediction_results')
+        .select('user_id, predicted_correctly, created_at')
+        .in('user_id', audienceUserIds)
     );
 
-    // Get all users with their user_id, username, is_bot, and playercard info
-    const usersQuery = supabase
-      .from('users')
-      .select(`
-        user_id, 
-        username, 
-        is_bot, 
-        selected_playercard_id,
-        playercards!selected_playercard_id (
-          id,
-          name,
-          image_url,
-          category
-        )
-      `);
-    const users = await fetchAllFromSupabase(usersQuery);
-
     // Map user_id to username, is_bot, and playercard info
-    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
-    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -2180,6 +2438,14 @@ app.get('/leaderboard/season', async (req, res) => {
 // Get monthly leaderboard
 app.get('/leaderboard/monthly', async (req, res) => {
   try {
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
+    const userCache = await fetchUsersWithPlayercards(audience);
+    const audienceUserIds = buildAudienceUserIdList(userCache.users);
+
+    if (audienceUserIds.length === 0) {
+      return res.json([]);
+    }
+
     // Get the first and last day of the current month in ISO format
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2192,34 +2458,19 @@ app.get('/leaderboard/monthly', async (req, res) => {
       .from('prediction_results')
       .select('user_id, predicted_correctly, points, created_at')
       .gte('created_at', firstDayISO)
-      .lt('created_at', nextMonthISO);
+      .lt('created_at', nextMonthISO)
+      .in('user_id', audienceUserIds);
     const results = await fetchAllFromSupabase(resultsQuery);
 
     // Get all-time prediction results for streak calculation
-    const allTimeResultsQuery = supabase.from('prediction_results').select('user_id, predicted_correctly, created_at');
+    const allTimeResultsQuery = supabase
+      .from('prediction_results')
+      .select('user_id, predicted_correctly, created_at')
+      .in('user_id', audienceUserIds);
     const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
 
-    // Get all users with their user_id, username, is_bot, and playercard info
-    const usersQuery = supabase
-      .from('users')
-      .select(`
-        user_id, 
-        username, 
-        is_bot, 
-        selected_playercard_id,
-        playercards!selected_playercard_id (
-          id,
-          name,
-          image_url,
-          category
-        )
-      `);
-    const users = await fetchAllFromSupabase(usersQuery);
-
     // Map user_id to username, is_bot, and playercard info
-    const userIdToUsername = new Map(users.map(user => [String(user.user_id), user.username]));
-    const userIdToIsBot = new Map(users.map(user => [String(user.user_id), user.is_bot]));
-    const userIdToPlayercard = new Map(users.map(user => [String(user.user_id), user.playercards]));
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -3019,6 +3270,7 @@ app.get('/events/:id/fights', async (req, res) => {
 app.get('/events/:id/vote-counts', async (req, res) => {
   try {
     const { id } = req.params;
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
     if (!id) {
       return res.status(400).json({ error: 'Event ID is required' });
     }
@@ -3041,7 +3293,7 @@ app.get('/events/:id/vote-counts', async (req, res) => {
 
     const predictionsQuery = supabase
       .from('predictions')
-      .select('fight_id, fighter_id, user_id')
+      .select('fight_id, fighter_id, user_id, username')
       .in('fight_id', fightIds);
     const predictions = await fetchAllFromSupabase(predictionsQuery);
 
@@ -3049,28 +3301,28 @@ app.get('/events/:id/vote-counts', async (req, res) => {
       return res.json({});
     }
 
-    const userIds = Array.from(new Set(predictions.map(p => String(p.user_id)).filter(Boolean)));
-    let userIsBotMap = new Map();
-    if (userIds.length > 0) {
-      const usersQuery = supabase
-        .from('users')
-        .select('user_id, is_bot')
-        .in('user_id', userIds);
-      const users = await fetchAllFromSupabase(usersQuery);
-      userIsBotMap = new Map((users || []).map(u => [String(u.user_id), Boolean(u.is_bot)]));
+    const audienceUsers = await fetchAudienceUsers('user_id, username, is_bot', audience);
+    const audienceUserMaps = buildAudienceUserMaps(audienceUsers);
+    const filteredPredictions = (predictions || []).filter(
+      (prediction) => Boolean(resolveAudienceUserForRow(prediction, audienceUserMaps))
+    );
+
+    if (filteredPredictions.length === 0) {
+      return res.json({});
     }
 
     const counts = {};
-    predictions.forEach(pred => {
+    filteredPredictions.forEach(pred => {
       const fightIdStr = String(pred.fight_id);
       const fighterIdStr = String(pred.fighter_id);
+      const predictionUser = resolveAudienceUserForRow(pred, audienceUserMaps);
       if (!counts[fightIdStr]) {
         counts[fightIdStr] = {};
       }
       if (!counts[fightIdStr][fighterIdStr]) {
         counts[fightIdStr][fighterIdStr] = { total: 0, human: 0 };
       }
-      const isBot = pred.user_id ? userIsBotMap.get(String(pred.user_id)) : false;
+      const isBot = Boolean(predictionUser?.is_bot);
       counts[fightIdStr][fighterIdStr].total += 1;
       if (!isBot) {
         counts[fightIdStr][fighterIdStr].human += 1;
@@ -3088,7 +3340,8 @@ app.get('/events/:id/vote-counts', async (req, res) => {
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
-    const { leaderboard } = await buildEventLeaderboard(id);
+    const audience = await resolveAudienceForUserId(req.query?.viewer_user_id);
+    const { leaderboard } = await buildEventLeaderboard(id, { audience });
     const currentYear = new Date().getFullYear();
     const eventWinCounts = await fetchEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
     const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
@@ -3148,34 +3401,51 @@ app.post('/events/:id/finalize', requireAdminSession, async (req, res) => {
       return res.status(500).json({ error: 'Failed to update fight card status' });
     }
 
-    const { leaderboard, winners } = await buildEventLeaderboard(eventId);
+    const winnerSummary = {
+      live: { leaderboard: [], winners: [] },
+      test: { leaderboard: [], winners: [] },
+    };
 
-    if (winners.length > 0) {
-      // Clear any prior winners for this event to keep data idempotent
-      const { error: deleteError } = await supabase
-        .from('event_winners')
-        .delete()
-        .eq('event_id', eventId);
+    for (const audience of ['live', 'test']) {
+      const userCache = await fetchUsersWithPlayercards(audience);
+      const audienceUserIds = buildAudienceUserIdList(userCache.users);
 
-      if (deleteError) {
-        console.error('Error clearing previous winners:', deleteError);
-        return res.status(500).json({ error: 'Failed to reset previous winners' });
+      if (audienceUserIds.length === 0) {
+        continue;
       }
 
-      const payload = winners.map(winner => ({
-        event_id: eventId,
-        user_id: winner.user_id,
-        points: winner.total_points
-      }));
+      const allTimeResults = await fetchAllFromSupabase(
+        supabase
+          .from('prediction_results')
+          .select('user_id, predicted_correctly, created_at')
+          .in('user_id', audienceUserIds)
+      );
+      const { leaderboard, winners } = await buildEventLeaderboard(eventId, {
+        audience,
+        allTimeResults,
+        userCache,
+      });
 
-      const { error: insertError } = await supabase
-        .from('event_winners')
-        .insert(payload);
+      await clearEventWinnersForAudience(eventId, userCache.users);
 
-      if (insertError) {
-        console.error('Error inserting event winners:', insertError);
-        return res.status(500).json({ error: 'Failed to save event winners' });
+      if (winners.length > 0) {
+        const payload = winners.map(winner => ({
+          event_id: eventId,
+          user_id: winner.user_id,
+          points: winner.total_points
+        }));
+
+        const { error: insertError } = await supabase
+          .from('event_winners')
+          .insert(payload);
+
+        if (insertError) {
+          console.error(`Error inserting ${audience} event winners:`, insertError);
+          return res.status(500).json({ error: 'Failed to save event winners' });
+        }
       }
+
+      winnerSummary[audience] = { leaderboard, winners };
     }
 
     await logAdminAction(req, {
@@ -3186,15 +3456,19 @@ app.post('/events/:id/finalize', requireAdminSession, async (req, res) => {
       eventId,
       metadata: {
         status: targetStatus,
-        leaderboard_size: leaderboard.length,
-        winner_count: winners.length,
+        live_leaderboard_size: winnerSummary.live.leaderboard.length,
+        live_winner_count: winnerSummary.live.winners.length,
+        test_leaderboard_size: winnerSummary.test.leaderboard.length,
+        test_winner_count: winnerSummary.test.winners.length,
       },
     });
 
     res.json({
       event_id: eventId,
       status: targetStatus,
-      winners
+      winners: winnerSummary.live.winners,
+      live_winners: winnerSummary.live.winners,
+      test_winners: winnerSummary.test.winners
     });
   } catch (error) {
     console.error('Error finalizing event:', error);
@@ -3275,48 +3549,78 @@ app.post('/events/backfill-winners', requireAdminSession, async (req, res) => {
       });
     }
 
-    const allTimeResults = await fetchAllFromSupabase(
-      supabase.from('prediction_results').select('user_id, predicted_correctly, created_at')
-    );
-    const userCache = await fetchUsersWithPlayercards();
+    const audienceCaches = {
+      live: await fetchUsersWithPlayercards('live'),
+      test: await fetchUsersWithPlayercards('test'),
+    };
+    const audienceAllTimeResults = {};
+
+    for (const audience of ['live', 'test']) {
+      const audienceUserIds = buildAudienceUserIdList(audienceCaches[audience].users);
+      audienceAllTimeResults[audience] = audienceUserIds.length > 0
+        ? await fetchAllFromSupabase(
+          supabase
+            .from('prediction_results')
+            .select('user_id, predicted_correctly, created_at')
+            .in('user_id', audienceUserIds)
+        )
+        : [];
+    }
 
     const processed = [];
     const skipped = [];
 
     for (const eventId of targetIds) {
       try {
-        const { winners } = await buildEventLeaderboard(eventId, { allTimeResults, userCache });
-        if (!winners.length) {
+        const audienceWinnerCounts = { live: 0, test: 0 };
+
+        for (const audience of ['live', 'test']) {
+          const userCache = audienceCaches[audience];
+          const audienceUserIds = buildAudienceUserIdList(userCache.users);
+
+          if (audienceUserIds.length === 0) {
+            continue;
+          }
+
+          const { winners } = await buildEventLeaderboard(eventId, {
+            audience,
+            allTimeResults: audienceAllTimeResults[audience],
+            userCache,
+          });
+
+          await clearEventWinnersForAudience(eventId, userCache.users);
+
+          if (winners.length === 0) {
+            continue;
+          }
+
+          const payload = winners.map(winner => ({
+            event_id: eventId,
+            user_id: winner.user_id,
+            points: winner.total_points
+          }));
+
+          const { error: insertError } = await supabase
+            .from('event_winners')
+            .insert(payload);
+
+          if (insertError) {
+            throw new Error(`Failed to save ${audience} winners: ${insertError.message}`);
+          }
+
+          audienceWinnerCounts[audience] = winners.length;
+        }
+
+        if (audienceWinnerCounts.live === 0 && audienceWinnerCounts.test === 0) {
           skipped.push({ event_id: eventId, reason: 'No eligible winners (did users submit picks?)' });
           continue;
         }
 
-        const { error: deleteError } = await supabase
-          .from('event_winners')
-          .delete()
-          .eq('event_id', eventId);
-
-        if (deleteError) {
-          skipped.push({ event_id: eventId, reason: `Failed to reset winners: ${deleteError.message}` });
-          continue;
-        }
-
-        const payload = winners.map(winner => ({
+        processed.push({
           event_id: eventId,
-          user_id: winner.user_id,
-          points: winner.total_points
-        }));
-
-        const { error: insertError } = await supabase
-          .from('event_winners')
-          .insert(payload);
-
-        if (insertError) {
-          skipped.push({ event_id: eventId, reason: `Failed to save winners: ${insertError.message}` });
-          continue;
-        }
-
-        processed.push({ event_id: eventId, winner_count: winners.length });
+          winner_count_live: audienceWinnerCounts.live,
+          winner_count_test: audienceWinnerCounts.test,
+        });
       } catch (eventError) {
         console.error(`Failed to process event ${eventId}:`, eventError);
         skipped.push({ event_id: eventId, reason: eventError.message });
@@ -3634,6 +3938,8 @@ app.get('/user/:username', async (req, res) => {
         username, 
         phone_number, 
         user_type,
+        is_test_account,
+        linked_live_user_id,
         created_at, 
         selected_playercard_id,
         playercards!selected_playercard_id (
@@ -3672,6 +3978,8 @@ app.get('/user/by-id/:user_id', async (req, res) => {
         username, 
         phone_number, 
         user_type,
+        is_test_account,
+        linked_live_user_id,
         created_at, 
         selected_playercard_id,
         playercards!selected_playercard_id (
@@ -4096,6 +4404,12 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
         longest_win_streak: []
       }
     });
+    const targetUser = await fetchUserById(user_id, 'user_id, username, is_test_account');
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const audience = getAudienceForUserRecord(targetUser);
+    const audienceUsers = await fetchAudienceUsers('user_id, username, is_bot, is_test_account', audience);
 
     const eventsQuery = supabase
       .from('events')
@@ -4219,21 +4533,7 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
         .map(row => Number(row.fight_id))
         .filter(fightId => Number.isFinite(fightId) && fightId > 0)
     ));
-    let usernameForUser = null;
-    try {
-      const { data: userRecord, error: userLookupError } = await supabase
-        .from('users')
-        .select('username')
-        .eq('user_id', user_id)
-        .maybeSingle();
-      if (!userLookupError) {
-        usernameForUser = userRecord?.username || null;
-      } else {
-        console.error('Error looking up username for highlights:', userLookupError);
-      }
-    } catch (lookupError) {
-      console.error('Unexpected error looking up username for highlights:', lookupError);
-    }
+    const usernameForUser = targetUser.username || null;
 
     let userPredictions = [];
     if (userFightIds.length > 0) {
@@ -4597,11 +4897,7 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     })();
 
     // Rivalry insights (humans only)
-    const users = await fetchAllFromSupabase(
-      supabase
-        .from('users')
-        .select('user_id, username, is_bot')
-    );
+    const users = audienceUsers;
     const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
     const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
     const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
@@ -4647,6 +4943,7 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
         .from('prediction_results')
         .select('user_id, username, event_id, fight_id, predicted_correctly, points, created_at')
         .in('event_id', eventIds)
+        .in('user_id', Array.from(humanUserSet))
     );
     (seasonHumanResults || []).forEach(row => {
       const opponentId = String(row.user_id);

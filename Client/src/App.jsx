@@ -8,7 +8,7 @@ import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
 import { extractPosterAccents, DEFAULT_EVENT_ACCENTS } from './utils/posterAccentTheme';
-import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken } from './utils/adminSession';
+import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken, storeAdminSession } from './utils/adminSession';
 import './App.css';
 
 // Lazy load heavy components to improve initial load time
@@ -16,6 +16,26 @@ const Fights = lazy(() => import('./Fights'));
 const Leaderboard = lazy(() => import('./Leaderboard'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const HighlightsPage = lazy(() => import('./HighlightsPage'));
+
+function persistAuthenticatedUser(userData) {
+  localStorage.setItem('user_id', userData.user_id);
+  localStorage.setItem('username', userData.username);
+  localStorage.setItem('phoneNumber', userData.phoneNumber || userData.phone_number || '');
+  localStorage.setItem('user_type', userData.user_type || 'user');
+  localStorage.setItem('is_test_account', String(Boolean(userData.is_test_account)));
+
+  if (userData.linked_live_user_id != null) {
+    localStorage.setItem('linked_live_user_id', String(userData.linked_live_user_id));
+  } else {
+    localStorage.removeItem('linked_live_user_id');
+  }
+
+  if (userData.admin_session_token) {
+    storeAdminSession(userData.admin_session_token, userData.admin_session_expires_at);
+  } else {
+    clearAdminSession();
+  }
+}
 
 function App() {
   const location = useLocation();
@@ -27,9 +47,11 @@ function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isModeSwitching, setIsModeSwitching] = useState(false);
   const [leaderboardRefreshToken, setLeaderboardRefreshToken] = useState(0);
   const [fightCardRefreshToken, setFightCardRefreshToken] = useState(0);
   const menuRef = useRef(null);
+  const canUseTestMode = user?.user_type === 'admin';
 
   useEffect(() => {
     let isMounted = true;
@@ -38,6 +60,8 @@ function App() {
     const savedPhoneNumber = localStorage.getItem('phoneNumber');
     const savedUserId = localStorage.getItem('user_id');
     const savedUserType = localStorage.getItem('user_type');
+    const savedIsTestAccount = localStorage.getItem('is_test_account') === 'true';
+    const savedLinkedLiveUserId = localStorage.getItem('linked_live_user_id');
     const savedAdminSessionToken = getAdminSessionToken();
     const savedAdminSessionExpiry = getAdminSessionExpiry();
 
@@ -48,6 +72,8 @@ function App() {
         phoneNumber: savedPhoneNumber, 
         user_id: savedUserId,
         user_type: savedUserType || 'user',
+        is_test_account: savedIsTestAccount,
+        linked_live_user_id: savedLinkedLiveUserId || null,
         admin_session_token: savedAdminSessionToken || null,
         admin_session_expires_at: savedAdminSessionExpiry || null,
       });
@@ -61,15 +87,23 @@ function App() {
           if (userData.user_type) {
             localStorage.setItem('user_type', userData.user_type);
           }
+          localStorage.setItem('is_test_account', String(Boolean(userData.is_test_account)));
+          if (userData.linked_live_user_id != null) {
+            localStorage.setItem('linked_live_user_id', String(userData.linked_live_user_id));
+          } else {
+            localStorage.removeItem('linked_live_user_id');
+          }
           if (userData.user_type !== 'admin') {
             clearAdminSession();
           }
           if (isMounted) {
             setUser({ 
               username: savedUsername, 
-              phoneNumber: savedPhoneNumber, 
+              phoneNumber: userData.phone_number || savedPhoneNumber, 
               user_id: savedUserId,
               user_type: userData.user_type || savedUserType || 'user',
+              is_test_account: Boolean(userData.is_test_account),
+              linked_live_user_id: userData.linked_live_user_id || null,
               admin_session_token: userData.user_type === 'admin' ? (savedAdminSessionToken || null) : null,
               admin_session_expires_at: userData.user_type === 'admin' ? (savedAdminSessionExpiry || null) : null,
               playercard: userData.playercards || null
@@ -90,7 +124,40 @@ function App() {
 
   // Called when user successfully logs in or signs up
   const handleAuthentication = (userData) => {
+    persistAuthenticatedUser(userData);
     setUser(userData);
+  };
+
+  const handleToggleTestMode = async () => {
+    if (!user?.user_id || !canUseTestMode || isModeSwitching) {
+      return;
+    }
+
+    setIsModeSwitching(true);
+
+    try {
+      const response = await fetch(`${API_URL}/auth/test-mode`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_id: user.user_id }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to switch account mode');
+      }
+
+      persistAuthenticatedUser(data);
+      setUser(data);
+      setIsMenuOpen(false);
+    } catch (error) {
+      console.error('Error switching test mode:', error);
+      window.alert(error.message || 'Failed to switch test mode.');
+    } finally {
+      setIsModeSwitching(false);
+    }
   };
 
   // Logs out user and clears localStorage
@@ -113,6 +180,8 @@ function App() {
     localStorage.removeItem('phoneNumber');
     localStorage.removeItem('user_id');
     localStorage.removeItem('user_type');
+    localStorage.removeItem('is_test_account');
+    localStorage.removeItem('linked_live_user_id');
     clearAdminSession();
     setUser(null);
     setIsMenuOpen(false);
@@ -273,6 +342,19 @@ function App() {
               >
                 Stats
               </Link>
+              {canUseTestMode && (
+                <button
+                  className="hamburger-menu-item"
+                  onClick={handleToggleTestMode}
+                  disabled={isModeSwitching}
+                >
+                  {isModeSwitching
+                    ? 'Switching...'
+                    : user.is_test_account
+                    ? 'Back to Live Mode'
+                    : 'Switch to Test Mode'}
+                </button>
+              )}
               <button 
                 className="hamburger-menu-item hamburger-menu-logout"
                 onClick={handleLogout}
@@ -290,7 +372,13 @@ function App() {
               {/* Greeting message */}
               <div className="welcome-greeting">
                 Hi, {user.username}
+                {canUseTestMode && user.is_test_account && <span className="account-mode-pill">Test Mode</span>}
               </div>
+              {canUseTestMode && user.is_test_account && (
+                <div className="account-mode-banner">
+                  Test mode is active. Votes, vote counts, leaderboards, and stats are isolated from your live account.
+                </div>
+              )}
               {/* Event selection dropdown */}
               <div className="section event-selector-section">
                 <EventSelector 

@@ -4,6 +4,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
+import { appendViewerUserId } from './utils/audienceMode';
 import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import './Leaderboard.css';
@@ -39,19 +40,19 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
-      return eventId ? `${API_URL}/events/${eventId}/leaderboard` : null;
+      return eventId ? appendViewerUserId(`${API_URL}/events/${eventId}/leaderboard`, currentUserId) : null;
     }
     if (type === 'overall') {
-      return `${API_URL}/leaderboard`;
+      return appendViewerUserId(`${API_URL}/leaderboard`, currentUserId);
     }
     if (type === 'season') {
-      return `${API_URL}/leaderboard/season`;
+      return appendViewerUserId(`${API_URL}/leaderboard/season`, currentUserId);
     }
     if (type === '2025') {
-      return `${API_URL}/leaderboard/2025`;
+      return appendViewerUserId(`${API_URL}/leaderboard/2025`, currentUserId);
     }
     return null;
-  }, [eventId]);
+  }, [currentUserId, eventId]);
 
   const setLeaderboardData = useCallback((type, data) => {
     if (type === 'event') setEventLeaderboard(data);

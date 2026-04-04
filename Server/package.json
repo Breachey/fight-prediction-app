@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "install:scraper-deps": "python3 -m pip install --disable-pip-version-check -r scraper/requirements.txt",
+    "postinstall": "npm run install:scraper-deps",
     "start": "node index.js",
     "scrape:fight-card": "python3 scraper/scrape_full_ufc_event_with_tapology.py",
     "smoke:fight-card-import": "node scripts/smokeFightCardImport.js",
