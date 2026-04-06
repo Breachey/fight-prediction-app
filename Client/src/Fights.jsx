@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
-import { appendViewerUserId } from './utils/audienceMode';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -78,17 +77,20 @@ const FINISH_METHOD_BREAKDOWN = [
   {
     label: 'KO/TKO',
     winsKey: 'ko_tko_wins',
-    lossesKey: 'ko_tko_losses'
+    lossesKey: 'ko_tko_losses',
+    color: 'rgba(251, 146, 60, 0.96)'
   },
   {
     label: 'Submission',
     winsKey: 'submission_wins',
-    lossesKey: 'submission_losses'
+    lossesKey: 'submission_losses',
+    color: 'rgba(56, 189, 248, 0.96)'
   },
   {
     label: 'Decision',
     winsKey: 'decision_wins',
-    lossesKey: 'decision_losses'
+    lossesKey: 'decision_losses',
+    color: 'rgba(192, 132, 252, 0.96)'
   }
 ];
 
@@ -126,6 +128,34 @@ function getMethodPercentLabel(count, total) {
   return `${Math.round((count / total) * 100)}%`;
 }
 
+function getMethodChartBackground(rows, totalFights) {
+  if (!totalFights) {
+    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
+  }
+
+  let currentAngle = 0;
+  const segments = rows
+    .map((row) => {
+      const totalByMethod = row.wins + row.losses;
+
+      if (!totalByMethod) {
+        return null;
+      }
+
+      const startAngle = currentAngle;
+      currentAngle += (totalByMethod / totalFights) * 360;
+
+      return `${row.color} ${startAngle}deg ${currentAngle}deg`;
+    })
+    .filter(Boolean);
+
+  if (segments.length === 0) {
+    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
+  }
+
+  return `conic-gradient(from -90deg, ${segments.join(', ')})`;
+}
+
 function FinishMethodBreakdown({ fight, fighterKey }) {
   const recordTotals = parseRecordTotals(fight?.[`${fighterKey}_record`]);
   const hasAnyMethodData = FINISH_METHOD_BREAKDOWN.some(({ winsKey, lossesKey }) => (
@@ -144,16 +174,19 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
     );
   }
 
-  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey }) => ({
+  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey, color }) => ({
     label,
     wins: parseMethodCount(fight?.[`${fighterKey}_${winsKey}`]),
-    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`])
+    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`]),
+    color
   }));
 
   const fallbackWins = rows.reduce((total, row) => total + row.wins, 0);
   const fallbackLosses = rows.reduce((total, row) => total + row.losses, 0);
   const totalWins = recordTotals.wins || fallbackWins;
   const totalLosses = recordTotals.losses || fallbackLosses;
+  const totalFights = totalWins + totalLosses;
+  const chartBackground = getMethodChartBackground(rows, totalFights);
 
   return (
     <div className="finish-method-breakdown">
@@ -162,6 +195,38 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
         <span className="finish-method-breakdown-summary">
           {totalWins}W • {totalLosses}L
         </span>
+      </div>
+      <div className="finish-method-chart-panel">
+        <div
+          className="finish-method-chart"
+          role="img"
+          aria-label={`Fight endings: ${rows.map((row) => `${row.label} ${row.wins + row.losses}`).join(', ')}`}
+          style={{ background: chartBackground }}
+        >
+          <div className="finish-method-chart-center">
+            <span className="finish-method-chart-total">{totalFights}</span>
+            <span className="finish-method-chart-caption">Fights</span>
+          </div>
+        </div>
+        <div className="finish-method-chart-legend">
+          {rows.map((row) => {
+            const totalByMethod = row.wins + row.losses;
+
+            return (
+              <div key={row.label} className="finish-method-chart-legend-item">
+                <span
+                  className="finish-method-chart-legend-swatch"
+                  aria-hidden="true"
+                  style={{ backgroundColor: row.color }}
+                />
+                <span className="finish-method-chart-legend-label">{row.label}</span>
+                <span className="finish-method-chart-legend-value">
+                  {totalByMethod} • {getMethodPercentLabel(totalByMethod, totalFights)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="finish-method-breakdown-list">
         {rows.map((row) => {
@@ -260,21 +325,20 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     const saved = localStorage.getItem(reminderStorageKey);
     return saved ? JSON.parse(saved) : {};
   });
-  const withViewerUserId = useCallback((url) => appendViewerUserId(url, user_id), [user_id]);
 
   const invalidateLeaderboardCaches = useCallback((targetEventId) => {
     const cacheKeys = [
-      withViewerUserId(`${API_URL}/leaderboard`),
-      withViewerUserId(`${API_URL}/leaderboard/season`),
-      withViewerUserId(`${API_URL}/leaderboard/2025`)
+      `${API_URL}/leaderboard`,
+      `${API_URL}/leaderboard/season`,
+      `${API_URL}/leaderboard/2025`
     ];
 
     if (targetEventId) {
-      cacheKeys.push(withViewerUserId(`${API_URL}/events/${targetEventId}/leaderboard`));
+      cacheKeys.push(`${API_URL}/events/${targetEventId}/leaderboard`);
     }
 
     cacheKeys.forEach((key) => invalidateCache(key));
-  }, [withViewerUserId]);
+  }, []);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -577,7 +641,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   const fetchEventVoteCounts = useCallback(async () => {
     if (!eventId) return;
     try {
-      const data = await cachedFetchJson(withViewerUserId(`${API_URL}/events/${eventId}/vote-counts`), { ttlMs: 30000 });
+      const data = await cachedFetchJson(`${API_URL}/events/${eventId}/vote-counts`, { ttlMs: 30000 });
       const mappedCounts = {};
       fights.forEach(fight => {
         const fightKey = String(fight.id);
@@ -593,7 +657,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     } catch (err) {
       console.error('Error fetching event vote counts:', err);
     }
-  }, [eventId, fights, withViewerUserId]);
+  }, [eventId, fights]);
 
   useEffect(() => {
     if (eventId && fights.length > 0) {
@@ -725,8 +789,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         const fight = fights.find(f => f.id === fightId);
         if (fight) {
           const [fighter1Response, fighter2Response] = await Promise.all([
-            fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`)),
-            fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`))
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
           ]);
 
           const [fighter1Votes, fighter2Votes] = await Promise.all([
@@ -784,8 +848,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`)),
-          fetch(withViewerUserId(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`))
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
         ]);
 
         if (!fighter1Response.ok) {

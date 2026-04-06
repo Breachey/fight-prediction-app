@@ -4,7 +4,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
-import { appendViewerUserId } from './utils/audienceMode';
 import { Link } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import './Leaderboard.css';
@@ -40,19 +39,19 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
-      return eventId ? appendViewerUserId(`${API_URL}/events/${eventId}/leaderboard`, currentUserId) : null;
+      return eventId ? `${API_URL}/events/${eventId}/leaderboard` : null;
     }
     if (type === 'overall') {
-      return appendViewerUserId(`${API_URL}/leaderboard`, currentUserId);
+      return `${API_URL}/leaderboard`;
     }
     if (type === 'season') {
-      return appendViewerUserId(`${API_URL}/leaderboard/season`, currentUserId);
+      return `${API_URL}/leaderboard/season`;
     }
     if (type === '2025') {
-      return appendViewerUserId(`${API_URL}/leaderboard/2025`, currentUserId);
+      return `${API_URL}/leaderboard/2025`;
     }
     return null;
-  }, [currentUserId, eventId]);
+  }, [eventId]);
 
   const setLeaderboardData = useCallback((type, data) => {
     if (type === 'event') setEventLeaderboard(data);
@@ -980,6 +979,25 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
           title="2025 Leaderboard"
         />
       )}
+      <section className="leaderboard-points-explainer" aria-labelledby="leaderboard-points-explainer-title">
+        <h2
+          id="leaderboard-points-explainer-title"
+          className="leaderboard-points-explainer-title"
+        >
+          How the points work
+        </h2>
+        <ul className="leaderboard-points-explainer-list">
+          <li>Only correct picks earn points.</li>
+          <li>Correct favorites earn fewer points. Example: <code>-200</code> pays <code>2</code> points.</li>
+          <li>Correct underdogs earn more points. Example: <code>+150</code> pays <code>3</code> points.</li>
+          <li>If odds are missing, a correct pick is worth <code>1</code> point.</li>
+          <li>You get a streak bonus: <code>+1</code> for 3 straight correct picks and another <code>+1</code> at 5 straight in the same event.</li>
+          <li>A perfect main card earns an extra <code>+2</code> points.</li>
+        </ul>
+        <p className="leaderboard-points-explainer-note">
+          Your leaderboard total is the sum of your correct-pick points plus any event bonuses.
+        </p>
+      </section>
     </div>
   );
 }

@@ -1247,6 +1247,108 @@ button.expand-stats-button:hover {
   gap: 8px;
 }
 
+.finish-method-chart-panel {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 58%),
+    rgba(var(--fights-neutral-surface-rgb), 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.finish-method-chart {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    0 10px 18px rgba(0, 0, 0, 0.16);
+}
+
+.finish-method-chart::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: rgba(37, 22, 33, 0.92);
+  box-shadow: inset 0 1px 10px rgba(0, 0, 0, 0.28);
+}
+
+.finish-method-chart-center {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.finish-method-chart-total {
+  color: rgba(var(--fights-neutral-ink-rgb), 0.96);
+  font-size: 1.15rem;
+  font-weight: 760;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.finish-method-chart-caption {
+  margin-top: 3px;
+  color: rgba(var(--fights-neutral-muted-rgb), 0.82);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.finish-method-chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.finish-method-chart-legend-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+
+.finish-method-chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.finish-method-chart-legend-label {
+  color: rgba(var(--fights-neutral-ink-rgb), 0.93);
+  font-size: 0.76rem;
+  font-weight: 620;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.finish-method-chart-legend-value {
+  grid-column: 2;
+  justify-self: end;
+  color: rgba(var(--fights-neutral-muted-rgb), 0.92);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .finish-method-row {
   padding: 8px 9px;
   border-radius: 10px;
@@ -1444,6 +1546,16 @@ button.vote-reminder-clear-button:hover {
 }
 
 @media (max-width: 480px) {
+  .finish-method-chart-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: left;
+  }
+
+  .finish-method-chart-legend {
+    width: 100%;
+  }
+
   .finish-method-breakdown-header,
   .finish-method-row-top {
     align-items: flex-start;

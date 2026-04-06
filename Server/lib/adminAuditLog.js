@@ -1,11 +1,11 @@
 function getRequestIp(req) {
+  if (typeof req?.ip === 'string' && req.ip.trim()) {
+    return req.ip.trim();
+  }
+
   const forwardedFor = req?.headers?.['x-forwarded-for'];
   if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
     return forwardedFor.split(',')[0].trim();
-  }
-
-  if (typeof req?.ip === 'string' && req.ip.trim()) {
-    return req.ip.trim();
   }
 
   return null;
