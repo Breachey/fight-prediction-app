@@ -840,6 +840,40 @@ def fetch_ufc_odds_map(event: Dict, session: requests.Session, timeout: float) -
     return {}
 
 
+def expected_odds_entry_count(event: Dict) -> int:
+    return sum(
+        len(fight.get("Fighters", []))
+        for fight in event.get("FightCard", [])
+        if isinstance(fight, dict)
+    )
+
+
+def build_event_odds_map(
+    event: Dict,
+    session: requests.Session,
+    timeout: float,
+) -> Dict[str, str]:
+    fightodds_map = fetch_fightodds_odds_map(event, session=session, timeout=timeout)
+    expected_count = expected_odds_entry_count(event)
+
+    if expected_count > 0 and len(fightodds_map) >= expected_count:
+        return fightodds_map
+
+    ufc_odds_map = fetch_ufc_odds_map(event, session=session, timeout=timeout)
+    merged_map = {
+        **ufc_odds_map,
+        **fightodds_map,
+    }
+
+    if merged_map:
+        print(
+            "Using merged odds map: "
+            f"fightodds.io={len(fightodds_map)} UFC={len(ufc_odds_map)} merged={len(merged_map)}"
+        )
+
+    return merged_map
+
+
 def load_tapology_event_map(path: str) -> List[Dict[str, str]]:
     if not os.path.exists(path):
         return []
@@ -1756,7 +1790,7 @@ def main() -> None:
             print(str(err), file=sys.stderr)
             sys.exit(1)
 
-        odds_map = fetch_fightodds_odds_map(event, session=ufc_session, timeout=args.timeout)
+        odds_map = build_event_odds_map(event, session=ufc_session, timeout=args.timeout)
         tapology_event = resolve_tapology_event(
             tapology_session=tapology_session,
             event=event,

@@ -7,8 +7,9 @@ import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
+import { APP_VERSION_LABEL } from './buildInfo';
 import { extractPosterAccents, DEFAULT_EVENT_ACCENTS } from './utils/posterAccentTheme';
-import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken } from './utils/adminSession';
+import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken, storeAdminSession } from './utils/adminSession';
 import './App.css';
 
 // Lazy load heavy components to improve initial load time
@@ -16,6 +17,19 @@ const Fights = lazy(() => import('./Fights'));
 const Leaderboard = lazy(() => import('./Leaderboard'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const HighlightsPage = lazy(() => import('./HighlightsPage'));
+
+function persistAuthenticatedUser(userData) {
+  localStorage.setItem('user_id', userData.user_id);
+  localStorage.setItem('username', userData.username);
+  localStorage.setItem('phoneNumber', userData.phoneNumber || userData.phone_number || '');
+  localStorage.setItem('user_type', userData.user_type || 'user');
+
+  if (userData.admin_session_token) {
+    storeAdminSession(userData.admin_session_token, userData.admin_session_expires_at);
+  } else {
+    clearAdminSession();
+  }
+}
 
 function App() {
   const location = useLocation();
@@ -67,7 +81,7 @@ function App() {
           if (isMounted) {
             setUser({ 
               username: savedUsername, 
-              phoneNumber: savedPhoneNumber, 
+              phoneNumber: userData.phone_number || savedPhoneNumber, 
               user_id: savedUserId,
               user_type: userData.user_type || savedUserType || 'user',
               admin_session_token: userData.user_type === 'admin' ? (savedAdminSessionToken || null) : null,
@@ -90,6 +104,7 @@ function App() {
 
   // Called when user successfully logs in or signs up
   const handleAuthentication = (userData) => {
+    persistAuthenticatedUser(userData);
     setUser(userData);
   };
 
@@ -234,7 +249,10 @@ function App() {
             </Link>
           </header>
           <UserAuth onAuthenticate={handleAuthentication} />
-          <footer className="footer">Made by Scrap & Screach</footer>
+          <footer className="footer">
+            <span>Made by Scrap & Screach</span>
+            <span className="footer-version">{APP_VERSION_LABEL}</span>
+          </footer>
         </div>
       </div>
     );
@@ -288,9 +306,7 @@ function App() {
           <Route path="/" element={
             <>
               {/* Greeting message */}
-              <div className="welcome-greeting">
-                Hi, {user.username}
-              </div>
+              <div className="welcome-greeting">Hi, {user.username}</div>
               {/* Event selection dropdown */}
               <div className="section event-selector-section">
                 <EventSelector 
@@ -333,7 +349,10 @@ function App() {
           <Route path="/profile" element={<ProfilePage user={user} />} />
         </Routes>
       </Suspense>
-      <footer className="footer">Made by Scrap & Screach</footer>
+      <footer className="footer">
+        <span>Made by Scrap & Screach</span>
+        <span className="footer-version">{APP_VERSION_LABEL}</span>
+      </footer>
     </div>
   );
 }

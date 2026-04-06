@@ -77,17 +77,20 @@ const FINISH_METHOD_BREAKDOWN = [
   {
     label: 'KO/TKO',
     winsKey: 'ko_tko_wins',
-    lossesKey: 'ko_tko_losses'
+    lossesKey: 'ko_tko_losses',
+    color: 'rgba(251, 146, 60, 0.96)'
   },
   {
     label: 'Submission',
     winsKey: 'submission_wins',
-    lossesKey: 'submission_losses'
+    lossesKey: 'submission_losses',
+    color: 'rgba(56, 189, 248, 0.96)'
   },
   {
     label: 'Decision',
     winsKey: 'decision_wins',
-    lossesKey: 'decision_losses'
+    lossesKey: 'decision_losses',
+    color: 'rgba(192, 132, 252, 0.96)'
   }
 ];
 
@@ -125,6 +128,34 @@ function getMethodPercentLabel(count, total) {
   return `${Math.round((count / total) * 100)}%`;
 }
 
+function getMethodChartBackground(rows, totalFights) {
+  if (!totalFights) {
+    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
+  }
+
+  let currentAngle = 0;
+  const segments = rows
+    .map((row) => {
+      const totalByMethod = row.wins + row.losses;
+
+      if (!totalByMethod) {
+        return null;
+      }
+
+      const startAngle = currentAngle;
+      currentAngle += (totalByMethod / totalFights) * 360;
+
+      return `${row.color} ${startAngle}deg ${currentAngle}deg`;
+    })
+    .filter(Boolean);
+
+  if (segments.length === 0) {
+    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
+  }
+
+  return `conic-gradient(from -90deg, ${segments.join(', ')})`;
+}
+
 function FinishMethodBreakdown({ fight, fighterKey }) {
   const recordTotals = parseRecordTotals(fight?.[`${fighterKey}_record`]);
   const hasAnyMethodData = FINISH_METHOD_BREAKDOWN.some(({ winsKey, lossesKey }) => (
@@ -143,16 +174,19 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
     );
   }
 
-  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey }) => ({
+  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey, color }) => ({
     label,
     wins: parseMethodCount(fight?.[`${fighterKey}_${winsKey}`]),
-    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`])
+    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`]),
+    color
   }));
 
   const fallbackWins = rows.reduce((total, row) => total + row.wins, 0);
   const fallbackLosses = rows.reduce((total, row) => total + row.losses, 0);
   const totalWins = recordTotals.wins || fallbackWins;
   const totalLosses = recordTotals.losses || fallbackLosses;
+  const totalFights = totalWins + totalLosses;
+  const chartBackground = getMethodChartBackground(rows, totalFights);
 
   return (
     <div className="finish-method-breakdown">
@@ -161,6 +195,38 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
         <span className="finish-method-breakdown-summary">
           {totalWins}W • {totalLosses}L
         </span>
+      </div>
+      <div className="finish-method-chart-panel">
+        <div
+          className="finish-method-chart"
+          role="img"
+          aria-label={`Fight endings: ${rows.map((row) => `${row.label} ${row.wins + row.losses}`).join(', ')}`}
+          style={{ background: chartBackground }}
+        >
+          <div className="finish-method-chart-center">
+            <span className="finish-method-chart-total">{totalFights}</span>
+            <span className="finish-method-chart-caption">Fights</span>
+          </div>
+        </div>
+        <div className="finish-method-chart-legend">
+          {rows.map((row) => {
+            const totalByMethod = row.wins + row.losses;
+
+            return (
+              <div key={row.label} className="finish-method-chart-legend-item">
+                <span
+                  className="finish-method-chart-legend-swatch"
+                  aria-hidden="true"
+                  style={{ backgroundColor: row.color }}
+                />
+                <span className="finish-method-chart-legend-label">{row.label}</span>
+                <span className="finish-method-chart-legend-value">
+                  {totalByMethod} • {getMethodPercentLabel(totalByMethod, totalFights)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="finish-method-breakdown-list">
         {rows.map((row) => {

@@ -50,6 +50,54 @@
     0 14px 28px rgba(0, 0, 0, 0.22);
 }
 
+.leaderboard-points-explainer {
+  margin-top: 20px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.14), rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.14)),
+    rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard-points-explainer-title {
+  margin: 0 0 12px;
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.leaderboard-points-explainer-list {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.leaderboard-points-explainer-list li + li {
+  margin-top: 6px;
+}
+
+.leaderboard-points-explainer code {
+  font-family: 'SFMono-Regular', 'Consolas', monospace;
+  font-size: 0.92em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fbff;
+}
+
+.leaderboard-points-explainer-note {
+  margin: 12px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 /* Leaderboard responsive styles */
 @media (max-width: 768px) {
   .leaderboard-container {
@@ -118,5 +166,23 @@
     padding: 1px 4px !important;
     font-size: 0.65rem !important;
     margin-left: 2px !important;
+  }
+
+  .leaderboard-points-explainer {
+    padding: 18px 16px;
+    border-radius: 16px;
+  }
+
+  .leaderboard-points-explainer-title {
+    font-size: 0.96rem;
+  }
+
+  .leaderboard-points-explainer-list {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .leaderboard-points-explainer-note {
+    font-size: 0.88rem;
   }
 }

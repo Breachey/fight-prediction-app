@@ -745,6 +745,10 @@ async function buildFightCardPreview({
     warnings.push(`style is blank on ${fieldCompleteness.style} row(s).`);
   }
 
+  if (fieldCompleteness.odds > 0) {
+    warnings.push(`odds is blank on ${fieldCompleteness.odds} row(s).`);
+  }
+
   const previewEvent = {
     name: normalizeText(rawRows[0]?.Event) || normalizeText(eventRecord?.name) || null,
     date: normalizeText(rawRows[0]?.StartTime).split('T')[0] || normalizeText(eventRecord?.date) || null,
