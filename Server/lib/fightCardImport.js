@@ -22,6 +22,9 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
   'FightId',
   'FightOrder',
   'FightStatus',
+  'PossibleRounds',
+  'IsTitleFight',
+  'TitleFightName',
   'CardSegment',
   'CardSegmentStartTime',
   'CardSegmentBroadcaster',
@@ -68,6 +71,8 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
 const FIGHT_CARD_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const PREVIEW_STORE = new Map();
 const HEADER_SET = new Set(EXPECTED_FIGHT_CARD_HEADERS);
+const INTEGER_FIELDS = new Set(['PossibleRounds']);
+const BOOLEAN_FIELDS = new Set(['IsTitleFight']);
 const COMPLETENESS_FIELDS = [
   'style',
   'odds',
@@ -104,11 +109,41 @@ function parseInteger(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseBoolean(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (['true', 't', '1', 'yes', 'y'].includes(normalized)) {
+    return true;
+  }
+
+  if (['false', 'f', '0', 'no', 'n'].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
 function sanitizeRowForDatabase(row) {
   return Object.fromEntries(
     EXPECTED_FIGHT_CARD_HEADERS.map((header) => {
       const value = normalizeText(row[header]);
-      return [header, value === '' ? null : value];
+
+      if (value === '') {
+        return [header, null];
+      }
+
+      if (INTEGER_FIELDS.has(header)) {
+        return [header, parseInteger(value)];
+      }
+
+      if (BOOLEAN_FIELDS.has(header)) {
+        return [header, parseBoolean(value)];
+      }
+
+      return [header, value];
     })
   );
 }
@@ -566,6 +601,80 @@ async function runFightCardScraper({
   });
 }
 
+async function runEventOddsScraper({
+  eventId,
+  repoRoot,
+  timeoutMs = 120000,
+}) {
+  const scraperRoot = path.join(repoRoot, 'Server', 'scraper');
+  const scriptPath = path.join(scraperRoot, 'refresh_event_odds.py');
+
+  await fs.access(scriptPath);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('python3', [scriptPath, String(eventId)], {
+      cwd: repoRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeoutId);
+
+      if (timedOut) {
+        reject(new Error(`Odds scraper timed out after ${timeoutMs}ms.`));
+        return;
+      }
+
+      if (code !== 0) {
+        reject(
+          new Error(
+            `Odds scraper exited with code ${code}.\n${stderr}${stdout ? `\n${stdout}` : ''}`.trim()
+          )
+        );
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(stdout);
+        resolve({
+          rows: Array.isArray(payload?.rows) ? payload.rows : [],
+          rowCount: Number(payload?.row_count) || 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+        });
+      } catch (error) {
+        reject(
+          new Error(
+            `Odds scraper returned invalid JSON.\n${stderr}${stdout ? `\n${stdout}` : ''}`.trim()
+          )
+        );
+      }
+    });
+  });
+}
+
 async function backfillEventImageIfMissing({
   supabase,
   eventId,
@@ -814,6 +923,7 @@ module.exports = {
   parseFightCardCsvFile,
   removePreviewAssets,
   runFightCardScraper,
+  runEventOddsScraper,
   buildOddsRefreshPlan,
   backfillEventImageIfMissing,
   storeFightCardPreview,

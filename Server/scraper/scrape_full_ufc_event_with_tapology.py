@@ -40,6 +40,12 @@ SERVER_ROOT = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(SERVER_ROOT)
 DEFAULT_OUTPUT_DIR = os.path.join(SCRIPT_DIR, "fight_cards")
 DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
+KNOWN_FIGHTER_NAME_VARIANTS = {
+    "patricio pitbull": {"patricio freire"},
+    "patricio freire": {"patricio pitbull"},
+    "loopy godinez": {"lupita godinez"},
+    "lupita godinez": {"loopy godinez"},
+}
 CSV_HEADERS = [
     "id",
     "Event",
@@ -58,6 +64,9 @@ CSV_HEADERS = [
     "FightId",
     "FightOrder",
     "FightStatus",
+    "PossibleRounds",
+    "IsTitleFight",
+    "TitleFightName",
     "CardSegment",
     "CardSegmentStartTime",
     "CardSegmentBroadcaster",
@@ -640,7 +649,18 @@ def fighter_names_match(expected_name: str, candidate_name: str) -> bool:
         return False
     if normalized_expected == normalized_candidate:
         return True
-    return names_have_alias_match(normalized_expected, normalized_candidate)
+
+    expected_variants = fighter_name_variants(normalized_expected)
+    candidate_variants = fighter_name_variants(normalized_candidate)
+    if set(expected_variants) & set(candidate_variants):
+        return True
+
+    for expected_variant in expected_variants:
+        for candidate_variant in candidate_variants:
+            if names_have_alias_match(expected_variant, candidate_variant):
+                return True
+
+    return False
 
 
 def build_fightodds_fighter_name(fighter_node: Dict[str, object]) -> str:
@@ -1032,6 +1052,24 @@ def parse_tapology_fighter_directory(html: str) -> List[Dict[str, object]]:
 
 def tokenized_name(value: str) -> List[str]:
     return [token for token in normalize_name(value).split() if token]
+
+
+def fighter_name_variants(value: str) -> List[str]:
+    normalized = normalize_name(value)
+    if not normalized:
+        return []
+
+    variants = {normalized}
+    pending = [normalized]
+
+    while pending:
+        current = pending.pop()
+        for alias in KNOWN_FIGHTER_NAME_VARIANTS.get(current, set()):
+            if alias not in variants:
+                variants.add(alias)
+                pending.append(alias)
+
+    return sorted(variants)
 
 
 def names_have_alias_match(expected_name: str, candidate_variant: str) -> bool:
@@ -1636,6 +1674,52 @@ def build_event_constants(event: Dict) -> Dict[str, Optional[str]]:
     }
 
 
+def extract_possible_rounds(fight: Dict) -> Optional[int]:
+    ruleset = fight.get("RuleSet", {}) or {}
+    possible_rounds = ruleset.get("PossibleRounds")
+    if isinstance(possible_rounds, int):
+        return possible_rounds
+
+    try:
+        if possible_rounds is not None and str(possible_rounds).strip():
+            return int(str(possible_rounds).strip())
+    except (TypeError, ValueError):
+        pass
+
+    description = str(ruleset.get("Description", "")).strip()
+    description_match = re.search(r"(\d+)\s*Rnd\b", description, re.IGNORECASE)
+    if description_match:
+        return int(description_match.group(1))
+
+    return None
+
+
+def extract_title_fight_details(fight: Dict) -> Tuple[bool, str]:
+    accolades = fight.get("Accolades", []) or []
+    title_names: List[str] = []
+
+    for accolade in accolades:
+        if not isinstance(accolade, dict):
+            continue
+
+        accolade_type = str(accolade.get("Type", "")).strip().lower()
+        accolade_name = str(accolade.get("Name", "")).strip()
+        normalized_name = accolade_name.lower()
+
+        is_title_accolade = (
+            accolade_type == "belt"
+            or "title" in normalized_name
+            or "championship" in normalized_name
+        )
+        if not is_title_accolade:
+            continue
+
+        if accolade_name and accolade_name not in title_names:
+            title_names.append(accolade_name)
+
+    return bool(title_names), " / ".join(title_names)
+
+
 def build_row(
     event_constants: Dict[str, Optional[str]],
     fight: Dict,
@@ -1651,12 +1735,17 @@ def build_row(
     born = fighter.get("Born", {})
     fighting_out = fighter.get("FightingOutOf", {})
     weight_classes = fighter.get("WeightClasses", [])
+    possible_rounds = extract_possible_rounds(fight)
+    is_title_fight, title_fight_name = extract_title_fight_details(fight)
 
     row = {
         "id": "",
         "FightId": fight.get("FightId"),
         "FightOrder": fight.get("FightOrder"),
         "FightStatus": fight.get("Status"),
+        "PossibleRounds": possible_rounds if possible_rounds is not None else "",
+        "IsTitleFight": "true" if is_title_fight else "false",
+        "TitleFightName": title_fight_name,
         "CardSegment": fight.get("CardSegment"),
         "CardSegmentStartTime": fight.get("CardSegmentStartTime"),
         "CardSegmentBroadcaster": fight.get("CardSegmentBroadcaster"),
