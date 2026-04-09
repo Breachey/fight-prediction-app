@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
@@ -326,10 +326,12 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   const [editingFight, setEditingFight] = useState(null);
   const [predictionHistory, setPredictionHistory] = useState([]);
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
+  const [showFloatingVoteProgress, setShowFloatingVoteProgress] = useState(false);
   const [voteReminders, setVoteReminders] = useState(() => {
     const saved = localStorage.getItem(reminderStorageKey);
     return saved ? JSON.parse(saved) : {};
   });
+  const firstFightRef = useRef(null);
 
   const invalidateLeaderboardCaches = useCallback((targetEventId) => {
     const cacheKeys = [
@@ -634,6 +636,30 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   useEffect(() => {
     localStorage.setItem(reminderStorageKey, JSON.stringify(voteReminders));
   }, [voteReminders, reminderStorageKey]);
+
+  useEffect(() => {
+    const firstFightElement = firstFightRef.current;
+    const floatingProgressOffset = 88;
+
+    if (!firstFightElement || typeof window === 'undefined') {
+      setShowFloatingVoteProgress(false);
+      return undefined;
+    }
+
+    const updateFloatingVoteProgressVisibility = () => {
+      const firstFightTop = firstFightElement.getBoundingClientRect().top;
+      setShowFloatingVoteProgress(firstFightTop <= floatingProgressOffset);
+    };
+
+    updateFloatingVoteProgressVisibility();
+    window.addEventListener('scroll', updateFloatingVoteProgressVisibility, { passive: true });
+    window.addEventListener('resize', updateFloatingVoteProgressVisibility);
+
+    return () => {
+      window.removeEventListener('scroll', updateFloatingVoteProgressVisibility);
+      window.removeEventListener('resize', updateFloatingVoteProgressVisibility);
+    };
+  }, [fights, eventId]);
 
   // Clear both selected and submitted fights when username or eventId changes
   useEffect(() => {
@@ -1230,7 +1256,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           <div className="error-message">{error}</div>
         )}
 
-        {eventVoteProgress && (
+        {eventVoteProgress && showFloatingVoteProgress && (
           <div className="floating-vote-progress" aria-live="polite" aria-atomic="true">
             <span className="floating-vote-progress-primary">{eventVoteProgress.label}</span>
             <span className="floating-vote-progress-secondary">{eventVoteProgress.progress}</span>
@@ -1244,7 +1270,11 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           const fightMetaClassName = `fight-meta ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
 
           return (
-        <div key={fight.id} className={fightCardClassName}>
+        <div
+          key={fight.id}
+          className={fightCardClassName}
+          ref={fight === fights[0] ? firstFightRef : null}
+        >
           {fight.is_title_fight && (
             <>
               <div className="title-fight-border-outer">

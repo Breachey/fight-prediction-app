@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
@@ -366,7 +366,7 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
   }, []);
 
   const summary = data?.summary;
-  const eventRows = data?.events || [];
+  const eventRows = useMemo(() => data?.events || [], [data?.events]);
   const bestEvent = data?.best_event;
   const toughestEvent = data?.toughest_event;
   const fighterInsights = data?.fighter_insights || {};
@@ -416,7 +416,7 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
     });
   };
 
-  const normalizeImageUrl = (value) => {
+  const normalizeImageUrl = useCallback((value) => {
     const rawValue = value;
     if (!rawValue) return '';
 
@@ -450,7 +450,7 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
         return raw;
       }
     }
-  };
+  }, []);
 
   const renderInfoHint = (id, text) => {
     if (!text) return null;
@@ -616,7 +616,7 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
       tier,
       events: buckets[tier]
     }));
-  }, [eventsByPoints]);
+  }, [eventsByPoints, normalizeImageUrl]);
 
   const eventRowsByDate = useMemo(() => {
     return [...eventRows].sort((a, b) => {
