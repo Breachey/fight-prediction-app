@@ -25,6 +25,7 @@ const {
   replaceFightCardPreview,
   removePreviewAssets,
   runFightCardScraper,
+  runEventOddsScraper,
 } = require('./lib/fightCardImport');
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -361,6 +362,7 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 ];
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
+const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, IsTitleFight, TitleFightName';
 
 function calculatePredictionPointsFromOdds(odds) {
   if (odds === undefined || odds === null) {
@@ -1198,6 +1200,19 @@ function transformFighterData(fighter) {
   return transformedFighter;
 }
 
+function buildFightStructureData(fighter) {
+  const roundsValue = Number(fighter?.PossibleRounds);
+  const titleFightName = typeof fighter?.TitleFightName === 'string'
+    ? fighter.TitleFightName.trim()
+    : '';
+
+  return {
+    scheduled_rounds: Number.isFinite(roundsValue) ? roundsValue : null,
+    is_title_fight: fighter?.IsTitleFight === true || fighter?.IsTitleFight === 'true',
+    title_fight_name: titleFightName || null,
+  };
+}
+
 app.get('/fights', async (req, res) => {
   try {
     // Get the latest event
@@ -1215,7 +1230,7 @@ app.get('/fights', async (req, res) => {
     // Get all fights for the latest event
     const { data: fights, error: fightsError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, card_tier, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select(FIGHT_CARD_FIGHT_SELECT)
       .eq('EventId', latestEvent[0].id);
 
     if (fightsError) {
@@ -1338,7 +1353,8 @@ app.get('/fights', async (req, res) => {
         weightclass: displayWeightclass,
         weightclass_official: weightclassData.official_weightclass || fighters.red.FighterWeightClass,
         weightclass_lbs: weightclassData.weight_lbs || fighters.red.Weight_lbs,
-        bout_order: fighters.red.FightOrder
+        bout_order: fighters.red.FightOrder,
+        ...buildFightStructureData(fighters.red),
       };
 
       transformedFights.push(transformedFight);
@@ -1799,7 +1815,7 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
     // Get the updated fight data to return
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select(FIGHT_CARD_FIGHT_SELECT)
       .eq('FightId', id);
 
     if (getFightError) {
@@ -1882,7 +1898,8 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
       weightclass: displayWeightclass,
       weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
       weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder
+      bout_order: redFighter.FightOrder,
+      ...buildFightStructureData(redFighter),
     };
 
     await logAdminAction(req, {
@@ -1930,7 +1947,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     // First get the fight data to get the event_id and fighter IDs
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select(FIGHT_CARD_FIGHT_SELECT)
       .eq('FightId', id);
 
     if (getFightError) {
@@ -2054,7 +2071,8 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       weightclass: displayWeightclass,
       weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
       weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder
+      bout_order: redFighter.FightOrder,
+      ...buildFightStructureData(redFighter),
     };
 
     await logAdminAction(req, {
@@ -3313,8 +3331,6 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
 app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
-  let scraperOutput = null;
-
   try {
     const eventId = Number(req.params.id);
     if (Number.isNaN(eventId)) {
@@ -3331,33 +3347,14 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
       return res.status(500).json({ error: 'Failed to load existing fight-card rows' });
     }
 
-    scraperOutput = await runFightCardScraper({
+    const oddsScraperOutput = await runEventOddsScraper({
       eventId,
       repoRoot: REPO_ROOT,
     });
 
-    const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
-    if (parsedCsv.headerErrors.length > 0) {
-      await logAdminAction(req, {
-        action: 'fight_card.refresh_odds',
-        status: 'error',
-        targetType: 'event',
-        targetId: eventId,
-        eventId,
-        metadata: {
-          blockerCount: parsedCsv.headerErrors.length,
-          blockers: parsedCsv.headerErrors,
-        },
-      });
-      return res.status(400).json({
-        error: 'Scraper CSV headers were invalid',
-        blockers: parsedCsv.headerErrors,
-      });
-    }
-
     const refreshPlan = buildOddsRefreshPlan({
       eventId,
-      scrapedRows: parsedCsv.rows,
+      scrapedRows: oddsScraperOutput.rows,
       existingFightCardRows: existingFightCardRows || [],
     });
 
@@ -3403,6 +3400,7 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
         updatedCount: refreshPlan.updatedCount,
         unchangedCount: refreshPlan.unchangedCount,
         missingOddsCount: refreshPlan.missingOddsCount,
+        scrapedRowCount: oddsScraperOutput.rowCount,
         warningCount: refreshPlan.warnings.length,
         warnings: refreshPlan.warnings,
       },
@@ -3413,6 +3411,7 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
       updatedCount: refreshPlan.updatedCount,
       unchangedCount: refreshPlan.unchangedCount,
       missingOddsCount: refreshPlan.missingOddsCount,
+      scrapedRowCount: oddsScraperOutput.rowCount,
       warnings: refreshPlan.warnings,
       updatedRows: refreshPlan.updates.map((update) => ({
         FightId: update.FightId,
@@ -3439,10 +3438,6 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
       error: 'Failed to refresh odds',
       details: error.message,
     });
-  } finally {
-    if (scraperOutput?.scratchDir) {
-      await removePreviewAssets(scraperOutput.scratchDir);
-    }
   }
 });
 
@@ -3466,7 +3461,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // Get fights for the event from ufc_full_fight_card
     const { data, error } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select(FIGHT_CARD_FIGHT_SELECT)
       .eq('EventId', id)
       .order('FightOrder');
 
@@ -3606,7 +3601,8 @@ app.get('/events/:id/fights', async (req, res) => {
         weightclass: displayWeightclass,
         weightclass_official: weightclassData.official_weightclass || fighters.weightclass,
         weightclass_lbs: weightclassData.weight_lbs || fighters.Weight_lbs,
-        bout_order: fighters.red.FightOrder
+        bout_order: fighters.red.FightOrder,
+        ...buildFightStructureData(fighters.red),
       };
 
       transformedFights.push(transformedFight);
@@ -3983,7 +3979,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
       .from('ufc_full_fight_card')
-      .select('FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus')
+      .select(FIGHT_CARD_FIGHT_SELECT)
       .eq('FightId', id);
 
     if (getFightError) {
@@ -4079,7 +4075,8 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       weightclass: displayWeightclass,
       weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
       weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder
+      bout_order: redFighter.FightOrder,
+      ...buildFightStructureData(redFighter),
     };
 
     res.json(transformedFight);

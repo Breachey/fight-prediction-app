@@ -78,12 +78,31 @@ const buildApiErrorMessage = (payload, fallbackMessage) => {
   const detailMessage = typeof payload.details === 'string' && payload.details.trim()
     ? payload.details.trim()
     : '';
+  const blockerMessage = Array.isArray(payload.blockers) && payload.blockers.length > 0
+    ? payload.blockers
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join(' ')
+    : '';
+  const warningMessage = Array.isArray(payload.warnings) && payload.warnings.length > 0
+    ? payload.warnings
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join(' ')
+    : '';
 
   if (primaryMessage && detailMessage && detailMessage !== primaryMessage) {
     return `${primaryMessage}: ${detailMessage}`;
   }
 
-  return primaryMessage || detailMessage || fallbackMessage;
+  const baseMessage = primaryMessage || detailMessage || fallbackMessage;
+  if (blockerMessage) {
+    return `${baseMessage}: ${blockerMessage}`;
+  }
+
+  if (warningMessage && !primaryMessage && !detailMessage) {
+    return `${baseMessage}: ${warningMessage}`;
+  }
+
+  return baseMessage;
 };
 
 function EventSelector({

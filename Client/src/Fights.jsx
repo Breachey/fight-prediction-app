@@ -8,18 +8,6 @@ import './Fights.css';
 import PlayerCard from './components/PlayerCard';
 import VoteCard from './components/VoteCard';
 
-// Move static styles outside component to prevent recreation on every render
-const aiBadge = {
-  backgroundColor: 'rgba(59, 130, 246, 0.2)',
-  color: '#60a5fa',
-  padding: '2px 8px',
-  borderRadius: '12px',
-  fontSize: '0.75rem',
-  fontWeight: '500',
-  border: '1px solid rgba(59, 130, 246, 0.3)',
-  marginLeft: '4px'
-};
-
 const toggleButtonStyle = {
   display: 'flex',
   alignItems: 'center',
@@ -154,6 +142,23 @@ function getMethodChartBackground(rows, totalFights) {
   }
 
   return `conic-gradient(from -90deg, ${segments.join(', ')})`;
+}
+
+function getFightFormatDetails(fight) {
+  const details = [];
+
+  if (typeof fight?.title_fight_name === 'string' && fight.title_fight_name.trim()) {
+    details.push(fight.title_fight_name.trim());
+  } else if (fight?.is_title_fight) {
+    details.push('Title Fight');
+  }
+
+  const scheduledRounds = Number(fight?.scheduled_rounds);
+  if (Number.isFinite(scheduledRounds) && scheduledRounds > 0) {
+    details.push(`${scheduledRounds} ${scheduledRounds === 1 ? 'Round' : 'Rounds'}`);
+  }
+
+  return details.join(' • ');
 }
 
 function FinishMethodBreakdown({ fight, fighterKey }) {
@@ -314,7 +319,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [voteCounts, setVoteCounts] = useState({}); // Store vote counts (total + human) for button ratio
-  const [fadeOutMessages, setFadeOutMessages] = useState({});
+  const [, setFadeOutMessages] = useState({});
   const [showAIVotes, setShowAIVotes] = useState(false);
   const [expandedFightStats, setExpandedFightStats] = useState({});
   const [expandedAdminControls, setExpandedAdminControls] = useState({});
@@ -1103,6 +1108,31 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     return null;
   }, [rivalryMarkers]);
 
+  const eventVoteProgress = useMemo(() => {
+    const trackableFights = fights.filter((fight) => !fight.is_canceled);
+    const totalFights = trackableFights.length;
+
+    if (totalFights === 0) {
+      return null;
+    }
+
+    const submittedCount = trackableFights.reduce((count, fight) => (
+      submittedFights[fight.id] ? count + 1 : count
+    ), 0);
+    const remainingOpenCount = trackableFights.reduce((count, fight) => (
+      !submittedFights[fight.id] && !fight.is_completed ? count + 1 : count
+    ), 0);
+
+    if (remainingOpenCount === 0) {
+      return null;
+    }
+
+    return {
+      label: `${remainingOpenCount} ${remainingOpenCount === 1 ? 'vote' : 'votes'} left`,
+      progress: `${submittedCount}/${totalFights} voted`
+    };
+  }, [fights, submittedFights]);
+
   if (loading) {
     return <div className="loading-message">Loading fights...</div>;
   }
@@ -1110,6 +1140,78 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   // Removed the global error return so that even if there's an error, we still render all fights.
   
   return (
+    <>
+      <svg className="title-fight-border-svg" style={{ position: 'absolute', width: 0, height: 0 }}>
+        <defs>
+          <filter
+            id="title-fight-border-filter"
+            colorInterpolationFilters="sRGB"
+            filterUnits="objectBoundingBox"
+            x="0"
+            y="0"
+            width="1"
+            height="1"
+          >
+            <feTurbulence
+              type="turbulence"
+              baseFrequency="0.032"
+              numOctaves="3"
+              stitchTiles="stitch"
+              result="noise1"
+              seed="1"
+            />
+            <feOffset in="noise1" dx="0" dy="0" result="offsetNoise1">
+              <animate attributeName="dx" values="-72;72;-72" keyTimes="0;0.5;1" dur="3.4s" repeatCount="indefinite" calcMode="linear" />
+              <animate attributeName="dy" values="104;-104;104" keyTimes="0;0.5;1" dur="4.1s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence
+              type="turbulence"
+              baseFrequency="0.029"
+              numOctaves="3"
+              stitchTiles="stitch"
+              result="noise2"
+              seed="3"
+            />
+            <feOffset in="noise2" dx="0" dy="0" result="offsetNoise2">
+              <animate attributeName="dx" values="86;-86;86" keyTimes="0;0.5;1" dur="2.8s" repeatCount="indefinite" calcMode="linear" />
+              <animate attributeName="dy" values="-56;56;-56" keyTimes="0;0.5;1" dur="3.6s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence
+              type="turbulence"
+              baseFrequency="0.026"
+              numOctaves="3"
+              stitchTiles="stitch"
+              result="noise3"
+              seed="5"
+            />
+            <feOffset in="noise3" dx="0" dy="0" result="offsetNoise3">
+              <animate attributeName="dx" values="-64;64;-64" keyTimes="0;0.5;1" dur="3.1s" repeatCount="indefinite" calcMode="linear" />
+              <animate attributeName="dy" values="-82;82;-82" keyTimes="0;0.5;1" dur="4.4s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feTurbulence
+              type="turbulence"
+              baseFrequency="0.034"
+              numOctaves="2"
+              stitchTiles="stitch"
+              result="noise4"
+              seed="7"
+            />
+            <feOffset in="noise4" dx="0" dy="0" result="offsetNoise4">
+              <animate attributeName="dx" values="58;-58;58" keyTimes="0;0.5;1" dur="2.5s" repeatCount="indefinite" calcMode="linear" />
+              <animate attributeName="dy" values="44;-44;44" keyTimes="0;0.5;1" dur="3.3s" repeatCount="indefinite" calcMode="linear" />
+            </feOffset>
+
+            <feComposite in="offsetNoise1" in2="offsetNoise2" result="part1" />
+            <feComposite in="offsetNoise3" in2="offsetNoise4" result="part2" />
+            <feBlend in="part1" in2="part2" mode="color-dodge" result="combinedNoise" />
+            <feDisplacementMap in="SourceGraphic" in2="combinedNoise" scale="4.6" xChannelSelector="R" yChannelSelector="B" />
+          </filter>
+        </defs>
+      </svg>
+
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
@@ -1128,10 +1230,36 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           <div className="error-message">{error}</div>
         )}
 
-        {fights.map((fight) => (
-        <div key={fight.id} className={`fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''}`}>
-          {(fight.card_tier || fight.weightclass || fight.is_canceled) && (
-            <div className="fight-meta">
+        {eventVoteProgress && (
+          <div className="floating-vote-progress" aria-live="polite" aria-atomic="true">
+            <span className="floating-vote-progress-primary">{eventVoteProgress.label}</span>
+            <span className="floating-vote-progress-secondary">{eventVoteProgress.progress}</span>
+          </div>
+        )}
+
+        {fights.map((fight) => {
+          const fightFormatDetails = getFightFormatDetails(fight);
+          const hasFightMeta = fight.card_tier || fight.weightclass || fight.is_canceled || fightFormatDetails;
+          const fightCardClassName = `fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''} ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
+          const fightMetaClassName = `fight-meta ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
+
+          return (
+        <div key={fight.id} className={fightCardClassName}>
+          {fight.is_title_fight && (
+            <>
+              <div className="title-fight-border-outer">
+                <div className="title-fight-border-inner" />
+              </div>
+              <div className="title-fight-glow-1" />
+              <div className="title-fight-glow-2" />
+              <div className="title-fight-background-glow" />
+            </>
+          )}
+          {hasFightMeta && (
+            <div className={fightMetaClassName}>
+              {fight.is_title_fight && (
+                <div className="title-fight-banner">TITLE FIGHT</div>
+              )}
               {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
               {typeof fight.weightclass === 'string' && fight.weightclass && (
                 <div className="weight-class-container">
@@ -1156,7 +1284,13 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                       }
                     </p>
                   )}
+                  {fightFormatDetails && (
+                    <p className="fight-format-details">{fightFormatDetails}</p>
+                  )}
                 </div>
+              )}
+              {!fight.weightclass && fightFormatDetails && (
+                <p className="fight-format-details">{fightFormatDetails}</p>
               )}
               {fight.is_canceled && (
                 <div className="fight-canceled">
@@ -1725,7 +1859,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
             </div>
           )}
         </div>
-        ))}
+        );
+        })}
 
         {fights.length === 0 && !loading && (
           <div className="no-fights-message">
@@ -1734,6 +1869,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         )}
       </div>
     </div>
+    </>
   );
 }
 
