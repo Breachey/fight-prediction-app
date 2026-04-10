@@ -9,8 +9,6 @@ Active pieces:
 - `requirements.txt`: local Python dependencies for scraping
 - `fight_cards/`: historical exported CSVs and sample outputs
 
-Legacy helpers are kept in `legacy/` for reference while we finish folding any remaining one-off tooling into the app.
-
 Useful commands from the repo root:
 
 ```bash

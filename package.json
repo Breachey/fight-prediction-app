@@ -13,8 +13,7 @@
     "scrape:fight-card": "npm --prefix Server run scrape:fight-card --",
     "smoke:fight-card-import": "npm --prefix Server run smoke:fight-card-import --",
     "sync:fighter-style": "npm --prefix Server run sync:fighter-style --",
-    "start": "npm --prefix Server run start",
-    "test": "npm --prefix Server run test"
+    "start": "npm --prefix Server run start"
   },
   "devDependencies": {
     "supabase": "^2.84.4"
