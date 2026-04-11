@@ -1197,22 +1197,11 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           const fightCardClassName = `fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''} ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
 
           return (
-        <div key={fight.id} className={fightCardClassName}>
         <div
           key={fight.id}
           className={fightCardClassName}
           ref={fight === fights[0] ? firstFightRef : null}
         >
-          {fight.is_title_fight && (
-            <>
-              <div className="title-fight-border-outer">
-                <div className="title-fight-border-inner" />
-              </div>
-              <div className="title-fight-glow-1" />
-              <div className="title-fight-glow-2" />
-              <div className="title-fight-background-glow" />
-            </>
-          )}
           {hasFightMeta && (
             <div className="fight-meta">
               {fight.is_title_fight && (
