@@ -1072,6 +1072,20 @@ def fighter_name_variants(value: str) -> List[str]:
     return sorted(variants)
 
 
+def variant_sets_match(expected_name: str, candidate_name: str) -> bool:
+    expected_variants = fighter_name_variants(expected_name)
+    candidate_variants = fighter_name_variants(candidate_name)
+    if set(expected_variants) & set(candidate_variants):
+        return True
+
+    for expected_variant in expected_variants:
+        for candidate_variant in candidate_variants:
+            if names_have_alias_match(expected_variant, candidate_variant):
+                return True
+
+    return False
+
+
 def names_have_alias_match(expected_name: str, candidate_variant: str) -> bool:
     expected_tokens = tokenized_name(expected_name)
     candidate_tokens = tokenized_name(candidate_variant)
@@ -1106,11 +1120,8 @@ def names_have_alias_match(expected_name: str, candidate_variant: str) -> bool:
 
 
 def has_name_match_in_variants(expected_name: str, variants: Iterable[str]) -> bool:
-    normalized_expected_name = normalize_name(expected_name)
     for variant in variants:
-        if normalized_expected_name == normalize_name(variant):
-            return True
-        if names_have_alias_match(normalized_expected_name, variant):
+        if variant_sets_match(expected_name, variant):
             return True
     return False
 
@@ -1536,11 +1547,11 @@ def match_tapology_fighter(
 
     for parsed_fighter in parsed_fighters:
         variants = parsed_fighter["variants"]
-        if normalized_fighter_name in variants:
+        if any(normalize_name(variant) == normalized_fighter_name for variant in variants):
             exact_matches.append(parsed_fighter)
             continue
 
-        if any(names_have_alias_match(normalized_fighter_name, variant) for variant in variants):
+        if any(variant_sets_match(normalized_fighter_name, variant) for variant in variants):
             alias_matches.append(parsed_fighter)
 
     if len(exact_matches) == 1:
