@@ -126,7 +126,6 @@ From the repository root:
 - `npm run sync:fighter-style -- --event-id=1302` backfills the `fighter_style` table from imported fight-card rows for one event
 - `npm run smoke:fight-card-import -- 1302` previews and imports a single event fight card directly against Supabase, then verifies the resulting row and fight counts
 - `npm run start` starts the server
-- `npm run test` runs the server test script placeholder
 
 You can also run the smoke test in preview-only mode:
 
