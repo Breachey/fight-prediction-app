@@ -1166,78 +1166,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   // Removed the global error return so that even if there's an error, we still render all fights.
   
   return (
-    <>
-      <svg className="title-fight-border-svg" style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          <filter
-            id="title-fight-border-filter"
-            colorInterpolationFilters="sRGB"
-            filterUnits="objectBoundingBox"
-            x="0"
-            y="0"
-            width="1"
-            height="1"
-          >
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.032"
-              numOctaves="3"
-              stitchTiles="stitch"
-              result="noise1"
-              seed="1"
-            />
-            <feOffset in="noise1" dx="0" dy="0" result="offsetNoise1">
-              <animate attributeName="dx" values="-72;72;-72" keyTimes="0;0.5;1" dur="3.4s" repeatCount="indefinite" calcMode="linear" />
-              <animate attributeName="dy" values="104;-104;104" keyTimes="0;0.5;1" dur="4.1s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.029"
-              numOctaves="3"
-              stitchTiles="stitch"
-              result="noise2"
-              seed="3"
-            />
-            <feOffset in="noise2" dx="0" dy="0" result="offsetNoise2">
-              <animate attributeName="dx" values="86;-86;86" keyTimes="0;0.5;1" dur="2.8s" repeatCount="indefinite" calcMode="linear" />
-              <animate attributeName="dy" values="-56;56;-56" keyTimes="0;0.5;1" dur="3.6s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.026"
-              numOctaves="3"
-              stitchTiles="stitch"
-              result="noise3"
-              seed="5"
-            />
-            <feOffset in="noise3" dx="0" dy="0" result="offsetNoise3">
-              <animate attributeName="dx" values="-64;64;-64" keyTimes="0;0.5;1" dur="3.1s" repeatCount="indefinite" calcMode="linear" />
-              <animate attributeName="dy" values="-82;82;-82" keyTimes="0;0.5;1" dur="4.4s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.034"
-              numOctaves="2"
-              stitchTiles="stitch"
-              result="noise4"
-              seed="7"
-            />
-            <feOffset in="noise4" dx="0" dy="0" result="offsetNoise4">
-              <animate attributeName="dx" values="58;-58;58" keyTimes="0;0.5;1" dur="2.5s" repeatCount="indefinite" calcMode="linear" />
-              <animate attributeName="dy" values="44;-44;44" keyTimes="0;0.5;1" dur="3.3s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feComposite in="offsetNoise1" in2="offsetNoise2" result="part1" />
-            <feComposite in="offsetNoise3" in2="offsetNoise4" result="part2" />
-            <feBlend in="part1" in2="part2" mode="color-dodge" result="combinedNoise" />
-            <feDisplacementMap in="SourceGraphic" in2="combinedNoise" scale="4.6" xChannelSelector="R" yChannelSelector="B" />
-          </filter>
-        </defs>
-      </svg>
-
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="fights-title">Upcoming Fights</h2>
@@ -1267,9 +1195,9 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           const fightFormatDetails = getFightFormatDetails(fight);
           const hasFightMeta = fight.card_tier || fight.weightclass || fight.is_canceled || fightFormatDetails;
           const fightCardClassName = `fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''} ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
-          const fightMetaClassName = `fight-meta ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
 
           return (
+        <div key={fight.id} className={fightCardClassName}>
         <div
           key={fight.id}
           className={fightCardClassName}
@@ -1286,9 +1214,9 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
             </>
           )}
           {hasFightMeta && (
-            <div className={fightMetaClassName}>
+            <div className="fight-meta">
               {fight.is_title_fight && (
-                <div className="title-fight-banner">TITLE FIGHT</div>
+                <div className="title-fight-badge">Title Fight</div>
               )}
               {fight.card_tier && <h4 className="card-tier">{fight.card_tier}</h4>}
               {typeof fight.weightclass === 'string' && fight.weightclass && (
@@ -1899,7 +1827,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         )}
       </div>
     </div>
-    </>
   );
 }
 
