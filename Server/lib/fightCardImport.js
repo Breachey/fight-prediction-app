@@ -86,6 +86,7 @@ const COMPLETENESS_FIELDS = [
   'TapologyFighterURL',
   'TapologyMatchConfidence',
 ];
+const MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS = 2;
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -413,6 +414,30 @@ function buildEventFieldChanges(currentEvent, previewEvent) {
       to: normalizeText(previewEvent?.[previewKey]) || null,
     }))
     .filter((entry) => entry.from !== entry.to && entry.to !== null);
+}
+
+function buildFieldCompletenessSummary(rawRows, fieldCompleteness) {
+  const totalRows = rawRows.length;
+  const buildMetric = (field) => {
+    const missing = fieldCompleteness[field] || 0;
+    const populated = Math.max(totalRows - missing, 0);
+    return {
+      field,
+      populated,
+      missing,
+      total: totalRows,
+    };
+  };
+
+  return {
+    totalRows,
+    style: buildMetric('style'),
+    odds: buildMetric('odds'),
+    tapologyProfiles: buildMetric('TapologyFighterURL'),
+    tapologyConfidence: buildMetric('TapologyMatchConfidence'),
+    streak: buildMetric('Streak'),
+    finishBreakdown: buildMetric('KO_TKO_Wins'),
+  };
 }
 
 async function removePreviewAssets(scratchDir) {
@@ -849,6 +874,17 @@ async function buildFightCardPreview({
       rawRows.reduce((count, row) => count + (normalizeText(row[field]) ? 0 : 1), 0),
     ])
   );
+  const fieldCompletenessSummary = buildFieldCompletenessSummary(rawRows, fieldCompleteness);
+
+  if (
+    rawRows.length >= 6 &&
+    fieldCompletenessSummary.odds.populated <= MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS &&
+    fieldCompletenessSummary.tapologyProfiles.populated <= MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS
+  ) {
+    blockers.push(
+      `This preview only scraped odds for ${fieldCompletenessSummary.odds.populated}/${rawRows.length} rows and Tapology profiles for ${fieldCompletenessSummary.tapologyProfiles.populated}/${rawRows.length} rows. Discard it and run a fresh preview before importing.`
+    );
+  }
 
   if (fieldCompleteness.style > 0) {
     warnings.push(`style is blank on ${fieldCompleteness.style} row(s).`);
@@ -856,6 +892,18 @@ async function buildFightCardPreview({
 
   if (fieldCompleteness.odds > 0) {
     warnings.push(`odds is blank on ${fieldCompleteness.odds} row(s).`);
+  }
+
+  if (fieldCompletenessSummary.odds.populated === 0 && rawRows.length > 0) {
+    warnings.push(
+      `No odds were scraped for this preview (${fieldCompletenessSummary.odds.populated}/${rawRows.length}). Refresh the preview before importing if odds should already be available.`
+    );
+  }
+
+  if (fieldCompletenessSummary.tapologyProfiles.populated === 0 && rawRows.length > 0) {
+    warnings.push(
+      `No Tapology fighter profiles were matched for this preview (${fieldCompletenessSummary.tapologyProfiles.populated}/${rawRows.length}). Refresh the preview before importing if Tapology data should already be available.`
+    );
   }
 
   const previewEvent = {
@@ -901,6 +949,7 @@ async function buildFightCardPreview({
     existingFightResultCount: existingResults.length,
     changedFightCard,
     fieldCompleteness,
+    fieldCompletenessSummary,
     blockers: Array.from(new Set(blockers)),
     warnings: Array.from(new Set(warnings)),
     scraperStdout: normalizeText(scraperOutput?.stdout) || null,
