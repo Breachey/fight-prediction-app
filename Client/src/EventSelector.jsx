@@ -105,6 +105,34 @@ const buildApiErrorMessage = (payload, fallbackMessage) => {
   return baseMessage;
 };
 
+const getCompletenessTone = (metric) => {
+  if (!metric || !Number.isFinite(metric.total) || metric.total <= 0) {
+    return 'neutral';
+  }
+
+  if (metric.populated <= 0) {
+    return 'critical';
+  }
+
+  if (metric.populated === metric.total) {
+    return 'good';
+  }
+
+  if ((metric.populated / metric.total) < 0.5) {
+    return 'warn';
+  }
+
+  return 'neutral';
+};
+
+const formatCompletenessLabel = (label, metric) => {
+  if (!metric || !Number.isFinite(metric.total) || metric.total <= 0) {
+    return `${label}: n/a`;
+  }
+
+  return `${label}: ${metric.populated}/${metric.total}`;
+};
+
 function EventSelector({
   onEventSelect,
   selectedEventId,
@@ -425,6 +453,40 @@ function EventSelector({
       ? `Import will replace ${fightCardPreview.existingFightCardRowCount} existing fighter row${fightCardPreview.existingFightCardRowCount === 1 ? '' : 's'} for this event.`
       : 'This will be the first fight-card import for this event.'
     : null;
+  const previewCompletenessItems = useMemo(() => {
+    const summary = fightCardPreview?.fieldCompletenessSummary;
+    if (!summary) {
+      return [];
+    }
+
+    return [
+      {
+        key: 'odds',
+        label: formatCompletenessLabel('Odds', summary.odds),
+        tone: getCompletenessTone(summary.odds),
+      },
+      {
+        key: 'tapology',
+        label: formatCompletenessLabel('Tapology', summary.tapologyProfiles),
+        tone: getCompletenessTone(summary.tapologyProfiles),
+      },
+      {
+        key: 'streak',
+        label: formatCompletenessLabel('Streak', summary.streak),
+        tone: getCompletenessTone(summary.streak),
+      },
+      {
+        key: 'finish',
+        label: formatCompletenessLabel('Finish Data', summary.finishBreakdown),
+        tone: getCompletenessTone(summary.finishBreakdown),
+      },
+      {
+        key: 'style',
+        label: formatCompletenessLabel('Style', summary.style),
+        tone: getCompletenessTone(summary.style),
+      },
+    ];
+  }, [fightCardPreview]);
   useEffect(() => {
     if (typeof onSelectedEventChange !== 'function') return;
     onSelectedEventChange(selectedEvent || null);
@@ -1007,6 +1069,21 @@ function EventSelector({
                       <span>{fightCardPreview.existingFightCardRowCount} existing rows</span>
                       <span>{fightCardPreview.existingFightResultCount} existing results</span>
                     </div>
+                    {previewCompletenessItems.length > 0 && (
+                      <div className="event-admin-import-preview__section">
+                        <div className="event-admin-import-preview__title">Scrape Coverage</div>
+                        <div className="event-admin-import-preview__coverage">
+                          {previewCompletenessItems.map((item) => (
+                            <span
+                              key={item.key}
+                              className={`event-admin-import-preview__coverage-pill event-admin-import-preview__coverage-pill--${item.tone}`}
+                            >
+                              {item.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {fightCardPreview.previewEvent && (
                       <div className="event-admin-import-preview__summary">
                         {fightCardPreview.previewEvent.name}
