@@ -17,6 +17,9 @@ const Fights = lazy(() => import('./Fights'));
 const Leaderboard = lazy(() => import('./Leaderboard'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const HighlightsPage = lazy(() => import('./HighlightsPage'));
+const LOGIN_BACKGROUND_1X = '/izzy_alex_640.jpg';
+const LOGIN_BACKGROUND_2X = '/izzy_alex_1280.jpg';
+const LOGIN_BACKGROUND_3X = '/izzy_alex_1920.jpg';
 
 function persistAuthenticatedUser(userData) {
   localStorage.setItem('user_id', userData.user_id);
@@ -225,12 +228,15 @@ function App() {
 
   // If not logged in, show login/signup screen
   if (!user) {
+    const loginBackgroundImageSet = `url("${LOGIN_BACKGROUND_1X}") 1x, url("${LOGIN_BACKGROUND_2X}") 2x, url("${LOGIN_BACKGROUND_3X}") 3x`;
     const loginBackgroundStyle = {
       position: 'fixed',
       top: 0,
       left: 0,
       width: '100%',
       height: '100%',
+      '--login-background-image': `url("${LOGIN_BACKGROUND_2X}")`,
+      '--login-background-image-set': loginBackgroundImageSet,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',

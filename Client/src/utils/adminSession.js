@@ -71,28 +71,13 @@ export const getAdminSessionExpiry = () => {
 };
 
 export const hasActiveAdminSession = () => {
-  const token = getAdminSessionToken().trim();
-  if (!token) {
-    return false;
-  }
-
-  const expiry = getAdminSessionExpiry().trim();
-  if (!expiry) {
-    return true;
-  }
-
-  const expiryTime = new Date(expiry).getTime();
-  if (!Number.isFinite(expiryTime)) {
-    return true;
-  }
-
-  return expiryTime > Date.now();
+  return Boolean(getAdminSessionToken().trim());
 };
 
 export const fetchWithAdminSession = async (url, options = {}) => {
   const adminSessionToken = getAdminSessionToken().trim();
   if (!adminSessionToken) {
-    throw new Error('Admin session missing. Please log out and log back in as an admin.');
+    throw new Error('Admin access is unavailable. Please log out and log back in as an admin.');
   }
 
   const headers = {

@@ -1,8 +1,7 @@
 const crypto = require('crypto');
 
 const AUTHORIZATION_HEADER = 'authorization';
-const DEFAULT_ADMIN_SESSION_TTL_HOURS = 24 * 7;
-const DEFAULT_ADMIN_SESSION_IDLE_TTL_HOURS = 12;
+const DEFAULT_ADMIN_SESSION_TTL_HOURS = 24 * 365 * 10;
 
 function getAdminSessionTtlHours() {
   const parsed = Number.parseInt(process.env.ADMIN_SESSION_TTL_HOURS || '', 10);
@@ -13,18 +12,8 @@ function getAdminSessionTtlHours() {
   return parsed;
 }
 
-function getAdminSessionIdleTtlHours() {
-  const parsed = Number.parseInt(process.env.ADMIN_SESSION_IDLE_TTL_HOURS || '', 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_ADMIN_SESSION_IDLE_TTL_HOURS;
-  }
-
-  return parsed;
-}
-
 function buildAdminSessionExpiryIso() {
-  const ttlHours = getAdminSessionTtlHours();
-  return new Date(Date.now() + (ttlHours * 60 * 60 * 1000)).toISOString();
+  return new Date(Date.now() + (getAdminSessionTtlHours() * 60 * 60 * 1000)).toISOString();
 }
 
 function hashAdminSessionToken(token) {
@@ -33,12 +22,6 @@ function hashAdminSessionToken(token) {
 
 function generateAdminSessionToken() {
   return `fps_admin_${crypto.randomBytes(32).toString('hex')}`;
-}
-
-function getAdminSessionLastActivityTime(session) {
-  const candidate = session?.last_used_at || session?.created_at || null;
-  const parsed = candidate ? new Date(candidate).getTime() : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function readBearerToken(req) {
@@ -154,7 +137,7 @@ function createRequireAdminSession(supabase) {
       }
 
       if (!session) {
-        return res.status(401).json({ error: 'Admin session is invalid or has expired' });
+        return res.status(401).json({ error: 'Admin session is invalid' });
       }
 
       if (session.revoked_at) {
@@ -163,22 +146,6 @@ function createRequireAdminSession(supabase) {
 
       if (new Date(session.expires_at).getTime() <= Date.now()) {
         return res.status(401).json({ error: 'Admin session has expired. Please log in again.' });
-      }
-
-      const idleTtlHours = getAdminSessionIdleTtlHours();
-      const idleTtlMs = idleTtlHours * 60 * 60 * 1000;
-      const lastActivityTime = getAdminSessionLastActivityTime(session);
-      if (lastActivityTime !== null && (lastActivityTime + idleTtlMs) <= Date.now()) {
-        await supabase
-          .from('admin_sessions')
-          .update({
-            revoked_at: new Date().toISOString(),
-            revoked_reason: 'idle_timeout',
-          })
-          .eq('token_hash', tokenHash)
-          .is('revoked_at', null);
-
-        return res.status(401).json({ error: 'Admin session expired due to inactivity. Please log in again.' });
       }
 
       const { data: user, error: userError } = await supabase
@@ -233,6 +200,7 @@ function createRequireAdminSession(supabase) {
 module.exports = {
   AUTHORIZATION_HEADER,
   createRequireAdminSession,
+  getAdminSessionTtlHours,
   issueAdminSession,
   readBearerToken,
   revokeAdminSession,
