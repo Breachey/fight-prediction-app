@@ -74,6 +74,8 @@ ADMIN_SESSION_TTL_HOURS=720
 PORT=3001
 ALLOWED_ORIGINS=http://localhost:5173
 IMAGE_PROXY_ALLOWED_HOSTS=images.tapology.com
+DEBUG_SERVER_LOGS=false
+ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=false
 ```
 
 Create a `Client/.env.local` file:
@@ -89,6 +91,8 @@ Notes:
 - `ADMIN_SESSION_TTL_HOURS` controls how long admin sessions stay valid before the admin needs to log in again.
 - `ALLOWED_ORIGINS` accepts a comma-separated list of additional allowed origins.
 - `IMAGE_PROXY_ALLOWED_HOSTS` accepts a comma-separated list of approved external image hosts.
+- `DEBUG_SERVER_LOGS=true` enables verbose request/debug logging for local troubleshooting.
+- `ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=true` temporarily exposes legacy admin migration endpoints.
 - At least one user must already be marked as `admin` in Supabase to bootstrap admin access.
 
 Install the local scraper dependencies before using the admin fight-card import flow:

@@ -15,6 +15,11 @@ const {
   syncFighterStyleFromFightCardRows,
 } = require('./lib/fighterStyleSync');
 const {
+  buildFightResponse,
+  buildWeightclassMap,
+  normalizeWeightclass,
+} = require('./lib/fightResponse');
+const {
   backfillEventImageIfMissing,
   buildOddsRefreshPlan,
   buildFightCardPreview,
@@ -55,6 +60,10 @@ const SHOULD_RUN_STARTUP_SUPABASE_CHECK = process.env.STARTUP_SUPABASE_CHECK
 const SHOULD_LOG_VERBOSE_STARTUP_SUPABASE_CHECK = normalizeBooleanFlag(
   process.env.STARTUP_SUPABASE_CHECK_VERBOSE
 );
+const SHOULD_LOG_DEBUG = normalizeBooleanFlag(process.env.DEBUG_SERVER_LOGS);
+const ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES = normalizeBooleanFlag(
+  process.env.ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES
+);
 
 // Enable gzip compression
 app.use(compression());
@@ -64,6 +73,20 @@ app.disable('x-powered-by');
 function parsePositiveIntegerEnv(value, fallback) {
   const parsed = Number.parseInt(String(value || ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function debugLog(...args) {
+  if (SHOULD_LOG_DEBUG) {
+    console.log(...args);
+  }
+}
+
+function requireLegacyAdminMigrationRoutes(req, res, next) {
+  if (!ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  return next();
 }
 
 function getClientIp(req) {
@@ -172,7 +195,7 @@ app.use(cors({
     if (allAllowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      debugLog('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -809,7 +832,7 @@ async function clearEventWinnersForEvent(eventId) {
 // Add connection test
 async function testSupabaseConnection({ verbose = false } = {}) {
   try {
-    console.log('Testing Supabase connection...');
+    debugLog('Testing Supabase connection...');
 
     const { error: connectionError } = await supabase
       .from('ufc_full_fight_card')
@@ -830,11 +853,11 @@ async function testSupabaseConnection({ verbose = false } = {}) {
       if (error) {
         console.error('Failed to get table structure:', error);
       } else if (data && data.length > 0) {
-        console.log('Available columns in ufc_full_fight_card:', Object.keys(data[0]).join(', '));
+        debugLog('Available columns in ufc_full_fight_card:', Object.keys(data[0]).join(', '));
       }
 
       try {
-        console.log('Testing service-role permissions...');
+        debugLog('Testing service-role permissions...');
         const { error: adminTestError } = await supabase
           .from('users')
           .select('user_id')
@@ -843,14 +866,14 @@ async function testSupabaseConnection({ verbose = false } = {}) {
         if (adminTestError) {
           console.warn('Service-role test failed:', adminTestError);
         } else {
-          console.log('Service-role test successful');
+          debugLog('Service-role test successful');
         }
       } catch (adminError) {
         console.warn('Service-role test error:', adminError);
       }
     }
 
-    console.log('Supabase connection test successful');
+    debugLog('Supabase connection test successful');
     return true;
   } catch (error) {
     console.error('Error testing Supabase connection:', error);
@@ -860,7 +883,7 @@ async function testSupabaseConnection({ verbose = false } = {}) {
 
 function runStartupSupabaseCheck() {
   if (!SHOULD_RUN_STARTUP_SUPABASE_CHECK) {
-    console.log('Skipping Supabase startup check for local development');
+    debugLog('Skipping Supabase startup check for local development');
     return;
   }
 
@@ -1085,11 +1108,6 @@ app.post('/admin/session/logout', adminActionRateLimit, requireAdminSession, asy
   }
 });
 
-// Helper function to normalize weightclass strings (case/spacing insensitive)
-function normalizeWeightclass(str) {
-  return (str || '').toString().toLowerCase().replace(/[^a-z]/g, '');
-}
-
 // Helper function to get weightclass mapping
 async function getWeightclassMapping() {
   try {
@@ -1101,116 +1119,12 @@ async function getWeightclassMapping() {
       console.error('Error fetching weightclasses:', error);
       return new Map(); // Return empty map on error
     }
-    
-    // Debug: log the first weightclass to see what columns are available
-    if (weightclasses.length > 0) {
-      console.log('Available weightclass columns:', Object.keys(weightclasses[0]));
-    }
 
-    // Standard UFC weight class limits (in lbs)
-    const standardWeights = {
-      'flyweight': 125,
-      'bantamweight': 135,
-      'featherweight': 145,
-      'lightweight': 155,
-      'welterweight': 170,
-      'middleweight': 185,
-      'lightheavyweight': 205,
-      'heavyweight': 265,
-      'womensatomweight': 105,
-      'womensstrawweight': 115,
-      'womensflyweight': 125,
-      'womensbantamweight': 135,
-      'womensfeatherweight': 145
-    };
-
-    // Create a mapping from official_weightclass to gay_weightclass (case-insensitive)
-    const weightclassMap = new Map();
-    weightclasses.forEach(wc => {
-      // Use lowercase keys for case-insensitive matching
-      const normalizedKey = normalizeWeightclass(wc.official_weightclass);
-      const weightLbs = wc.weight_lbs || standardWeights[normalizedKey] || null;
-      
-      weightclassMap.set(normalizedKey, {
-        gay_weightclass: wc.gay_weightclass,
-        official_weightclass: wc.official_weightclass,
-        weight_lbs: weightLbs
-      });
-    });
-    
-    return weightclassMap;
+    return buildWeightclassMap(weightclasses);
   } catch (error) {
     console.error('Error in getWeightclassMapping:', error);
     return new Map();
   }
-}
-
-// Helper function to transform fighter data
-function transformFighterData(fighter) {
-  const record = `${fighter.Record_Wins}-${fighter.Record_Losses}${fighter.Record_Draws > 0 ? `-${fighter.Record_Draws}` : ''}${fighter.Record_NoContests > 0 ? ` (${fighter.Record_NoContests}NC)` : ''}`;
-  
-  // Debug log for raw fighter data
-  console.log('Raw fighter data:', {
-    name: `${fighter.FirstName} ${fighter.LastName}`,
-    odds: fighter.odds,
-    oddsType: typeof fighter.odds,
-    streak: fighter.Streak
-  });
-  
-  // Format odds to include + sign for positive values
-  let formattedOdds = null;
-  if (fighter.odds !== null && fighter.odds !== undefined) {
-    const oddsNum = parseInt(fighter.odds);
-    formattedOdds = oddsNum > 0 ? `+${fighter.odds}` : fighter.odds;
-  }
-  
-  const transformedFighter = {
-    id: fighter.FighterId,
-    name: `${fighter.FirstName} ${fighter.LastName}`,
-    firstName: fighter.FirstName,
-    lastName: fighter.LastName,
-    nickname: fighter.Nickname || null,
-    record: record,
-    stance: fighter.Stance || 'N/A',
-    // Use whichever case variant of style is present
-    style: fighter.Style || fighter.style || 'N/A',
-    image: fighter.ImageURL,
-    rank: (fighter.Rank !== undefined && fighter.Rank !== null) ? fighter.Rank : null,
-    odds: formattedOdds,
-    country: fighter.FightingOutOf_Country || 'N/A',
-    age: fighter.Age !== undefined ? fighter.Age : null,
-    weight: fighter.Weight_lbs || null,
-    height: fighter.Height_in || null,
-    reach: fighter.Reach_in || null,
-    streak: fighter.Streak,
-    koTkoWins: fighter.KO_TKO_Wins ?? null,
-    koTkoLosses: fighter.KO_TKO_Losses ?? null,
-    submissionWins: fighter.Submission_Wins ?? null,
-    submissionLosses: fighter.Submission_Losses ?? null,
-    decisionWins: fighter.Decision_Wins ?? null,
-    decisionLosses: fighter.Decision_Losses ?? null
-  };
-
-  // Debug log for transformed fighter data
-  console.log('Transformed fighter:', {
-    name: transformedFighter.name,
-    odds: transformedFighter.odds
-  });
-
-  return transformedFighter;
-}
-
-function buildFightStructureData(fighter) {
-  const roundsValue = Number(fighter?.PossibleRounds);
-  const titleFightName = typeof fighter?.TitleFightName === 'string'
-    ? fighter.TitleFightName.trim()
-    : '';
-
-  return {
-    scheduled_rounds: Number.isFinite(roundsValue) ? roundsValue : null,
-    is_title_fight: fighter?.IsTitleFight === true || fighter?.IsTitleFight === 'true',
-    title_fight_name: titleFightName || null,
-  };
 }
 
 app.get('/fights', async (req, res) => {
@@ -1240,13 +1154,6 @@ app.get('/fights', async (req, res) => {
 
     // Get weightclass mapping
     const weightclassMap = await getWeightclassMapping();
-
-    // Debug log for raw fight data
-    console.log('Sample fight data from database:', fights.slice(0, 1).map(f => ({
-      name: `${f.FirstName} ${f.LastName}`,
-      odds: f.odds,
-      oddsType: typeof f.odds
-    })));
 
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
@@ -1283,79 +1190,14 @@ app.get('/fights', async (req, res) => {
       }
 
       const result = fightResultsMap.get(fightId);
-      const redFighter = transformFighterData(fighters.red);
-      const blueFighter = transformFighterData(fighters.blue);
-
-      // Map card segment names
-      let displayCardTier = fighters.card_tier;
-      if (fighters.card_tier === 'Prelims1') {
-        displayCardTier = 'Prelims';
-      } else if (fighters.card_tier === 'Prelims2') {
-        displayCardTier = 'Early Prelims';
-      }
-
-      // Map the weightclass using the weightclasses table
-      const weightclassData = weightclassMap.get(normalizeWeightclass(fighters.red.FighterWeightClass)) || {};
-      const displayWeightclass = weightclassData.gay_weightclass || weightclassData.official_weightclass || fighters.red.FighterWeightClass;
-
-      const transformedFight = {
-        id: fightId,
-        event_id: latestEvent[0].id,
-        fighter1_id: redFighter.id,
-        fighter1_name: redFighter.name,
-        fighter1_firstName: redFighter.firstName,
-        fighter1_lastName: redFighter.lastName,
-        fighter1_nickname: redFighter.nickname,
-        fighter1_record: redFighter.record,
-        fighter1_height: redFighter.height,
-        fighter1_weight: redFighter.weight,
-        fighter1_reach: redFighter.reach,
-        fighter1_stance: redFighter.stance,
-        fighter1_style: redFighter.style,
-        fighter1_image: redFighter.image,
-        fighter1_country: redFighter.country,
-        fighter1_age: redFighter.age,
-        fighter1_rank: redFighter.rank,
-        fighter1_odds: redFighter.odds,
-        fighter1_streak: redFighter.streak,
-        fighter1_ko_tko_wins: redFighter.koTkoWins,
-        fighter1_ko_tko_losses: redFighter.koTkoLosses,
-        fighter1_submission_wins: redFighter.submissionWins,
-        fighter1_submission_losses: redFighter.submissionLosses,
-        fighter1_decision_wins: redFighter.decisionWins,
-        fighter1_decision_losses: redFighter.decisionLosses,
-        fighter2_id: blueFighter.id,
-        fighter2_name: blueFighter.name,
-        fighter2_firstName: blueFighter.firstName,
-        fighter2_lastName: blueFighter.lastName,
-        fighter2_nickname: blueFighter.nickname,
-        fighter2_record: blueFighter.record,
-        fighter2_height: blueFighter.height,
-        fighter2_weight: blueFighter.weight,
-        fighter2_reach: blueFighter.reach,
-        fighter2_stance: blueFighter.stance,
-        fighter2_style: blueFighter.style,
-        fighter2_image: blueFighter.image,
-        fighter2_country: blueFighter.country,
-        fighter2_age: blueFighter.age,
-        fighter2_rank: blueFighter.rank,
-        fighter2_odds: blueFighter.odds,
-        fighter2_streak: blueFighter.streak,
-        fighter2_ko_tko_wins: blueFighter.koTkoWins,
-        fighter2_ko_tko_losses: blueFighter.koTkoLosses,
-        fighter2_submission_wins: blueFighter.submissionWins,
-        fighter2_submission_losses: blueFighter.submissionLosses,
-        fighter2_decision_wins: blueFighter.decisionWins,
-        fighter2_decision_losses: blueFighter.decisionLosses,
-        winner: result || null,
-        is_completed: result ? true : false,
-        card_tier: displayCardTier,
-        weightclass: displayWeightclass,
-        weightclass_official: weightclassData.official_weightclass || fighters.red.FighterWeightClass,
-        weightclass_lbs: weightclassData.weight_lbs || fighters.red.Weight_lbs,
-        bout_order: fighters.red.FightOrder,
-        ...buildFightStructureData(fighters.red),
-      };
+      const transformedFight = buildFightResponse({
+        fightId,
+        eventId: latestEvent[0].id,
+        redFighter: fighters.red,
+        blueFighter: fighters.blue,
+        result,
+        weightclassMap,
+      });
 
       transformedFights.push(transformedFight);
     });
@@ -1373,7 +1215,7 @@ app.post('/predict', async (req, res) => {
     return res.status(400).json({ error: "Missing required data" });
   }
   try {
-    console.log('Received prediction request:', {
+    debugLog('Received prediction request:', {
       fightId,
       fighter_id,
       username,
@@ -1436,7 +1278,7 @@ app.post('/predict', async (req, res) => {
       return res.status(500).json({ error: 'Failed to submit prediction' });
     }
 
-    console.log('Prediction saved successfully');
+    debugLog('Prediction saved successfully');
     res.status(200).json(upserted);
   } catch (error) {
     console.error('Error in prediction endpoint:', error);
@@ -1777,7 +1619,7 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
   try {
     const { id } = req.params;
 
-    console.log('Received request to cancel fight:', { id });
+    debugLog('Received request to cancel fight:', { id });
 
     // Update the fight status to "Canceled" in ufc_full_fight_card
     const { error: updateError } = await supabase
@@ -1836,71 +1678,21 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
       return res.status(404).json({ error: 'Missing fighter data' });
     }
 
-    // Get weightclass mapping
     const weightclassMap = await getWeightclassMapping();
-
-    // Map the weightclass using the weightclasses table
-    const officialWeightclass = redFighter.FighterWeightClass;
-    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
-
-    // Transform the fight data (similar to other endpoints)
-    const transformedFight = {
-      id: id,
-      event_id: event_id,
-      fighter1_id: redFighter.FighterId,
-      fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
-      fighter1_firstName: redFighter.FirstName,
-      fighter1_lastName: redFighter.LastName,
-      fighter1_nickname: redFighter.Nickname,
-      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
-      fighter1_height: redFighter.Height_in,
-      fighter1_weight: redFighter.Weight_lbs,
-      fighter1_reach: redFighter.Reach_in,
-      fighter1_stance: redFighter.Stance,
-      fighter1_style: redFighter.Style,
-      fighter1_image: redFighter.ImageURL,
-      fighter1_country: redFighter.FightingOutOf_Country,
-      fighter1_age: redFighter.Age,
-      fighter1_rank: redFighter.rank,
-      fighter1_odds: redFighter.odds,
-      fighter1_streak: redFighter.Streak,
-      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
-      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
-      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
-      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
-      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
-      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
-      fighter2_id: blueFighter.FighterId,
-      fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
-      fighter2_firstName: blueFighter.FirstName,
-      fighter2_lastName: blueFighter.LastName,
-      fighter2_nickname: blueFighter.Nickname,
-      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
-      fighter2_height: blueFighter.Height_in,
-      fighter2_weight: blueFighter.Weight_lbs,
-      fighter2_reach: blueFighter.Reach_in,
-      fighter2_stance: blueFighter.Stance,
-      fighter2_style: blueFighter.Style,
-      fighter2_image: blueFighter.ImageURL,
-      fighter2_country: blueFighter.FightingOutOf_Country,
-      fighter2_age: blueFighter.Age,
-      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
-      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
-      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
-      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
-      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
-      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
-      winner: null, // No winner for canceled fights
-      is_completed: false, // Canceled fights are not completed
-      is_canceled: true, // Add canceled flag
-      fight_status: 'Canceled',
-      card_tier: redFighter.CardSegment,
-      weightclass: displayWeightclass,
-      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
-      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder,
-      ...buildFightStructureData(redFighter),
-    };
+    const transformedFight = buildFightResponse({
+      fightId: id,
+      eventId: event_id,
+      redFighter,
+      blueFighter,
+      result: null,
+      weightclassMap,
+      overrides: {
+        winner: null,
+        is_completed: false,
+        is_canceled: true,
+        fight_status: 'Canceled',
+      },
+    });
 
     await logAdminAction(req, {
       action: 'fight.cancel',
@@ -1936,7 +1728,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     const { id } = req.params;
     const { winner } = req.body;
 
-    console.log('Received request to update fight result:', {
+    debugLog('Received request to update fight result:', {
       id,
       idType: typeof id,
       idLength: id.length,
@@ -1991,7 +1783,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
 
     try {
       const recalculatedResults = await recalculatePredictionResultsForEvent(event_id);
-      console.log('Recalculated prediction results for event:', {
+      debugLog('Recalculated prediction results for event:', {
         event_id,
         updated_fight_id: id,
         winner_id,
@@ -2014,66 +1806,15 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       return res.status(500).json({ error: 'Failed to fetch updated fight result' });
     }
 
-    // Get weightclass mapping
     const weightclassMap = await getWeightclassMapping();
-
-    // Map the weightclass using the weightclasses table
-    const officialWeightclass = redFighter.FighterWeightClass;
-    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
-
-    // Transform the fight data
-    const transformedFight = {
-      id: id,
-      event_id: event_id,
-      fighter1_id: redFighter.FighterId,
-      fighter1_name: redFighter.FirstName + ' ' + redFighter.LastName,
-      fighter1_firstName: redFighter.FirstName,
-      fighter1_lastName: redFighter.LastName,
-      fighter1_nickname: redFighter.Nickname,
-      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
-      fighter1_height: redFighter.Height_in,
-      fighter1_weight: redFighter.Weight_lbs,
-      fighter1_reach: redFighter.Reach_in,
-      fighter1_stance: redFighter.Stance,
-      fighter1_style: redFighter.Style,
-      fighter1_image: redFighter.ImageURL,
-      fighter1_country: redFighter.FightingOutOf_Country,
-      fighter1_age: redFighter.Age,
-      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
-      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
-      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
-      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
-      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
-      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
-      fighter2_id: blueFighter.FighterId,
-      fighter2_name: blueFighter.FirstName + ' ' + blueFighter.LastName,
-      fighter2_firstName: blueFighter.FirstName,
-      fighter2_lastName: blueFighter.LastName,
-      fighter2_nickname: blueFighter.Nickname,
-      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
-      fighter2_height: blueFighter.Height_in,
-      fighter2_weight: blueFighter.Weight_lbs,
-      fighter2_reach: blueFighter.Reach_in,
-      fighter2_stance: blueFighter.Stance,
-      fighter2_style: blueFighter.Style,
-      fighter2_image: blueFighter.ImageURL,
-      fighter2_country: blueFighter.FightingOutOf_Country,
-      fighter2_age: blueFighter.Age,
-      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
-      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
-      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
-      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
-      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
-      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
-      winner: updatedResult.fighter_id,
-      is_completed: updatedResult.is_completed,
-      card_tier: redFighter.CardSegment,
-      weightclass: displayWeightclass,
-      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
-      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder,
-      ...buildFightStructureData(redFighter),
-    };
+    const transformedFight = buildFightResponse({
+      fightId: id,
+      eventId: event_id,
+      redFighter,
+      blueFighter,
+      result: updatedResult,
+      weightclassMap,
+    });
 
     await logAdminAction(req, {
       action: 'fight.result.set',
@@ -2144,7 +1885,7 @@ function calculateUserStreak(userResults) {
   const username = userResults[0]?.username || sortedResults[0]?.user_id;
   const usernameStr = username != null ? String(username).toLowerCase() : '';
   if (usernameStr && (usernameStr.includes('breachey') || usernameStr.includes('breach'))) {
-    console.log('DEBUG Streak for', username, ':', {
+    debugLog('DEBUG Streak for', username, ':', {
       type: streakType,
       count: streakCount,
       totalResults: sortedResults.length,
@@ -2538,7 +2279,7 @@ app.get('/leaderboard', async (req, res) => {
       
       // Debug logging
       if (username && (username.toLowerCase().includes('breachey') || username.toLowerCase().includes('breach'))) {
-        console.log('LEADERBOARD DEBUG - Overall:', {
+        debugLog('LEADERBOARD DEBUG - Overall:', {
           username,
           user_id: userIdStr,
           streak,
@@ -2810,6 +2551,7 @@ app.get('/leaderboard/season', async (req, res) => {
 // Get monthly leaderboard
 app.get('/leaderboard/monthly', async (req, res) => {
   try {
+    res.set('Deprecation', 'true');
     const userCache = await fetchUsersWithPlayercards();
     const userIds = buildUserIdList(userCache.users);
 
@@ -2837,7 +2579,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
     const allTimeResultsQuery = supabase
       .from('prediction_results')
       .select('user_id, predicted_correctly, created_at')
-      .in('user_id', audienceUserIds);
+      .in('user_id', userIds);
     const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
 
     // Map user_id to username, is_bot, and playercard info
@@ -2911,7 +2653,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
 // Get all events
 app.get('/events', async (req, res) => {
   try {
-    console.log('Attempting to fetch events from Supabase...');
+    debugLog('Attempting to fetch events from Supabase...');
 
     // Fetch events from the events table (this is the primary source now)
     const { data: eventsData, error: eventsError } = await supabase
@@ -2925,7 +2667,7 @@ app.get('/events', async (req, res) => {
     }
 
     if (!eventsData || eventsData.length === 0) {
-      console.log('No events found in events table');
+      debugLog('No events found in events table');
       return res.status(404).json({ error: 'No events found' });
     }
 
@@ -2959,8 +2701,8 @@ app.get('/events', async (req, res) => {
       });
     }
 
-    console.log(`Successfully fetched ${eventsData.length} events from events table`);
-    console.log(`Found ${eventIdsWithFights.size} events with fight data`);
+    debugLog(`Successfully fetched ${eventsData.length} events from events table`);
+    debugLog(`Found ${eventIdsWithFights.size} events with fight data`);
 
     // Transform the data to match the expected structure
     const transformedEvents = eventsData.map(event => ({
@@ -3472,7 +3214,7 @@ app.get('/events/:id/fights', async (req, res) => {
 
     // If no fight data exists, return empty array (this allows future events to be displayed)
     if (!data || data.length === 0) {
-      console.log(`No fight data found for event ${id}, returning empty array`);
+      debugLog(`No fight data found for event ${id}, returning empty array`);
       return res.json([]);
     }
 
@@ -3528,82 +3270,15 @@ app.get('/events/:id/fights', async (req, res) => {
       }
 
       const result = fightResultsMap.get(fightId);
-      const redFighter = transformFighterData(fighters.red);
-      const blueFighter = transformFighterData(fighters.blue);
-
-      // Map card segment names
-      let displayCardTier = fighters.card_tier;
-      if (fighters.card_tier === 'Prelims1') {
-          displayCardTier = 'Prelims';
-      } else if (fighters.card_tier === 'Prelims2') {
-          displayCardTier = 'Early Prelims';
-      }
-
-      // Map the weightclass using the weightclasses table
-      const weightclassData = weightclassMap.get(normalizeWeightclass(fighters.weightclass)) || {};
-      const displayWeightclass = weightclassData.gay_weightclass || weightclassData.official_weightclass || fighters.weightclass;
-
-      const transformedFight = {
-        id: fightId,
-        event_id: id,
-        event_date: eventData.date || null,
-        fighter1_id: redFighter.id,
-        fighter1_name: redFighter.name,
-        fighter1_firstName: redFighter.firstName,
-        fighter1_lastName: redFighter.lastName,
-        fighter1_nickname: redFighter.nickname,
-        fighter1_record: redFighter.record,
-        fighter1_height: redFighter.height,
-        fighter1_weight: redFighter.weight,
-        fighter1_reach: redFighter.reach,
-        fighter1_stance: redFighter.stance,
-        fighter1_style: redFighter.style,
-        fighter1_image: redFighter.image,
-        fighter1_country: redFighter.country,
-        fighter1_age: redFighter.age,
-        fighter1_rank: redFighter.rank,
-        fighter1_odds: redFighter.odds,
-        fighter1_streak: redFighter.streak,
-        fighter1_ko_tko_wins: redFighter.koTkoWins,
-        fighter1_ko_tko_losses: redFighter.koTkoLosses,
-        fighter1_submission_wins: redFighter.submissionWins,
-        fighter1_submission_losses: redFighter.submissionLosses,
-        fighter1_decision_wins: redFighter.decisionWins,
-        fighter1_decision_losses: redFighter.decisionLosses,
-        fighter2_id: blueFighter.id,
-        fighter2_name: blueFighter.name,
-        fighter2_firstName: blueFighter.firstName,
-        fighter2_lastName: blueFighter.lastName,
-        fighter2_nickname: blueFighter.nickname,
-        fighter2_record: blueFighter.record,
-        fighter2_height: blueFighter.height,
-        fighter2_weight: blueFighter.weight,
-        fighter2_reach: blueFighter.reach,
-        fighter2_stance: blueFighter.stance,
-        fighter2_style: blueFighter.style,
-        fighter2_image: blueFighter.image,
-        fighter2_country: blueFighter.country,
-        fighter2_age: blueFighter.age,
-        fighter2_rank: blueFighter.rank,
-        fighter2_odds: blueFighter.odds,
-        fighter2_streak: blueFighter.streak,
-        fighter2_ko_tko_wins: blueFighter.koTkoWins,
-        fighter2_ko_tko_losses: blueFighter.koTkoLosses,
-        fighter2_submission_wins: blueFighter.submissionWins,
-        fighter2_submission_losses: blueFighter.submissionLosses,
-        fighter2_decision_wins: blueFighter.decisionWins,
-        fighter2_decision_losses: blueFighter.decisionLosses,
-        winner: result?.winner || null,
-        is_completed: result?.is_completed || false,
-        is_canceled: fighters.red.FightStatus === 'Canceled' || fighters.blue.FightStatus === 'Canceled',
-        fight_status: fighters.red.FightStatus || 'Scheduled',
-        card_tier: displayCardTier,
-        weightclass: displayWeightclass,
-        weightclass_official: weightclassData.official_weightclass || fighters.weightclass,
-        weightclass_lbs: weightclassData.weight_lbs || fighters.Weight_lbs,
-        bout_order: fighters.red.FightOrder,
-        ...buildFightStructureData(fighters.red),
-      };
+      const transformedFight = buildFightResponse({
+        fightId,
+        eventId: id,
+        eventDate: eventData.date || null,
+        redFighter: fighters.red,
+        blueFighter: fighters.blue,
+        result,
+        weightclassMap,
+      });
 
       transformedFights.push(transformedFight);
     }
@@ -3974,7 +3649,7 @@ app.post('/events/backfill-winners', requireAdminSession, async (req, res) => {
 app.get('/ufc_full_fight_card/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('Fetching fight data for ID:', id);
+    debugLog('Fetching fight data for ID:', id);
 
     // First get the fight data (remove .single() here)
     const { data: fightData, error: getFightError } = await supabase
@@ -4012,72 +3687,15 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch fight result' });
     }
 
-    // Get weightclass mapping
     const weightclassMap = await getWeightclassMapping();
-
-    // Map the weightclass using the weightclasses table
-    const officialWeightclass = redFighter.FighterWeightClass;
-    const displayWeightclass = weightclassMap.get(normalizeWeightclass(officialWeightclass)) || officialWeightclass;
-
-    // Transform the fight data
-    const transformedFight = {
-      id: id,
-      event_id: event_id,
-      fighter1_id: redFighter.FighterId,
-      fighter1_name: `${redFighter.FirstName} ${redFighter.LastName}`,
-      fighter1_firstName: redFighter.FirstName,
-      fighter1_lastName: redFighter.LastName,
-      fighter1_nickname: redFighter.Nickname,
-      fighter1_record: `${redFighter.Record_Wins}-${redFighter.Record_Losses}${redFighter.Record_Draws > 0 ? `-${redFighter.Record_Draws}` : ''}`,
-      fighter1_height: redFighter.Height_in,
-      fighter1_weight: redFighter.Weight_lbs,
-      fighter1_reach: redFighter.Reach_in,
-      fighter1_stance: redFighter.Stance,
-      fighter1_style: redFighter.Style,
-      fighter1_image: redFighter.ImageURL,
-      fighter1_country: redFighter.FightingOutOf_Country,
-      fighter1_age: redFighter.Age,
-      fighter1_rank: redFighter.rank,
-      fighter1_odds: redFighter.odds,
-      fighter1_streak: redFighter.Streak,
-      fighter1_ko_tko_wins: redFighter.KO_TKO_Wins ?? null,
-      fighter1_ko_tko_losses: redFighter.KO_TKO_Losses ?? null,
-      fighter1_submission_wins: redFighter.Submission_Wins ?? null,
-      fighter1_submission_losses: redFighter.Submission_Losses ?? null,
-      fighter1_decision_wins: redFighter.Decision_Wins ?? null,
-      fighter1_decision_losses: redFighter.Decision_Losses ?? null,
-      fighter2_id: blueFighter.FighterId,
-      fighter2_name: `${blueFighter.FirstName} ${blueFighter.LastName}`,
-      fighter2_firstName: blueFighter.FirstName,
-      fighter2_lastName: blueFighter.LastName,
-      fighter2_nickname: blueFighter.Nickname,
-      fighter2_record: `${blueFighter.Record_Wins}-${blueFighter.Record_Losses}${blueFighter.Record_Draws > 0 ? `-${blueFighter.Record_Draws}` : ''}`,
-      fighter2_height: blueFighter.Height_in,
-      fighter2_weight: blueFighter.Weight_lbs,
-      fighter2_reach: blueFighter.Reach_in,
-      fighter2_stance: blueFighter.Stance,
-      fighter2_style: blueFighter.Style,
-      fighter2_image: blueFighter.ImageURL,
-      fighter2_country: blueFighter.FightingOutOf_Country,
-      fighter2_age: blueFighter.Age,
-      fighter2_rank: blueFighter.rank,
-      fighter2_odds: blueFighter.odds,
-      fighter2_streak: blueFighter.Streak,
-      fighter2_ko_tko_wins: blueFighter.KO_TKO_Wins ?? null,
-      fighter2_ko_tko_losses: blueFighter.KO_TKO_Losses ?? null,
-      fighter2_submission_wins: blueFighter.Submission_Wins ?? null,
-      fighter2_submission_losses: blueFighter.Submission_Losses ?? null,
-      fighter2_decision_wins: blueFighter.Decision_Wins ?? null,
-      fighter2_decision_losses: blueFighter.Decision_Losses ?? null,
-      winner: fightResult?.fighter_id || null,
-      is_completed: fightResult?.is_completed || false,
-      card_tier: redFighter.CardSegment,
-      weightclass: displayWeightclass,
-      weightclass_official: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.official_weightclass || redFighter.FighterWeightClass,
-      weightclass_lbs: weightclassMap.get(normalizeWeightclass(redFighter.FighterWeightClass))?.weight_lbs || redFighter.Weight_lbs,
-      bout_order: redFighter.FightOrder,
-      ...buildFightStructureData(redFighter),
-    };
+    const transformedFight = buildFightResponse({
+      fightId: id,
+      eventId: event_id,
+      redFighter,
+      blueFighter,
+      result: fightResult,
+      weightclassMap,
+    });
 
     res.json(transformedFight);
   } catch (error) {
@@ -4086,8 +3704,8 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
   }
 });
 
-// Migration endpoint to fix fight results
-app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
+// Legacy migration endpoint, disabled unless ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=true.
+app.post('/migrate/fight-results', requireLegacyAdminMigrationRoutes, requireAdminSession, async (req, res) => {
   try {
     // Get all fight results
     const { data: fightResults, error: resultsError } = await supabase
@@ -4130,7 +3748,7 @@ app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
     // Update each fight result
     const updates = [];
     for (const result of fightResults) {
-      console.log('Processing fight result:', {
+      debugLog('Processing fight result:', {
         fight_id: result.fight_id,
         current_winner: result.winner,
         winner_type: typeof result.winner
@@ -4138,13 +3756,13 @@ app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
 
       const fighters = fightMap.get(result.fight_id);
       if (!fighters || !fighters.red || !fighters.blue) {
-        console.log('Skipping fight - missing fighter data:', result.fight_id);
+        debugLog('Skipping fight - missing fighter data:', result.fight_id);
         continue;
       }
 
       // If winner is already a number (fighter_id), keep it as is
       if (typeof result.winner === 'number') {
-        console.log('Winner is already a fighter_id:', result.winner);
+        debugLog('Winner is already a fighter_id:', result.winner);
         continue;
       }
 
@@ -4161,7 +3779,7 @@ app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
         fighters.blue.FirstName + ' ' + fighters.blue.Nickname + ' ' + fighters.blue.LastName
       ].filter(Boolean);
 
-      console.log('Fighter name formats:', {
+      debugLog('Fighter name formats:', {
         fight_id: result.fight_id,
         red: redFighterFormats,
         blue: blueFighterFormats,
@@ -4171,20 +3789,20 @@ app.post('/migrate/fight-results', requireAdminSession, async (req, res) => {
       let winner_id = null;
       if (redFighterFormats.includes(result.winner)) {
         winner_id = fighters.red.FighterId;
-        console.log('Matched red fighter:', {
+        debugLog('Matched red fighter:', {
           fight_id: result.fight_id,
           winner_name: result.winner,
           winner_id: winner_id
         });
       } else if (blueFighterFormats.includes(result.winner)) {
         winner_id = fighters.blue.FighterId;
-        console.log('Matched blue fighter:', {
+        debugLog('Matched blue fighter:', {
           fight_id: result.fight_id,
           winner_name: result.winner,
           winner_id: winner_id
         });
       } else {
-        console.log('No match found for winner:', {
+        debugLog('No match found for winner:', {
           fight_id: result.fight_id,
           winner: result.winner
         });
@@ -5944,7 +5562,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
     const { user_id } = req.params;
     const { playercard_id } = req.body;
     
-    console.log('Playercard update request:', { user_id, playercard_id });
+    debugLog('Playercard update request:', { user_id, playercard_id });
     
     if (!user_id) {
       return res.status(400).json({ error: 'User ID is required' });
@@ -6021,7 +5639,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
     }
     
     // Update the user's selected playercard
-    console.log('Attempting to update user', user_id, 'to playercard', playercard_id);
+    debugLog('Attempting to update user', user_id, 'to playercard', playercard_id);
     
     // First verify the user exists
     let existingUser;
@@ -6038,7 +5656,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
       }
       
       existingUser = data;
-      console.log('User exists:', existingUser);
+      debugLog('User exists:', existingUser);
     } catch (error) {
       console.error('Error checking user existence:', error);
       return res.status(500).json({ error: 'Failed to verify user' });
@@ -6052,8 +5670,8 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
         .eq('user_id', parseInt(user_id))
         .select('user_id, username, selected_playercard_id');
       
-      console.log('Update result:', updatedUser);
-      console.log('Update error:', updateError);
+      debugLog('Update result:', updatedUser);
+      debugLog('Update error:', updateError);
       
       if (updateError) {
         console.error('Error updating user playercard:', updateError);
@@ -6066,7 +5684,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
       
       // If the update didn't return data, try to fetch the user again to verify the update worked
       if (!updatedUser || updatedUser.length === 0) {
-        console.log('Update returned empty, checking if update actually succeeded...');
+        debugLog('Update returned empty, checking if update actually succeeded...');
         try {
           const { data: verifyUser, error: verifyError } = await supabase
             .from('users')
@@ -6074,8 +5692,8 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
             .eq('user_id', parseInt(user_id))
             .single();
           
-          console.log('Verification result:', verifyUser);
-          console.log('Verification error:', verifyError);
+          debugLog('Verification result:', verifyUser);
+          debugLog('Verification error:', verifyError);
           
           if (verifyError) {
             console.error('Error verifying user update:', verifyError);
@@ -6083,7 +5701,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
           }
           
           if (verifyUser && verifyUser.selected_playercard_id == playercard_id) {
-            console.log('Update actually succeeded, using verification data');
+            debugLog('Update actually succeeded, using verification data');
             return res.json({
               message: 'Playercard updated successfully',
               user: verifyUser
@@ -6099,7 +5717,7 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
       }
       
       const user = updatedUser[0];
-      console.log('Playercard update completed successfully');
+      debugLog('Playercard update completed successfully');
       
       return res.json({
         message: 'Playercard updated successfully',
@@ -6120,8 +5738,8 @@ app.patch('/user/:user_id/playercard', async (req, res) => {
   }
 });
 
-// Database migration endpoint (run once to add required_event_id column)
-app.post('/migrate/add-playercard-event-requirements', requireAdminSession, async (req, res) => {
+// Legacy migration endpoint, disabled unless ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=true.
+app.post('/migrate/add-playercard-event-requirements', requireLegacyAdminMigrationRoutes, requireAdminSession, async (req, res) => {
   try {
     // Add required_event_id column to playercards table
     const { error } = await supabase.rpc('exec_sql', {

@@ -3,9 +3,7 @@ import './EventSelector.css';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import {
-  clearAdminSession,
   fetchWithAdminSession,
-  getAdminSessionExpiry,
   hasActiveAdminSession,
 } from './utils/adminSession';
 
@@ -168,28 +166,6 @@ function EventSelector({
     main_card: null,
   });
   const canManageAdminActions = userType === 'admin' && hasActiveAdminSession();
-  const adminSessionExpiryLabel = useMemo(() => {
-    if (!canManageAdminActions) {
-      return '';
-    }
-
-    const rawExpiry = getAdminSessionExpiry().trim();
-    if (!rawExpiry) {
-      return 'Admin session active';
-    }
-
-    const expiryDate = new Date(rawExpiry);
-    if (!Number.isFinite(expiryDate.getTime())) {
-      return 'Admin session active';
-    }
-
-    return `Admin session active until ${expiryDate.toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })}`;
-  }, [canManageAdminActions]);
 
   const centerCardAtIndex = useCallback((index, behavior = 'smooth') => {
     const carousel = carouselRef.current;
@@ -387,7 +363,6 @@ function EventSelector({
       // Ignore stale async responses.
       if (fetchSequence !== fetchSequenceRef.current) return;
 
-      console.log('Fetched events:', sortedEvents);
       setAllEvents(sortedEvents);
       setIsLoading(false);
 
@@ -753,14 +728,6 @@ function EventSelector({
     }
   };
 
-  const handleClearAdminSession = () => {
-    clearAdminSession();
-    setAdminAccessFeedback({
-      type: 'success',
-      message: 'Stored admin session cleared. Log out and back in as an admin before your next protected action.'
-    });
-  };
-
   const handleDiscardFightCardPreview = () => {
     setFightCardPreview(null);
     setFightCardFeedback(null);
@@ -975,8 +942,8 @@ function EventSelector({
                 <>
                   <div className={`event-admin-session-indicator${canManageAdminActions ? ' active' : ''}`}>
                     {canManageAdminActions
-                      ? adminSessionExpiryLabel
-                      : 'Admin session missing. Log out and back in to unlock admin controls.'}
+                      ? 'Admin access active for this login session.'
+                      : 'Admin access unavailable. Log out and back in to restore admin controls.'}
                   </div>
                   {canManageAdminActions && (
                     <p className="event-admin-panel__hint">
@@ -1053,13 +1020,6 @@ function EventSelector({
                       Discard Preview
                     </button>
                   )}
-                    <button
-                      className="event-admin-secondary-button"
-                      onClick={handleClearAdminSession}
-                      disabled={finalizingEventId === selectedEvent.id || isFightCardActionBusy}
-                    >
-                      Clear Admin Session
-                  </button>
                 </div>
                 {fightCardPreview && (
                   <div className="event-admin-import-preview">

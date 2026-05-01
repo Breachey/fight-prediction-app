@@ -92,37 +92,6 @@
   text-transform: uppercase;
 }
 
-.username-container {
-  margin: 0 auto 24px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  position: relative;
-  z-index: 2;
-  max-width: 600px;
-  width: 100%;
-  box-sizing: border-box;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.username-input {
-  width: 100%;
-  padding: 12px 16px;
-  background-color: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  font-size: 1rem;
-  outline: none;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
-}
-
 .fight-card {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), 
               rgba(255, 255, 255, 0.05);
@@ -352,18 +321,6 @@
   z-index: 1;
 }
 
-.fighter-image-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 8px;
-  overflow: visible;
-  background-color: transparent;
-  z-index: 1;
-}
-
 .fighter-image {
   width: 100%;
   height: 100%;
@@ -533,10 +490,6 @@ button.submit-vote-button:focus-visible {
   outline-offset: 2px;
 }
 
-.votes-details {
-  margin-top: 18px;
-}
-
 .vote-bar {
   display: flex;
   align-items: center;
@@ -562,26 +515,6 @@ button.submit-vote-button:focus-visible {
   height: 100%;
   width: 1px;
   background: rgba(0, 0, 0, 0.2);
-}
-
-.fighter1-bar {
-  background:
-    linear-gradient(
-      90deg,
-      rgba(239, 68, 68, 0.76) 0%,
-      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.3) 58%,
-      rgba(185, 28, 28, 0.8) 100%
-    );
-}
-
-.fighter2-bar {
-  background:
-    linear-gradient(
-      90deg,
-      rgba(59, 130, 246, 0.76) 0%,
-      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.3) 58%,
-      rgba(29, 78, 216, 0.8) 100%
-    );
 }
 
 .votes-list-container {
@@ -625,23 +558,6 @@ button.submit-vote-button:focus-visible {
 .votes-list::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-}
-
-.vote-item {
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.vote-item.current-user {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .fight-meta {
@@ -750,18 +666,6 @@ button.submit-vote-button:focus-visible {
   left: calc(100% + 10px);
 }
 
-.completed-fight-message {
-  text-align: center;
-  padding: 12px;
-  margin: 16px 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.9);
-}
-
 .selected-fighter-message {
   text-align: center;
   padding: 0;
@@ -772,11 +676,6 @@ button.submit-vote-button:focus-visible {
   -webkit-backdrop-filter: none;
 }
 
-/* .fade-out {
-  animation: fadeOut 0.5s ease-in-out forwards;
-  animation-delay: 3s;
-} */
-/* this is a test to see if the fade out is fucking up the selected fighter styling*/
 @keyframes fadeOut {
   from {
     opacity: 1;
@@ -834,21 +733,6 @@ button.submit-vote-button:focus-visible {
   filter: grayscale(70%);
   border: 1px solid rgba(128, 128, 128, 0.2);
   background: linear-gradient(145deg, rgba(11, 17, 32, 0.72), rgba(17, 24, 39, 0.72));
-}
-
-/* Completed fight message styles */
-.completed-fight-message {
-  text-align: center;
-  padding: 12px;
-  margin: 16px 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: bold;
-  font-size: 1.1rem;
 }
 
 /* Vote badge styles */
@@ -992,10 +876,6 @@ button.submit-vote-button:focus-visible {
   }
 
   .fighter-image {
-    border-radius: 12px;
-  }
-
-  .fighter-image-background {
     border-radius: 12px;
   }
 
@@ -1188,10 +1068,6 @@ button.submit-vote-button:focus-visible {
   }
 
   .fighter-image {
-    border-radius: 12px;
-  }
-
-  .fighter-image-background {
     border-radius: 12px;
   }
 
@@ -1790,38 +1666,6 @@ button.vote-reminder-clear-button:hover {
 .fighter-votes.fighter2-votes h4,
 .fighter-votes.fighter2-votes .fighter-name {
   color: rgba(255, 255, 255, 0.9);
-}
-.vote-username-card {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-  min-width: 0;
-  max-width: 100%;
-  width: 100%;
-  margin: 0 auto;
-  font-size: 1.35rem;
-  color: #fff;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0.01em;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 0 2px #000;
-  transition: color 0.2s, transform 0.18s, filter 0.18s;
-  cursor: pointer;
-}
-.vote-username-on-bg {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 22px;
-  transition: transform 0.18s, filter 0.18s;
-}
-.vote-username-on-bg:last-child {
-  margin-bottom: 0;
-}
-.vote-username-on-bg:hover .vote-username-card {
-  filter: brightness(1.15);
-  transform: scale(1.04);
 }
 .votes-list::before,
 .votes-list::after {
