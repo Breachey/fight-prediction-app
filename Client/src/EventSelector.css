@@ -891,6 +891,88 @@
   margin-top: 4px;
 }
 
+.event-admin-import-preview__edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.event-admin-import-preview__edit-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.5fr);
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.event-admin-import-preview__fighter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.event-admin-import-preview__fighter span {
+  color: rgba(var(--event-ink-rgb, 245, 247, 250), 0.94);
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.event-admin-import-preview__fighter small {
+  color: rgba(var(--event-muted-rgb, 178, 186, 200), 0.9);
+  font-size: 0.76rem;
+}
+
+.event-admin-import-preview__edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.event-admin-import-preview__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.event-admin-import-preview__field span {
+  color: rgba(var(--event-muted-rgb, 178, 186, 200), 0.9);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.event-admin-import-preview__field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(var(--event-ink-rgb, 245, 247, 250), 0.96);
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.event-admin-import-preview__field input:focus {
+  border-color: rgba(var(--event-accent-rgb, 96, 165, 250), 0.6);
+  box-shadow: 0 0 0 2px rgba(var(--event-accent-rgb, 96, 165, 250), 0.16);
+}
+
+.event-admin-import-preview__field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .event-admin-import-preview__expiry {
   color: rgba(var(--event-muted-rgb, 178, 186, 200), 0.9);
   font-size: 0.84rem;
@@ -922,6 +1004,15 @@
 
   .event-card:not(.has-image) {
     padding: 28px 24px 24px 24px;
+  }
+
+  .event-admin-import-preview__edit-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .event-admin-import-preview__edit-fields {
+    grid-template-columns: 1fr;
   }
 
   .event-image-container {

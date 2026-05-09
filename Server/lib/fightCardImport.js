@@ -87,6 +87,7 @@ const COMPLETENESS_FIELDS = [
   'TapologyMatchConfidence',
 ];
 const MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS = 2;
+const MANUAL_PREVIEW_EDIT_FIELDS = ['odds', 'style'];
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -147,6 +148,87 @@ function sanitizeRowForDatabase(row) {
       return [header, value];
     })
   );
+}
+
+function buildFightCardPreviewRowKey(row) {
+  return [
+    normalizeText(row.FightId),
+    normalizeText(row.FighterId),
+    normalizeText(row.Corner),
+  ].join('|');
+}
+
+function buildEditableFightCardPreviewRows(rows) {
+  return (rows || [])
+    .map((row) => {
+      const missingOdds = !normalizeText(row.odds);
+      const missingStyle = !normalizeText(row.style);
+
+      if (!missingOdds && !missingStyle) {
+        return null;
+      }
+
+      return {
+        rowKey: buildFightCardPreviewRowKey(row),
+        fightId: row.FightId ?? null,
+        fighterId: row.FighterId ?? null,
+        corner: row.Corner || null,
+        firstName: row.FirstName || null,
+        lastName: row.LastName || null,
+        nickname: row.Nickname || null,
+        odds: row.odds || null,
+        style: row.style || null,
+        missingOdds,
+        missingStyle,
+      };
+    })
+    .filter(Boolean);
+}
+
+function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
+  if (!manualRowUpdates || typeof manualRowUpdates !== 'object' || Array.isArray(manualRowUpdates)) {
+    return {
+      preview,
+      appliedManualUpdateCount: 0,
+    };
+  }
+
+  let appliedManualUpdateCount = 0;
+  const rows = (preview.rows || []).map((row) => {
+    const rowKey = buildFightCardPreviewRowKey(row);
+    const rowUpdates = manualRowUpdates[rowKey];
+
+    if (!rowUpdates || typeof rowUpdates !== 'object' || Array.isArray(rowUpdates)) {
+      return row;
+    }
+
+    let nextRow = row;
+
+    for (const field of MANUAL_PREVIEW_EDIT_FIELDS) {
+      const value = normalizeText(rowUpdates[field]);
+
+      if (!value || normalizeText(row[field])) {
+        continue;
+      }
+
+      if (nextRow === row) {
+        nextRow = { ...row };
+      }
+
+      nextRow[field] = value;
+      appliedManualUpdateCount += 1;
+    }
+
+    return nextRow;
+  });
+
+  return {
+    preview: {
+      ...preview,
+      rows,
+    },
+    appliedManualUpdateCount,
+  };
 }
 
 function parseCsvText(text) {
@@ -950,6 +1032,7 @@ async function buildFightCardPreview({
     changedFightCard,
     fieldCompleteness,
     fieldCompletenessSummary,
+    editableRows: buildEditableFightCardPreviewRows(sanitizedRows),
     blockers: Array.from(new Set(blockers)),
     warnings: Array.from(new Set(warnings)),
     scraperStdout: normalizeText(scraperOutput?.stdout) || null,
@@ -974,6 +1057,7 @@ module.exports = {
   runFightCardScraper,
   runEventOddsScraper,
   buildOddsRefreshPlan,
+  applyManualFightCardPreviewUpdates,
   backfillEventImageIfMissing,
   storeFightCardPreview,
   replaceFightCardPreview,
