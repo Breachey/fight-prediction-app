@@ -40,7 +40,21 @@ SERVER_ROOT = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(SERVER_ROOT)
 DEFAULT_OUTPUT_DIR = os.path.join(SCRIPT_DIR, "fight_cards")
 DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
+DEFAULT_TAPOLOGY_CACHE_DIR = os.path.join(SCRIPT_DIR, "tapology_cache")
 DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
+TAPOLOGY_ENRICHMENT_FIELDS = [
+    "TapologyFighterURL",
+    "TapologyMatchConfidence",
+    "Rank",
+    "Streak",
+    "style",
+    "KO_TKO_Wins",
+    "KO_TKO_Losses",
+    "Submission_Wins",
+    "Submission_Losses",
+    "Decision_Wins",
+    "Decision_Losses",
+]
 KNOWN_FIGHTER_NAME_VARIANTS = {
     "patricio pitbull": {"patricio freire"},
     "patricio freire": {"patricio pitbull"},
@@ -1585,6 +1599,82 @@ def resolve_tapology_event(
     return auto_event
 
 
+def load_cached_tapology_fighter_enrichment(
+    event: Dict,
+    cache_dir: str = DEFAULT_TAPOLOGY_CACHE_DIR,
+) -> Dict[str, Dict[str, str]]:
+    event_id = str(event.get("EventId", "")).strip()
+    if not event_id:
+        return {}
+
+    cache_path = os.path.join(cache_dir, f"event_{event_id}.json")
+    if not os.path.exists(cache_path):
+        return {}
+
+    try:
+        with open(cache_path, encoding="utf-8") as cache_file:
+            payload = json.load(cache_file)
+    except (OSError, ValueError) as err:
+        print(f"Unable to read Tapology cache {cache_path}: {err}")
+        return {}
+
+    cached_fighters = payload.get("fighters", {})
+    if not isinstance(cached_fighters, dict):
+        return {}
+
+    enrichment: Dict[str, Dict[str, str]] = {}
+    for fight in event.get("FightCard", []):
+        for fighter in fight.get("Fighters", []):
+            fighter_name = fighter_full_name(fighter)
+            fighter_key = normalize_name(fighter_name)
+            cached_fighter = cached_fighters.get(fighter_key)
+            if not fighter_key or not isinstance(cached_fighter, dict):
+                continue
+
+            row = {
+                field: str(cached_fighter.get(field, "") or "").strip()
+                for field in TAPOLOGY_ENRICHMENT_FIELDS
+            }
+            if row.get("TapologyMatchConfidence"):
+                row["TapologyMatchConfidence"] = f"cache:{row['TapologyMatchConfidence']}"
+            else:
+                row["TapologyMatchConfidence"] = "cache"
+            enrichment[fighter_key] = row
+
+    if enrichment:
+        print(
+            f"Loaded cached Tapology enrichment for {len(enrichment)} fighter(s) "
+            f"from {cache_path}."
+        )
+
+    return enrichment
+
+
+def merge_cached_tapology_fighter_enrichment(
+    event: Dict,
+    enrichment: Dict[str, Dict[str, str]],
+) -> Dict[str, Dict[str, str]]:
+    cached_enrichment = load_cached_tapology_fighter_enrichment(event)
+    if not cached_enrichment:
+        return enrichment
+
+    merged = {key: dict(value) for key, value in enrichment.items()}
+    filled_count = 0
+
+    for fighter_key, cached_fighter in cached_enrichment.items():
+        target = merged.setdefault(fighter_key, {})
+        for field in TAPOLOGY_ENRICHMENT_FIELDS:
+            if target.get(field) or not cached_fighter.get(field):
+                continue
+            target[field] = cached_fighter[field]
+            filled_count += 1
+
+    if filled_count > 0:
+        print(f"Backfilled {filled_count} Tapology field(s) from cache.")
+
+    return merged
+
+
 def match_tapology_fighter(
     fighter_name: str,
     parsed_fighters: List[Dict[str, object]],
@@ -1629,7 +1719,7 @@ def fetch_tapology_fighter_enrichment(
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
     tapology_event_url = tapology_event.get("TapologyEventURL", "")
     if not tapology_event_url:
-        return {}, {}
+        return load_cached_tapology_fighter_enrichment(event), {}
 
     try:
         event_html = fetch_tapology_event_html(
@@ -1639,13 +1729,13 @@ def fetch_tapology_fighter_enrichment(
         )
     except (requests.RequestException, RuntimeError) as err:
         print(f"Unable to fetch Tapology event page {tapology_event_url}: {err}")
-        return {}, {}
+        return load_cached_tapology_fighter_enrichment(event), {}
 
     event_details = parse_tapology_event_details(event_html, tapology_event_url)
     parsed_fighters = event_details.get("fighters", [])
     if not parsed_fighters:
         print(f"No Tapology fighter links found on mapped event page: {tapology_event_url}")
-        return {}, {
+        return merge_cached_tapology_fighter_enrichment(event, {}), {
             "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),
         }
 
@@ -1702,7 +1792,7 @@ def fetch_tapology_fighter_enrichment(
         f"{len(parsed_fighters)} event-page fighter links."
     )
     print(f"Fetched {profile_count} Tapology fighter profiles.")
-    return enrichment, {
+    return merge_cached_tapology_fighter_enrichment(event, enrichment), {
         "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),
     }
 
