@@ -40,6 +40,7 @@ SERVER_ROOT = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(SERVER_ROOT)
 DEFAULT_OUTPUT_DIR = os.path.join(SCRIPT_DIR, "fight_cards")
 DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
+DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
 KNOWN_FIGHTER_NAME_VARIANTS = {
     "patricio pitbull": {"patricio freire"},
     "patricio freire": {"patricio pitbull"},
@@ -133,6 +134,10 @@ def build_tapology_session() -> requests.Session:
             }
         )
     else:
+        print(
+            "cloudscraper is not installed; Tapology Cloudflare challenges are likely to fail.",
+            file=sys.stderr,
+        )
         session = requests.Session()
     session.headers.update(DEFAULT_HEADERS)
     session.verify = certifi.where()
@@ -151,8 +156,8 @@ def is_cloudflare_challenge(response: requests.Response) -> bool:
 def raise_for_status_with_context(response: requests.Response, url: str) -> None:
     if is_cloudflare_challenge(response):
         raise RuntimeError(
-            "Tapology blocked the request with a Cloudflare challenge. "
-            "Install 'cloudscraper' so the script can fetch Tapology pages: "
+            "The target site blocked the request with a Cloudflare challenge. "
+            "Install 'cloudscraper' so the script can fetch protected pages: "
             "'python3 -m pip install cloudscraper'. "
             f"Blocked URL: {url}"
         )
@@ -916,14 +921,46 @@ def load_tapology_event_map(path: str) -> List[Dict[str, str]]:
         return [dict(row) for row in reader]
 
 
+def fetch_tapology_url(
+    tapology_session: requests.Session,
+    url: str,
+    timeout: float,
+    attempts: int = 3,
+) -> str:
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            response = tapology_session.get(url, timeout=timeout)
+            raise_for_status_with_context(response, url)
+            return response.text
+        except RuntimeError as err:
+            if "Cloudflare challenge" in str(err):
+                raise
+            last_error = err
+        except requests.RequestException as err:
+            last_error = err
+
+        if attempt < attempts:
+            delay_seconds = min(2 ** (attempt - 1), 4)
+            print(
+                f"Tapology request failed for {url}; retrying in {delay_seconds}s: "
+                f"{last_error}"
+            )
+            time.sleep(delay_seconds)
+
+    if last_error:
+        raise last_error
+
+    raise RuntimeError(f"Tapology request failed for {url}")
+
+
 def fetch_tapology_event_html(
     tapology_session: requests.Session,
     tapology_event_url: str,
     timeout: float,
 ) -> str:
-    response = tapology_session.get(tapology_event_url, timeout=timeout)
-    raise_for_status_with_context(response, tapology_event_url)
-    return response.text
+    return fetch_tapology_url(tapology_session, tapology_event_url, timeout)
 
 
 def fetch_tapology_fighter_html(
@@ -931,9 +968,7 @@ def fetch_tapology_fighter_html(
     tapology_fighter_url: str,
     timeout: float,
 ) -> str:
-    response = tapology_session.get(tapology_fighter_url, timeout=timeout)
-    raise_for_status_with_context(response, tapology_fighter_url)
-    return response.text
+    return fetch_tapology_url(tapology_session, tapology_fighter_url, timeout)
 
 
 def resolve_tapology_event_from_map(event: Dict, map_path: str) -> Dict[str, str]:
@@ -1590,6 +1625,7 @@ def fetch_tapology_fighter_enrichment(
     event: Dict,
     tapology_event: Dict[str, str],
     timeout: float,
+    tapology_delay_seconds: float,
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
     tapology_event_url = tapology_event.get("TapologyEventURL", "")
     if not tapology_event_url:
@@ -1636,10 +1672,15 @@ def fetch_tapology_fighter_enrichment(
             matched_count += 1
 
     profile_count = 0
+    profile_attempt_count = 0
     for fighter_key, fighter_data in enrichment.items():
         fighter_url = fighter_data.get("TapologyFighterURL", "")
         if not fighter_url:
             continue
+
+        if profile_attempt_count > 0 and tapology_delay_seconds > 0:
+            time.sleep(tapology_delay_seconds)
+        profile_attempt_count += 1
 
         try:
             fighter_html = fetch_tapology_fighter_html(
@@ -1886,6 +1927,12 @@ def parse_args() -> argparse.Namespace:
         help="Delay between UFC profile image requests.",
     )
     parser.add_argument(
+        "--tapology-delay-seconds",
+        type=float,
+        default=DEFAULT_TAPOLOGY_DELAY_SECONDS,
+        help="Delay between Tapology fighter profile requests.",
+    )
+    parser.add_argument(
         "--tapology-map",
         default=DEFAULT_TAPOLOGY_MAP,
         help="CSV file used to map UFC events to Tapology event URLs.",
@@ -1915,6 +1962,7 @@ def main() -> None:
             event=event,
             tapology_event=tapology_event,
             timeout=args.timeout,
+            tapology_delay_seconds=args.tapology_delay_seconds,
         )
         tapology_event = {
             **tapology_event,

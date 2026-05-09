@@ -614,6 +614,7 @@ async function runFightCardScraper({
   repoRoot,
   timeoutMs = 300000,
   imageDelaySeconds = '0.25',
+  tapologyDelaySeconds = process.env.TAPOLOGY_DELAY_SECONDS || '1.25',
 }) {
   const scratchDir = await fs.mkdtemp(path.join(os.tmpdir(), `fight-card-${eventId}-`));
   const scraperRoot = path.join(repoRoot, 'Server', 'scraper');
@@ -631,6 +632,8 @@ async function runFightCardScraper({
     tapologyMapPath,
     '--image-delay-seconds',
     String(imageDelaySeconds),
+    '--tapology-delay-seconds',
+    String(tapologyDelaySeconds),
   ];
 
   return new Promise((resolve, reject) => {
