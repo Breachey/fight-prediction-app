@@ -131,6 +131,55 @@ const formatCompletenessLabel = (label, metric) => {
   return `${label}: ${metric.populated}/${metric.total}`;
 };
 
+const getEditablePreviewFighterName = (row) => (
+  [row?.firstName, row?.lastName].filter(Boolean).join(' ') || 'Unknown fighter'
+);
+
+const getManualPreviewValue = (edits, rowKey, field) => (
+  edits?.[rowKey]?.[field] || ''
+);
+
+const buildManualPreviewUpdates = (editableRows, edits) => {
+  const updates = {};
+
+  (editableRows || []).forEach((row) => {
+    const rowEdits = edits?.[row.rowKey];
+    if (!rowEdits) return;
+
+    const patch = {};
+    const odds = String(rowEdits.odds || '').trim();
+    const style = String(rowEdits.style || '').trim();
+
+    if (row.missingOdds && odds) {
+      patch.odds = odds;
+    }
+
+    if (row.missingStyle && style) {
+      patch.style = style;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      updates[row.rowKey] = patch;
+    }
+  });
+
+  return updates;
+};
+
+const countManualPreviewValues = (editableRows, edits) => (
+  (editableRows || []).reduce((count, row) => {
+    const oddsCount = row.missingOdds && getManualPreviewValue(edits, row.rowKey, 'odds').trim() ? 1 : 0;
+    const styleCount = row.missingStyle && getManualPreviewValue(edits, row.rowKey, 'style').trim() ? 1 : 0;
+    return count + oddsCount + styleCount;
+  }, 0)
+);
+
+const countMissingEditablePreviewValues = (editableRows) => (
+  (editableRows || []).reduce((count, row) => (
+    count + (row.missingOdds ? 1 : 0) + (row.missingStyle ? 1 : 0)
+  ), 0)
+);
+
 function EventSelector({
   onEventSelect,
   selectedEventId,
@@ -159,6 +208,7 @@ function EventSelector({
   const [refreshingOddsEventId, setRefreshingOddsEventId] = useState(null);
   const [fightCardFeedback, setFightCardFeedback] = useState(null);
   const [fightCardPreview, setFightCardPreview] = useState(null);
+  const [fightCardPreviewEdits, setFightCardPreviewEdits] = useState({});
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
   const [selectedEventCardStartTimes, setSelectedEventCardStartTimes] = useState({
     early_prelims: null,
@@ -462,6 +512,23 @@ function EventSelector({
       },
     ];
   }, [fightCardPreview]);
+  const editablePreviewRows = useMemo(
+    () => fightCardPreview?.editableRows || [],
+    [fightCardPreview]
+  );
+  const manualPreviewUpdates = useMemo(
+    () => buildManualPreviewUpdates(editablePreviewRows, fightCardPreviewEdits),
+    [editablePreviewRows, fightCardPreviewEdits]
+  );
+  const manualPreviewUpdateCount = useMemo(
+    () => countManualPreviewValues(editablePreviewRows, fightCardPreviewEdits),
+    [editablePreviewRows, fightCardPreviewEdits]
+  );
+  const missingEditablePreviewValueCount = useMemo(
+    () => countMissingEditablePreviewValues(editablePreviewRows),
+    [editablePreviewRows]
+  );
+  const hasManualPreviewUpdates = Object.keys(manualPreviewUpdates).length > 0;
   useEffect(() => {
     if (typeof onSelectedEventChange !== 'function') return;
     onSelectedEventChange(selectedEvent || null);
@@ -592,6 +659,7 @@ function EventSelector({
     setAdminAccessFeedback(null);
     setFightCardFeedback(null);
     setFightCardPreview(null);
+    setFightCardPreviewEdits({});
     setPreviewingEventId(event.id);
 
     try {
@@ -655,7 +723,8 @@ function EventSelector({
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            previewToken: fightCardPreview.previewToken
+            previewToken: fightCardPreview.previewToken,
+            manualRowUpdates: hasManualPreviewUpdates ? manualPreviewUpdates : undefined,
           })
         }
       );
@@ -730,13 +799,25 @@ function EventSelector({
 
   const handleDiscardFightCardPreview = () => {
     setFightCardPreview(null);
+    setFightCardPreviewEdits({});
     setFightCardFeedback(null);
+  };
+
+  const handleFightCardPreviewEditChange = (rowKey, field, value) => {
+    setFightCardPreviewEdits((current) => ({
+      ...current,
+      [rowKey]: {
+        ...(current[rowKey] || {}),
+        [field]: value,
+      },
+    }));
   };
 
   useEffect(() => {
     setFinalizeFeedback(null);
     setFightCardFeedback(null);
     setFightCardPreview(null);
+    setFightCardPreviewEdits({});
     setAdminAccessFeedback(null);
   }, [selectedEventId]);
 
@@ -1067,6 +1148,51 @@ function EventSelector({
                     {previewStatusMessage && (
                       <div className="event-admin-import-preview__meta">
                         {previewStatusMessage}
+                      </div>
+                    )}
+                    {editablePreviewRows.length > 0 && (
+                      <div className="event-admin-import-preview__section">
+                        <div className="event-admin-import-preview__title">Manual missing values</div>
+                        <div className="event-admin-import-preview__meta">
+                          Filled {manualPreviewUpdateCount}/{missingEditablePreviewValueCount} blank value{missingEditablePreviewValueCount === 1 ? '' : 's'}.
+                        </div>
+                        <div className="event-admin-import-preview__edit-list">
+                          {editablePreviewRows.map((row) => (
+                            <div key={row.rowKey} className="event-admin-import-preview__edit-row">
+                              <div className="event-admin-import-preview__fighter">
+                                <span>{getEditablePreviewFighterName(row)}</span>
+                                <small>{row.corner || 'Corner TBD'} corner - Fight {row.fightId || 'TBD'}</small>
+                              </div>
+                              <div className="event-admin-import-preview__edit-fields">
+                                {row.missingOdds && (
+                                  <label className="event-admin-import-preview__field">
+                                    <span>Odds</span>
+                                    <input
+                                      type="text"
+                                      inputMode="text"
+                                      placeholder="+120"
+                                      value={getManualPreviewValue(fightCardPreviewEdits, row.rowKey, 'odds')}
+                                      onChange={(event) => handleFightCardPreviewEditChange(row.rowKey, 'odds', event.target.value)}
+                                      disabled={isFightCardActionBusy}
+                                    />
+                                  </label>
+                                )}
+                                {row.missingStyle && (
+                                  <label className="event-admin-import-preview__field">
+                                    <span>Style</span>
+                                    <input
+                                      type="text"
+                                      placeholder="Wrestler"
+                                      value={getManualPreviewValue(fightCardPreviewEdits, row.rowKey, 'style')}
+                                      onChange={(event) => handleFightCardPreviewEditChange(row.rowKey, 'style', event.target.value)}
+                                      disabled={isFightCardActionBusy}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {fightCardPreview.eventFieldChanges?.length > 0 && (

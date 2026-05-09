@@ -240,16 +240,17 @@ def load_supabase_credentials() -> Dict[str, str]:
 
 
 def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
+    empty_lookup = {
+        "by_fighter_id": {},
+        "by_mma_id": {},
+        "by_name": {},
+    }
     credentials = load_supabase_credentials()
     supabase_url = credentials.get("url", "")
     service_role_key = credentials.get("service_role_key", "")
     if not supabase_url or not service_role_key:
         print("fighter_style lookup skipped: Supabase credentials were not found.")
-        return {
-            "by_fighter_id": {},
-            "by_mma_id": {},
-            "by_name": {},
-        }
+        return empty_lookup
 
     headers = {
         "apikey": service_role_key,
@@ -262,20 +263,32 @@ def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
     page_size = 1000
 
     while True:
-        response = requests.get(
-            endpoint,
-            params={
-                "select": SUPABASE_STYLE_SELECT,
-                "order": "fighter_id.asc",
-            },
-            headers={
-                **headers,
-                "Range": f"{offset}-{offset + page_size - 1}",
-            },
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = requests.get(
+                endpoint,
+                params={
+                    "select": SUPABASE_STYLE_SELECT,
+                    "order": "fighter_id.asc",
+                },
+                headers={
+                    **headers,
+                    "Range": f"{offset}-{offset + page_size - 1}",
+                },
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as err:
+            if rows:
+                print(
+                    "fighter_style lookup stopped early after "
+                    f"{len(rows)} row(s): {err}"
+                )
+                break
+
+            print(f"fighter_style lookup skipped: {err}")
+            return empty_lookup
+
         if not isinstance(payload, list) or not payload:
             break
 

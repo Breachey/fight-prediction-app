@@ -26,6 +26,7 @@ const {
   cleanupExpiredFightCardPreviews,
   deleteFightCardPreview,
   getFightCardPreview,
+  applyManualFightCardPreviewUpdates,
   parseFightCardCsvFile,
   replaceFightCardPreview,
   removePreviewAssets,
@@ -2976,10 +2977,18 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
 
     await cleanupExpiredFightCardPreviews();
 
-    const preview = getFightCardPreview(previewToken, eventId);
-    if (!preview) {
+    const storedPreview = getFightCardPreview(previewToken, eventId);
+    if (!storedPreview) {
       return res.status(404).json({ error: 'Preview token was not found or has expired' });
     }
+
+    const manualRowUpdates = req.body?.manualRowUpdates && typeof req.body.manualRowUpdates === 'object'
+      ? req.body.manualRowUpdates
+      : null;
+    const {
+      preview,
+      appliedManualUpdateCount,
+    } = applyManualFightCardPreviewUpdates(storedPreview, manualRowUpdates);
 
     if (preview.blockers.length > 0) {
       return res.status(400).json({
@@ -3039,6 +3048,7 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
         event_image_update: eventImageUpdate,
         warnings: preview.warnings,
         fighter_style_sync: fighterStyleSync,
+        applied_manual_update_count: appliedManualUpdateCount,
       },
     });
 
@@ -3050,6 +3060,7 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       importResult,
       eventImageUpdate,
       fighterStyleSync,
+      appliedManualUpdateCount,
     });
   } catch (error) {
     console.error('Error importing fight card:', error);
