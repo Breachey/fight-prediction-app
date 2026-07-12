@@ -44,16 +44,16 @@ async function main() {
     const errorDetails = error && typeof error.details === 'string' ? error.details : '';
 
     if (
-      errorMessage.includes('fighter_style')
-      || errorDetails.includes('fighter_style')
+      errorMessage.includes('fighters')
+      || errorDetails.includes('fighters')
       || errorMessage.includes('relation')
       || errorDetails.includes('relation')
     ) {
-      console.error('fighter_style table not found. Run the Supabase migration first, then rerun this script.');
+      console.error('fighters table not found. Run the Supabase migration first, then rerun this script.');
       process.exit(1);
     }
 
-    console.error('Failed to sync fighter_style:', error);
+    console.error('Failed to sync fighter profiles:', error);
     process.exit(1);
   }
 }

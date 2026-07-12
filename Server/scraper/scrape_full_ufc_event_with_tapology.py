@@ -5,9 +5,11 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import unicodedata
+from urllib.parse import quote
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import requests
@@ -33,8 +35,27 @@ UFC_DOMAINS = [
     "live-api.ufc.com",
 ]
 TAPOLOGY_UFC_SCHEDULE_URL = "https://www.tapology.com/fightcenter?group=ufc"
+DEFAULT_TAPOLOGY_PROXY_URL_TEMPLATE = (
+    "https://api.allorigins.win/raw?url={url}"
+)
 FIGHTODDS_GQL_URL = "https://api.fightodds.io/gql"
 SUPABASE_STYLE_SELECT = "fighter_id,mma_id,first_name,last_name,style"
+SUPABASE_FIGHTER_PROFILE_SELECT = (
+    "fighter_id,mma_id,first_name,last_name,normalized_name,tapology_fighter_url,"
+    "rank,streak,style,ko_tko_wins,ko_tko_losses,submission_wins,"
+    "submission_losses,decision_wins,decision_losses,stats_confidence,"
+    "stats_source,last_success_at,last_failure_at,last_error"
+)
+SUPABASE_TAPOLOGY_EVENT_SELECT = (
+    "event_id,event_name,event_date,tapology_event_url,event_image_url,"
+    "match_confidence,source,last_success_at,last_failure_at,last_error"
+)
+SUPABASE_TAPOLOGY_FIGHTER_SELECT = (
+    "fighter_id,mma_id,first_name,last_name,normalized_name,tapology_fighter_url,"
+    "rank,streak,style,ko_tko_wins,ko_tko_losses,submission_wins,"
+    "submission_losses,decision_wins,decision_losses,match_confidence,"
+    "source,last_success_at,last_failure_at,last_error"
+)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER_ROOT = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(SERVER_ROOT)
@@ -42,6 +63,7 @@ DEFAULT_OUTPUT_DIR = os.path.join(SCRIPT_DIR, "fight_cards")
 DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
 DEFAULT_TAPOLOGY_CACHE_DIR = os.path.join(SCRIPT_DIR, "tapology_cache")
 DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
+DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT = 4
 TAPOLOGY_ENRICHMENT_FIELDS = [
     "TapologyFighterURL",
     "TapologyMatchConfidence",
@@ -179,6 +201,43 @@ def raise_for_status_with_context(response: requests.Response, url: str) -> None
     response.raise_for_status()
 
 
+def tapology_proxy_url(url: str) -> str:
+    template = os.getenv(
+        "TAPOLOGY_PROXY_URL_TEMPLATE",
+        DEFAULT_TAPOLOGY_PROXY_URL_TEMPLATE,
+    ).strip()
+    if not template or template.lower() in {"0", "false", "none", "off"}:
+        return ""
+
+    encoded_url = quote(url, safe="")
+    if "{encoded_url}" in template:
+        return template.replace("{encoded_url}", encoded_url)
+    if "{url}" in template:
+        return template.replace("{url}", url)
+    return ""
+
+
+def should_use_curl_proxy_fallback() -> bool:
+    value = os.getenv("TAPOLOGY_PROXY_CURL_FALLBACK", "true").strip().lower()
+    return value not in {"0", "false", "none", "off"}
+
+
+def fetch_url_with_curl(url: str, timeout: float) -> str:
+    result = subprocess.run(
+        [
+            "curl",
+            "-fsSL",
+            "--max-time",
+            str(int(max(timeout, 30.0))),
+            url,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
 def normalize_name(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -258,6 +317,489 @@ def load_supabase_credentials() -> Dict[str, str]:
     return credentials
 
 
+def build_supabase_headers(service_role_key: str) -> Dict[str, str]:
+    return {
+        "apikey": service_role_key,
+        "Authorization": f"Bearer {service_role_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+def fetch_supabase_rows(
+    table_name: str,
+    select_clause: str,
+    timeout: float,
+    params: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, object]]:
+    credentials = load_supabase_credentials()
+    supabase_url = credentials.get("url", "")
+    service_role_key = credentials.get("service_role_key", "")
+    if not supabase_url or not service_role_key:
+        return []
+
+    endpoint = f"{supabase_url.rstrip('/')}/rest/v1/{table_name}"
+    rows: List[Dict[str, object]] = []
+    offset = 0
+    page_size = 1000
+    base_params = {
+        "select": select_clause,
+        **(params or {}),
+    }
+
+    while True:
+        response = requests.get(
+            endpoint,
+            params=base_params,
+            headers={
+                **build_supabase_headers(service_role_key),
+                "Range": f"{offset}-{offset + page_size - 1}",
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list) or not payload:
+            break
+
+        rows.extend(payload)
+        if len(payload) < page_size:
+            break
+
+        offset += page_size
+
+    return rows
+
+
+def upsert_supabase_rows(
+    table_name: str,
+    rows: List[Dict[str, object]],
+    conflict_column: str,
+    timeout: float,
+) -> int:
+    if not rows:
+        return 0
+
+    credentials = load_supabase_credentials()
+    supabase_url = credentials.get("url", "")
+    service_role_key = credentials.get("service_role_key", "")
+    if not supabase_url or not service_role_key:
+        return 0
+
+    endpoint = f"{supabase_url.rstrip('/')}/rest/v1/{table_name}"
+    inserted_count = 0
+    compact_rows = [
+        {key: value for key, value in row.items() if value is not None}
+        for row in rows
+    ]
+
+    for row in compact_rows:
+        if conflict_column not in row:
+            continue
+        response = requests.post(
+            endpoint,
+            params={"on_conflict": conflict_column},
+            headers={
+                **build_supabase_headers(service_role_key),
+                "Prefer": "resolution=merge-duplicates,return=minimal",
+            },
+            json=[row],
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        inserted_count += 1
+
+    return inserted_count
+
+
+def parse_optional_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+
+    normalized = str(value).strip()
+    if not normalized or not re.fullmatch(r"-?\d+", normalized):
+        return None
+
+    return int(normalized)
+
+
+def cache_value_to_csv(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def cache_confidence(value: object, prefix: str = "cache") -> str:
+    confidence = cache_value_to_csv(value)
+    return f"{prefix}:{confidence}" if confidence else prefix
+
+
+def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
+    return {
+        "TapologyFighterURL": cache_value_to_csv(row.get("tapology_fighter_url")),
+        "TapologyMatchConfidence": cache_confidence(
+            row.get("match_confidence") or row.get("stats_confidence")
+        ),
+        "Rank": cache_value_to_csv(row.get("rank")),
+        "Streak": cache_value_to_csv(row.get("streak")),
+        "style": cache_value_to_csv(row.get("style")),
+        "KO_TKO_Wins": cache_value_to_csv(row.get("ko_tko_wins")),
+        "KO_TKO_Losses": cache_value_to_csv(row.get("ko_tko_losses")),
+        "Submission_Wins": cache_value_to_csv(row.get("submission_wins")),
+        "Submission_Losses": cache_value_to_csv(row.get("submission_losses")),
+        "Decision_Wins": cache_value_to_csv(row.get("decision_wins")),
+        "Decision_Losses": cache_value_to_csv(row.get("decision_losses")),
+    }
+
+
+def empty_tapology_cache_lookup() -> Dict[str, Dict[str, Dict[str, object]]]:
+    return {
+        "events_by_event_id": {},
+        "events_by_date_name": {},
+        "fighters_by_fighter_id": {},
+        "fighters_by_mma_id": {},
+        "fighters_by_name": {},
+    }
+
+
+def fetch_tapology_cache_lookup(timeout: float) -> Dict[str, Dict[str, Dict[str, object]]]:
+    lookup = empty_tapology_cache_lookup()
+
+    try:
+        event_rows = fetch_supabase_rows(
+            "tapology_event_cache",
+            SUPABASE_TAPOLOGY_EVENT_SELECT,
+            timeout,
+            params={"order": "event_id.asc"},
+        )
+    except (requests.RequestException, ValueError) as err:
+        print(f"tapology_event_cache lookup skipped: {err}")
+        event_rows = []
+
+    for row in event_rows:
+        event_id = cache_value_to_csv(row.get("event_id"))
+        event_date = cache_value_to_csv(row.get("event_date"))
+        event_name = normalize_name(cache_value_to_csv(row.get("event_name")))
+        if event_id:
+            lookup["events_by_event_id"][event_id] = row
+        if event_date and event_name:
+            lookup["events_by_date_name"][f"{event_date}|{event_name}"] = row
+
+    try:
+        fighter_rows = fetch_supabase_rows(
+            "tapology_fighter_cache",
+            SUPABASE_TAPOLOGY_FIGHTER_SELECT,
+            timeout,
+            params={"order": "fighter_id.asc"},
+        )
+    except (requests.RequestException, ValueError) as err:
+        print(f"tapology_fighter_cache lookup skipped: {err}")
+        fighter_rows = []
+
+    def add_fighter_cache_row(row: Dict[str, object], overwrite: bool = False) -> None:
+        fighter_id = cache_value_to_csv(row.get("fighter_id"))
+        mma_id = cache_value_to_csv(row.get("mma_id"))
+        normalized_name = normalize_name(
+            cache_value_to_csv(row.get("normalized_name"))
+            or " ".join(
+                part
+                for part in [
+                    cache_value_to_csv(row.get("first_name")),
+                    cache_value_to_csv(row.get("last_name")),
+                ]
+                if part
+            )
+        )
+
+        if fighter_id and (overwrite or fighter_id not in lookup["fighters_by_fighter_id"]):
+            lookup["fighters_by_fighter_id"][fighter_id] = row
+        if mma_id and (overwrite or mma_id not in lookup["fighters_by_mma_id"]):
+            lookup["fighters_by_mma_id"][mma_id] = row
+        if normalized_name and (overwrite or normalized_name not in lookup["fighters_by_name"]):
+            lookup["fighters_by_name"][normalized_name] = row
+
+    for row in fighter_rows:
+        add_fighter_cache_row(row)
+
+    try:
+        profile_rows = fetch_supabase_rows(
+            "fighters",
+            SUPABASE_FIGHTER_PROFILE_SELECT,
+            timeout,
+            params={"order": "fighter_id.asc"},
+        )
+    except (requests.RequestException, ValueError) as err:
+        print(f"fighters profile lookup skipped: {err}")
+        profile_rows = []
+
+    for row in profile_rows:
+        add_fighter_cache_row(row, overwrite=True)
+
+    if event_rows or fighter_rows or profile_rows:
+        print(
+            "Loaded Tapology cache from Supabase: "
+            f"{len(event_rows)} event(s), {len(fighter_rows)} Tapology fighter cache row(s), "
+            f"{len(profile_rows)} fighter profile row(s)."
+        )
+
+    return lookup
+
+
+def tapology_cache_event_for_event(
+    event: Dict,
+    tapology_cache_lookup: Dict[str, Dict[str, Dict[str, object]]],
+) -> Dict[str, str]:
+    event_id = str(event.get("EventId", "")).strip()
+    event_name = normalize_name(event.get("Name", ""))
+    event_date = str(event.get("StartTime", "")).split("T")[0]
+    cache_row = tapology_cache_lookup.get("events_by_event_id", {}).get(event_id)
+
+    if cache_row is None and event_date and event_name:
+        cache_row = tapology_cache_lookup.get("events_by_date_name", {}).get(
+            f"{event_date}|{event_name}"
+        )
+
+    tapology_url = cache_value_to_csv(cache_row.get("tapology_event_url")) if cache_row else ""
+    if not tapology_url:
+        return {
+            "TapologyEventURL": "",
+            "TapologyMatchConfidence": "",
+        }
+
+    return {
+        "TapologyEventURL": tapology_url,
+        "TapologyMatchConfidence": cache_confidence(cache_row.get("match_confidence")),
+        "TapologyEventImageURL": cache_value_to_csv(cache_row.get("event_image_url")),
+    }
+
+
+def tapology_cache_fighter_for_fighter(
+    fighter: Dict,
+    tapology_cache_lookup: Dict[str, Dict[str, Dict[str, object]]],
+) -> Dict[str, str]:
+    fighter_id = str(fighter.get("FighterId", "")).strip()
+    mma_id = str(fighter.get("MMAId", "")).strip()
+    fighter_name = normalize_name(fighter_full_name(fighter))
+
+    cache_row = None
+    if fighter_id:
+        cache_row = tapology_cache_lookup.get("fighters_by_fighter_id", {}).get(fighter_id)
+    if cache_row is None and mma_id:
+        cache_row = tapology_cache_lookup.get("fighters_by_mma_id", {}).get(mma_id)
+    if cache_row is None and fighter_name:
+        cache_row = tapology_cache_lookup.get("fighters_by_name", {}).get(fighter_name)
+
+    return normalize_tapology_cache_fighter(cache_row) if cache_row else {}
+
+
+def load_tapology_cache_fighter_enrichment(
+    event: Dict,
+    tapology_cache_lookup: Dict[str, Dict[str, Dict[str, object]]],
+) -> Dict[str, Dict[str, str]]:
+    enrichment: Dict[str, Dict[str, str]] = {}
+
+    for fight in event.get("FightCard", []):
+        for fighter in fight.get("Fighters", []):
+            fighter_key = normalize_name(fighter_full_name(fighter))
+            if not fighter_key:
+                continue
+
+            cached_fighter = tapology_cache_fighter_for_fighter(
+                fighter,
+                tapology_cache_lookup,
+            )
+            if cached_fighter:
+                enrichment[fighter_key] = cached_fighter
+
+    if enrichment:
+        print(f"Loaded Tapology DB cache for {len(enrichment)} fighter(s).")
+
+    return enrichment
+
+
+def merge_tapology_enrichment(
+    base: Dict[str, Dict[str, str]],
+    incoming: Dict[str, Dict[str, str]],
+) -> Dict[str, Dict[str, str]]:
+    merged = {key: dict(value) for key, value in base.items()}
+
+    for fighter_key, incoming_fighter in incoming.items():
+        target = merged.setdefault(fighter_key, {})
+        for field in TAPOLOGY_ENRICHMENT_FIELDS:
+            incoming_value = cache_value_to_csv(incoming_fighter.get(field))
+            if not incoming_value:
+                continue
+            if not cache_value_to_csv(target.get(field)):
+                target[field] = incoming_value
+
+    return merged
+
+
+def build_tapology_event_cache_payload(
+    event: Dict,
+    tapology_event: Dict[str, str],
+    event_details: Optional[Dict[str, object]] = None,
+    source: str = "scraper",
+) -> Dict[str, object]:
+    event_details = event_details or {}
+    event_date = str(event.get("StartTime", "")).split("T")[0]
+    return {
+        "event_id": parse_optional_int(event.get("EventId")),
+        "event_name": cache_value_to_csv(event.get("Name")) or None,
+        "event_date": event_date or None,
+        "tapology_event_url": cache_value_to_csv(tapology_event.get("TapologyEventURL")) or None,
+        "event_image_url": cache_value_to_csv(
+            event_details.get("event_image_url")
+            or tapology_event.get("TapologyEventImageURL")
+        ) or None,
+        "match_confidence": cache_value_to_csv(
+            tapology_event.get("TapologyMatchConfidence")
+        ) or None,
+        "source": source,
+        "last_success_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "last_failure_at": None,
+        "last_error": None,
+    }
+
+
+def build_tapology_fighter_cache_payload(
+    fighter: Dict,
+    fighter_data: Dict[str, str],
+    source: str = "scraper",
+) -> Dict[str, object]:
+    name_info = fighter.get("Name", {}) or {}
+    first_name = cache_value_to_csv(name_info.get("FirstName")) or None
+    last_name = cache_value_to_csv(name_info.get("LastName")) or None
+    return {
+        "fighter_id": parse_optional_int(fighter.get("FighterId")),
+        "mma_id": parse_optional_int(fighter.get("MMAId")),
+        "first_name": first_name,
+        "last_name": last_name,
+        "normalized_name": normalize_name(" ".join(part for part in [first_name, last_name] if part)) or None,
+        "tapology_fighter_url": cache_value_to_csv(fighter_data.get("TapologyFighterURL")) or None,
+        "rank": parse_optional_int(fighter_data.get("Rank")),
+        "streak": parse_optional_int(fighter_data.get("Streak")),
+        "style": normalize_style(fighter_data.get("style")) or None,
+        "ko_tko_wins": parse_optional_int(fighter_data.get("KO_TKO_Wins")),
+        "ko_tko_losses": parse_optional_int(fighter_data.get("KO_TKO_Losses")),
+        "submission_wins": parse_optional_int(fighter_data.get("Submission_Wins")),
+        "submission_losses": parse_optional_int(fighter_data.get("Submission_Losses")),
+        "decision_wins": parse_optional_int(fighter_data.get("Decision_Wins")),
+        "decision_losses": parse_optional_int(fighter_data.get("Decision_Losses")),
+        "match_confidence": cache_value_to_csv(fighter_data.get("TapologyMatchConfidence")) or None,
+        "source": source,
+        "last_success_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "last_failure_at": None,
+        "last_error": None,
+    }
+
+
+def upsert_tapology_event_cache(
+    event: Dict,
+    tapology_event: Dict[str, str],
+    event_details: Optional[Dict[str, object]],
+    timeout: float,
+    source: str = "scraper",
+) -> None:
+    payload = build_tapology_event_cache_payload(
+        event=event,
+        tapology_event=tapology_event,
+        event_details=event_details,
+        source=source,
+    )
+    if not payload.get("event_id") or not payload.get("tapology_event_url"):
+        return
+
+    try:
+        upserted_count = upsert_supabase_rows("tapology_event_cache", [payload], "event_id", timeout)
+        if upserted_count:
+            print("Upserted Tapology event cache row.")
+    except (requests.RequestException, ValueError) as err:
+        print(f"Tapology event cache upsert skipped: {err}")
+
+
+def upsert_tapology_fighter_cache(
+    event: Dict,
+    enrichment: Dict[str, Dict[str, str]],
+    timeout: float,
+    source: str = "scraper",
+) -> None:
+    payloads = []
+    for fight in event.get("FightCard", []):
+        for fighter in fight.get("Fighters", []):
+            fighter_key = normalize_name(fighter_full_name(fighter))
+            fighter_data = enrichment.get(fighter_key, {})
+            payload = build_tapology_fighter_cache_payload(
+                fighter=fighter,
+                fighter_data=fighter_data,
+                source=source,
+            )
+            if payload.get("fighter_id") and (
+                payload.get("tapology_fighter_url")
+                or payload.get("style")
+                or payload.get("streak") is not None
+                or payload.get("ko_tko_wins") is not None
+                or payload.get("submission_wins") is not None
+                or payload.get("decision_wins") is not None
+            ):
+                payloads.append(payload)
+
+    if not payloads:
+        return
+
+    try:
+        upserted_count = upsert_supabase_rows(
+            "tapology_fighter_cache",
+            payloads,
+            "fighter_id",
+            timeout,
+        )
+        if upserted_count:
+            print(f"Upserted Tapology fighter cache for {upserted_count} fighter(s).")
+    except (requests.RequestException, ValueError) as err:
+        print(f"Tapology fighter cache upsert skipped: {err}")
+
+    event_date = str(event.get("StartTime", "")).split("T")[0] or None
+    fighter_profile_payloads = []
+    for payload in payloads:
+        fighter_profile_payloads.append({
+            "fighter_id": payload.get("fighter_id"),
+            "mma_id": payload.get("mma_id"),
+            "first_name": payload.get("first_name"),
+            "last_name": payload.get("last_name"),
+            "normalized_name": payload.get("normalized_name"),
+            "tapology_fighter_url": payload.get("tapology_fighter_url"),
+            "rank": payload.get("rank"),
+            "streak": payload.get("streak"),
+            "style": payload.get("style"),
+            "ko_tko_wins": payload.get("ko_tko_wins"),
+            "ko_tko_losses": payload.get("ko_tko_losses"),
+            "submission_wins": payload.get("submission_wins"),
+            "submission_losses": payload.get("submission_losses"),
+            "decision_wins": payload.get("decision_wins"),
+            "decision_losses": payload.get("decision_losses"),
+            "stats_source": source,
+            "stats_confidence": payload.get("match_confidence"),
+            "stats_as_of_event_id": parse_optional_int(event.get("EventId")),
+            "stats_as_of_event_date": event_date,
+            "last_success_at": payload.get("last_success_at"),
+            "last_failure_at": payload.get("last_failure_at"),
+            "last_error": payload.get("last_error"),
+        })
+
+    try:
+        upserted_count = upsert_supabase_rows(
+            "fighters",
+            fighter_profile_payloads,
+            "fighter_id",
+            timeout,
+        )
+        if upserted_count:
+            print(f"Upserted fighter profile rows for {upserted_count} fighter(s).")
+    except (requests.RequestException, ValueError) as err:
+        print(f"fighters profile upsert skipped: {err}")
+
+
 def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
     empty_lookup = {
         "by_fighter_id": {},
@@ -276,46 +818,59 @@ def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
         "Authorization": f"Bearer {service_role_key}",
         "Accept": "application/json",
     }
-    endpoint = f"{supabase_url.rstrip('/')}/rest/v1/fighter_style"
     rows: List[Dict[str, object]] = []
-    offset = 0
     page_size = 1000
+    selected_table = ""
 
-    while True:
-        try:
-            response = requests.get(
-                endpoint,
-                params={
-                    "select": SUPABASE_STYLE_SELECT,
-                    "order": "fighter_id.asc",
-                },
-                headers={
-                    **headers,
-                    "Range": f"{offset}-{offset + page_size - 1}",
-                },
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError) as err:
-            if rows:
-                print(
-                    "fighter_style lookup stopped early after "
-                    f"{len(rows)} row(s): {err}"
+    for table_name in ("fighters", "fighter_style"):
+        table_rows: List[Dict[str, object]] = []
+        endpoint = f"{supabase_url.rstrip('/')}/rest/v1/{table_name}"
+        offset = 0
+
+        while True:
+            try:
+                response = requests.get(
+                    endpoint,
+                    params={
+                        "select": SUPABASE_STYLE_SELECT,
+                        "order": "fighter_id.asc",
+                    },
+                    headers={
+                        **headers,
+                        "Range": f"{offset}-{offset + page_size - 1}",
+                    },
+                    timeout=timeout,
                 )
+                response.raise_for_status()
+                payload = response.json()
+            except (requests.RequestException, ValueError) as err:
+                if table_rows:
+                    print(
+                        f"{table_name} style lookup stopped early after "
+                        f"{len(table_rows)} row(s): {err}"
+                    )
+                    break
+
+                print(f"{table_name} style lookup skipped: {err}")
+                table_rows = []
                 break
 
-            print(f"fighter_style lookup skipped: {err}")
-            return empty_lookup
+            if not isinstance(payload, list) or not payload:
+                break
 
-        if not isinstance(payload, list) or not payload:
+            table_rows.extend(payload)
+            if len(payload) < page_size:
+                break
+
+            offset += page_size
+
+        if table_rows:
+            rows = table_rows
+            selected_table = table_name
             break
 
-        rows.extend(payload)
-        if len(payload) < page_size:
-            break
-
-        offset += page_size
+    if not rows:
+        return empty_lookup
 
     by_fighter_id: Dict[str, str] = {}
     by_mma_id: Dict[str, str] = {}
@@ -346,7 +901,7 @@ def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
             by_name[normalized_full_name] = style
 
     print(
-        "Loaded fighter_style lookup from Supabase: "
+        f"Loaded {selected_table} style lookup from Supabase: "
         f"{len(by_fighter_id)} fighter ids, {len(by_mma_id)} MMA ids, {len(by_name)} names."
     )
     return {
@@ -950,7 +1505,8 @@ def fetch_tapology_url(
             return response.text
         except RuntimeError as err:
             if "Cloudflare challenge" in str(err):
-                raise
+                last_error = err
+                break
             last_error = err
         except requests.RequestException as err:
             last_error = err
@@ -964,6 +1520,32 @@ def fetch_tapology_url(
             time.sleep(delay_seconds)
 
     if last_error:
+        proxy_url = tapology_proxy_url(url)
+        if proxy_url:
+            try:
+                print(f"Retrying Tapology through proxy for {url}")
+                response = requests.get(
+                    proxy_url,
+                    headers=DEFAULT_HEADERS,
+                    timeout=max(timeout, 30.0),
+                )
+                raise_for_status_with_context(response, proxy_url)
+                return response.text
+            except (requests.RequestException, RuntimeError) as proxy_error:
+                if should_use_curl_proxy_fallback():
+                    try:
+                        print(f"Retrying Tapology proxy through curl for {url}")
+                        return fetch_url_with_curl(proxy_url, timeout)
+                    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as curl_error:
+                        raise RuntimeError(
+                            f"{last_error}; proxy fallback failed for {url}: "
+                            f"{proxy_error}; curl proxy fallback failed: {curl_error}"
+                        ) from curl_error
+
+                raise RuntimeError(
+                    f"{last_error}; proxy fallback failed for {url}: {proxy_error}"
+                ) from proxy_error
+
         raise last_error
 
     raise RuntimeError(f"Tapology request failed for {url}")
@@ -1021,9 +1603,7 @@ def fetch_tapology_ufc_schedule_html(
     tapology_session: requests.Session,
     timeout: float,
 ) -> str:
-    response = tapology_session.get(TAPOLOGY_UFC_SCHEDULE_URL, timeout=timeout)
-    raise_for_status_with_context(response, TAPOLOGY_UFC_SCHEDULE_URL)
-    return response.text
+    return fetch_tapology_url(tapology_session, TAPOLOGY_UFC_SCHEDULE_URL, timeout)
 
 
 def parse_tapology_schedule_candidates(html: str) -> List[Dict[str, str]]:
@@ -1577,11 +2157,17 @@ def resolve_tapology_event(
     event: Dict,
     map_path: str,
     timeout: float,
+    tapology_cache_lookup: Optional[Dict[str, Dict[str, Dict[str, object]]]] = None,
 ) -> Dict[str, str]:
     mapped_event = resolve_tapology_event_from_map(event, map_path)
     if mapped_event.get("TapologyEventURL"):
         print(f"Resolved Tapology event from map: {mapped_event['TapologyEventURL']}")
         return mapped_event
+
+    cached_event = tapology_cache_event_for_event(event, tapology_cache_lookup or empty_tapology_cache_lookup())
+    if cached_event.get("TapologyEventURL"):
+        print(f"Resolved Tapology event from DB cache: {cached_event['TapologyEventURL']}")
+        return cached_event
 
     auto_event = resolve_tapology_event_automatically(
         tapology_session=tapology_session,
@@ -1710,62 +2296,41 @@ def match_tapology_fighter(
     return {}
 
 
-def fetch_tapology_fighter_enrichment(
+def should_fetch_tapology_profile(fighter_data: Dict[str, str]) -> bool:
+    profile_fields = [
+        "Rank",
+        "Streak",
+        "KO_TKO_Wins",
+        "KO_TKO_Losses",
+        "Submission_Wins",
+        "Submission_Losses",
+        "Decision_Wins",
+        "Decision_Losses",
+    ]
+    return any(not cache_value_to_csv(fighter_data.get(field)) for field in profile_fields)
+
+
+def profile_limit_reached(profile_attempt_count: int, profile_limit: int) -> bool:
+    return profile_limit >= 0 and profile_attempt_count >= profile_limit
+
+
+def fetch_tapology_profiles_for_enrichment(
     tapology_session: requests.Session,
-    event: Dict,
-    tapology_event: Dict[str, str],
+    enrichment: Dict[str, Dict[str, str]],
     timeout: float,
     tapology_delay_seconds: float,
-) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
-    tapology_event_url = tapology_event.get("TapologyEventURL", "")
-    if not tapology_event_url:
-        return load_cached_tapology_fighter_enrichment(event), {}
-
-    try:
-        event_html = fetch_tapology_event_html(
-            tapology_session=tapology_session,
-            tapology_event_url=tapology_event_url,
-            timeout=timeout,
-        )
-    except (requests.RequestException, RuntimeError) as err:
-        print(f"Unable to fetch Tapology event page {tapology_event_url}: {err}")
-        return load_cached_tapology_fighter_enrichment(event), {}
-
-    event_details = parse_tapology_event_details(event_html, tapology_event_url)
-    parsed_fighters = event_details.get("fighters", [])
-    if not parsed_fighters:
-        print(f"No Tapology fighter links found on mapped event page: {tapology_event_url}")
-        return merge_cached_tapology_fighter_enrichment(event, {}), {
-            "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),
-        }
-
-    enrichment: Dict[str, Dict[str, str]] = {}
-    matched_count = 0
-    for fight in event.get("FightCard", []):
-        for fighter in fight.get("Fighters", []):
-            fighter_name = fighter_full_name(fighter)
-            if not fighter_name:
-                continue
-
-            match = match_tapology_fighter(fighter_name, parsed_fighters)
-            if not match:
-                continue
-
-            fighter_key = normalize_name(fighter_name)
-            event_confidence = tapology_event.get("TapologyMatchConfidence", "")
-            fighter_confidence = match.get("TapologyMatchConfidence", "")
-            combined_confidence = "+".join(
-                part for part in [event_confidence, fighter_confidence] if part
-            )
-            match["TapologyMatchConfidence"] = combined_confidence or fighter_confidence
-            enrichment[fighter_key] = match
-            matched_count += 1
-
+    tapology_profile_limit: int,
+) -> Tuple[int, int]:
     profile_count = 0
     profile_attempt_count = 0
+
     for fighter_key, fighter_data in enrichment.items():
         fighter_url = fighter_data.get("TapologyFighterURL", "")
         if not fighter_url:
+            continue
+        if not should_fetch_tapology_profile(fighter_data):
+            continue
+        if profile_limit_reached(profile_attempt_count, tapology_profile_limit):
             continue
 
         if profile_attempt_count > 0 and tapology_delay_seconds > 0:
@@ -1787,11 +2352,121 @@ def fetch_tapology_fighter_enrichment(
         enrichment[fighter_key] = fighter_data
         profile_count += 1
 
+    if tapology_profile_limit >= 0 and profile_attempt_count >= tapology_profile_limit:
+        print(
+            "Tapology fighter profile fetch limit reached: "
+            f"{tapology_profile_limit} attempt(s)."
+        )
+
+    return profile_count, profile_attempt_count
+
+
+def fetch_tapology_fighter_enrichment(
+    tapology_session: requests.Session,
+    event: Dict,
+    tapology_event: Dict[str, str],
+    timeout: float,
+    tapology_delay_seconds: float,
+    tapology_cache_lookup: Optional[Dict[str, Dict[str, Dict[str, object]]]] = None,
+    tapology_profile_limit: int = DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT,
+) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
+    enrichment = load_tapology_cache_fighter_enrichment(
+        event,
+        tapology_cache_lookup or empty_tapology_cache_lookup(),
+    )
+    tapology_event_url = tapology_event.get("TapologyEventURL", "")
+    if not tapology_event_url:
+        return merge_cached_tapology_fighter_enrichment(event, enrichment), {}
+
+    try:
+        event_html = fetch_tapology_event_html(
+            tapology_session=tapology_session,
+            tapology_event_url=tapology_event_url,
+            timeout=timeout,
+        )
+    except (requests.RequestException, RuntimeError) as err:
+        print(f"Unable to fetch Tapology event page {tapology_event_url}: {err}")
+        profile_count, _ = fetch_tapology_profiles_for_enrichment(
+            tapology_session=tapology_session,
+            enrichment=enrichment,
+            timeout=timeout,
+            tapology_delay_seconds=tapology_delay_seconds,
+            tapology_profile_limit=tapology_profile_limit,
+        )
+        if profile_count:
+            print(f"Fetched {profile_count} Tapology fighter profiles from cached URLs.")
+            upsert_tapology_fighter_cache(
+                event=event,
+                enrichment=enrichment,
+                timeout=timeout,
+                source="cached_profile_url",
+            )
+        return merge_cached_tapology_fighter_enrichment(event, enrichment), {}
+
+    event_details = parse_tapology_event_details(event_html, tapology_event_url)
+    upsert_tapology_event_cache(
+        event=event,
+        tapology_event=tapology_event,
+        event_details=event_details,
+        timeout=timeout,
+        source="live_event_page",
+    )
+
+    parsed_fighters = event_details.get("fighters", [])
+    if not parsed_fighters:
+        print(f"No Tapology fighter links found on mapped event page: {tapology_event_url}")
+        return merge_cached_tapology_fighter_enrichment(event, enrichment), {
+            "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),
+        }
+
+    live_event_matches: Dict[str, Dict[str, str]] = {}
+    matched_count = 0
+    for fight in event.get("FightCard", []):
+        for fighter in fight.get("Fighters", []):
+            fighter_name = fighter_full_name(fighter)
+            if not fighter_name:
+                continue
+
+            match = match_tapology_fighter(fighter_name, parsed_fighters)
+            if not match:
+                continue
+
+            fighter_key = normalize_name(fighter_name)
+            event_confidence = tapology_event.get("TapologyMatchConfidence", "")
+            fighter_confidence = match.get("TapologyMatchConfidence", "")
+            combined_confidence = "+".join(
+                part for part in [event_confidence, fighter_confidence] if part
+            )
+            match["TapologyMatchConfidence"] = combined_confidence or fighter_confidence
+            live_event_matches[fighter_key] = match
+            matched_count += 1
+
+    enrichment = merge_tapology_enrichment(enrichment, live_event_matches)
+    for fighter_key, live_match in live_event_matches.items():
+        if cache_value_to_csv(live_match.get("TapologyFighterURL")):
+            enrichment[fighter_key]["TapologyFighterURL"] = live_match["TapologyFighterURL"]
+        if cache_value_to_csv(live_match.get("TapologyMatchConfidence")):
+            enrichment[fighter_key]["TapologyMatchConfidence"] = live_match["TapologyMatchConfidence"]
+
+    profile_count, _ = fetch_tapology_profiles_for_enrichment(
+        tapology_session=tapology_session,
+        enrichment=enrichment,
+        timeout=timeout,
+        tapology_delay_seconds=tapology_delay_seconds,
+        tapology_profile_limit=tapology_profile_limit,
+    )
+
     print(
         f"Matched {matched_count} Tapology fighter pages from "
         f"{len(parsed_fighters)} event-page fighter links."
     )
     print(f"Fetched {profile_count} Tapology fighter profiles.")
+    upsert_tapology_fighter_cache(
+        event=event,
+        enrichment=enrichment,
+        timeout=timeout,
+        source="live_profile" if profile_count else "live_event_page",
+    )
     return merge_cached_tapology_fighter_enrichment(event, enrichment), {
         "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),
     }
@@ -1991,6 +2666,13 @@ def export_event(
                     time.sleep(image_delay_seconds)
 
 
+def int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -2027,6 +2709,15 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_TAPOLOGY_MAP,
         help="CSV file used to map UFC events to Tapology event URLs.",
     )
+    parser.add_argument(
+        "--tapology-profile-limit",
+        type=int,
+        default=int_env("TAPOLOGY_PREVIEW_PROFILE_LIMIT", DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT),
+        help=(
+            "Maximum Tapology fighter profile pages to fetch. "
+            "Use -1 for no limit."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -2041,11 +2732,14 @@ def main() -> None:
             sys.exit(1)
 
         odds_map = build_event_odds_map(event, session=ufc_session, timeout=args.timeout)
+        fighter_style_lookup = fetch_fighter_style_lookup(timeout=args.timeout)
+        tapology_cache_lookup = fetch_tapology_cache_lookup(timeout=args.timeout)
         tapology_event = resolve_tapology_event(
             tapology_session=tapology_session,
             event=event,
             map_path=args.tapology_map,
             timeout=args.timeout,
+            tapology_cache_lookup=tapology_cache_lookup,
         )
         tapology_fighters, tapology_event_metadata = fetch_tapology_fighter_enrichment(
             tapology_session=tapology_session,
@@ -2053,12 +2747,13 @@ def main() -> None:
             tapology_event=tapology_event,
             timeout=args.timeout,
             tapology_delay_seconds=args.tapology_delay_seconds,
+            tapology_cache_lookup=tapology_cache_lookup,
+            tapology_profile_limit=args.tapology_profile_limit,
         )
         tapology_event = {
             **tapology_event,
             **tapology_event_metadata,
         }
-        fighter_style_lookup = fetch_fighter_style_lookup(timeout=args.timeout)
         output_path = output_filename(event, args.output_dir)
 
         export_event(

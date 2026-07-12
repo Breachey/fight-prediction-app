@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const { spawn } = require('child_process');
 require('dotenv').config();
 const {
   createRequireAdminSession,
@@ -20,6 +21,9 @@ const {
   normalizeWeightclass,
 } = require('./lib/fightResponse');
 const {
+  runUfcEventDiscovery,
+} = require('./lib/ufcEventDiscovery');
+const {
   backfillEventImageIfMissing,
   buildOddsRefreshPlan,
   buildFightCardPreview,
@@ -30,6 +34,7 @@ const {
   parseFightCardCsvFile,
   replaceFightCardPreview,
   removePreviewAssets,
+  refreshTapologyCacheForEvent,
   runFightCardScraper,
   runEventOddsScraper,
 } = require('./lib/fightCardImport');
@@ -387,6 +392,451 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
 const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, IsTitleFight, TitleFightName';
+const ADMIN_FIGHTER_STAT_FIELDS = [
+  'TapologyFighterURL',
+  'style',
+  'Streak',
+  'KO_TKO_Wins',
+  'KO_TKO_Losses',
+  'Submission_Wins',
+  'Submission_Losses',
+  'Decision_Wins',
+  'Decision_Losses',
+];
+const ADMIN_INTEGER_FIGHTER_STAT_FIELDS = new Set(
+  ADMIN_FIGHTER_STAT_FIELDS.filter((field) => !['style', 'TapologyFighterURL', 'Streak'].includes(field))
+);
+const ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS = new Set(['Streak']);
+const FIGHTER_PROFILE_EDIT_COLUMNS = new Set(
+  ADMIN_FIGHTER_STAT_FIELDS.map(toFighterProfileColumn)
+);
+const FIGHT_CARD_STAT_SELECT = [
+  'id',
+  'FightId',
+  'FightOrder',
+  'EventId',
+  'StartTime',
+  'Corner',
+  'FighterId',
+  'MMAId',
+  'FirstName',
+  'LastName',
+  'Nickname',
+  'Record_Wins',
+  'Record_Losses',
+  'Streak',
+  'style',
+  'KO_TKO_Wins',
+  'KO_TKO_Losses',
+  'Submission_Wins',
+  'Submission_Losses',
+  'Decision_Wins',
+  'Decision_Losses',
+  'TapologyFighterURL',
+  'TapologyMatchConfidence',
+].join(',');
+
+function normalizeAdminStatValue(field, value) {
+  if (!ADMIN_FIGHTER_STAT_FIELDS.includes(field)) {
+    return { ok: false, error: `Unsupported field: ${field}` };
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return { ok: true, value: null };
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return { ok: true, value: null };
+  }
+
+  if (ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS.has(field)) {
+    if (!/^-?\d+$/.test(trimmed)) {
+      return { ok: false, error: `${field} must be a whole number` };
+    }
+
+    return { ok: true, value: Number.parseInt(trimmed, 10) };
+  }
+
+  if (!ADMIN_INTEGER_FIGHTER_STAT_FIELDS.has(field)) {
+    if (field === 'TapologyFighterURL' && trimmed && !/^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//i.test(trimmed)) {
+      return { ok: false, error: 'TapologyFighterURL must be a Tapology fighter profile URL' };
+    }
+
+    return { ok: true, value: trimmed };
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, error: `${field} must be a non-negative whole number` };
+  }
+
+  return { ok: true, value: Number.parseInt(trimmed, 10) };
+}
+
+function toFighterProfileColumn(field) {
+  return {
+    TapologyFighterURL: 'tapology_fighter_url',
+    style: 'style',
+    Streak: 'streak',
+    KO_TKO_Wins: 'ko_tko_wins',
+    KO_TKO_Losses: 'ko_tko_losses',
+    Submission_Wins: 'submission_wins',
+    Submission_Losses: 'submission_losses',
+    Decision_Wins: 'decision_wins',
+    Decision_Losses: 'decision_losses',
+  }[field];
+}
+
+function compactFighterProfilePayload(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => (
+      value !== null
+      && value !== undefined
+    ) || FIGHTER_PROFILE_EDIT_COLUMNS.has(key))
+  );
+}
+
+function compactNonNullPayload(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== null && value !== undefined)
+  );
+}
+
+function parseTapologyProfileScraperOutput(stdout) {
+  const lines = String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch (error) {
+      // Ignore non-JSON logging from proxy fallbacks.
+    }
+  }
+
+  throw new Error('Tapology scraper did not return JSON.');
+}
+
+function runTapologyFighterProfileScraper({
+  tapologyFighterUrl,
+  fighterName = '',
+  recordWins = null,
+  recordLosses = null,
+  timeoutMs = 120000,
+}) {
+  const scriptPath = path.join(REPO_ROOT, 'Server', 'scraper', 'scrape_tapology_fighter_profile.py');
+  const args = [
+    scriptPath,
+    tapologyFighterUrl,
+    '--timeout',
+    String(Math.ceil(timeoutMs / 1000)),
+  ];
+
+  if (fighterName) {
+    args.push('--fighter-name', fighterName);
+  }
+
+  if (recordWins !== null && recordWins !== undefined) {
+    args.push('--record-wins', String(recordWins));
+  }
+
+  if (recordLosses !== null && recordLosses !== undefined) {
+    args.push('--record-losses', String(recordLosses));
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('python3', args, {
+      cwd: path.join(REPO_ROOT, 'Server', 'scraper'),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeoutId);
+
+      if (timedOut) {
+        reject(new Error('Tapology fighter profile scrape timed out.'));
+        return;
+      }
+
+      if (code !== 0) {
+        let parsedError = null;
+        try {
+          parsedError = parseTapologyProfileScraperOutput(stderr);
+        } catch (error) {
+          parsedError = null;
+        }
+
+        reject(new Error(parsedError?.error || stderr.trim() || `Tapology scraper exited with code ${code}.`));
+        return;
+      }
+
+      try {
+        resolve(parseTapologyProfileScraperOutput(stdout));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function normalizeFighterNameForLookup(firstName, lastName) {
+  return [firstName, lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeFiniteInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nextFighterStreak(currentStreak, won) {
+  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
+  if (won) {
+    return baseline > 0 ? baseline + 1 : 1;
+  }
+  return baseline < 0 ? baseline - 1 : -1;
+}
+
+function undoFighterStreakResult(currentStreak, won) {
+  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
+  if (won) {
+    return baseline > 1 ? baseline - 1 : 0;
+  }
+  return baseline < -1 ? baseline + 1 : 0;
+}
+
+async function updateFighterStreaksForCompletedFight({
+  fightId,
+  winnerId,
+  previousWinnerId = null,
+}) {
+  const normalizedFightId = Number(fightId);
+  const normalizedWinnerId = Number(winnerId);
+  const normalizedPreviousWinnerId = previousWinnerId === null || previousWinnerId === undefined
+    ? null
+    : Number(previousWinnerId);
+
+  if (!Number.isFinite(normalizedFightId) || !Number.isFinite(normalizedWinnerId)) {
+    return { skipped: true, reason: 'Invalid fight or winner id', updates: [] };
+  }
+
+  const { data: fightRows, error: fightRowsError } = await supabase
+    .from('ufc_full_fight_card')
+    .select('id,FightId,EventId,StartTime,Corner,FighterId,MMAId,FirstName,LastName,Streak')
+    .eq('FightId', normalizedFightId);
+
+  if (fightRowsError) {
+    throw new Error(`Failed to load fight-card rows for streak update: ${fightRowsError.message}`);
+  }
+
+  const eligibleRows = (fightRows || []).filter((row) => Number.isFinite(Number(row.FighterId)));
+  if (eligibleRows.length === 0) {
+    return { skipped: true, reason: 'No fight-card fighter rows found', updates: [] };
+  }
+
+  const fighterIds = eligibleRows.map((row) => Number(row.FighterId));
+  const { data: fighterProfiles, error: fighterProfilesError } = await supabase
+    .from('fighters')
+    .select('fighter_id,streak')
+    .in('fighter_id', fighterIds);
+
+  if (fighterProfilesError) {
+    throw new Error(`Failed to load fighter profiles for streak update: ${fighterProfilesError.message}`);
+  }
+
+  const cachedStreakByFighterId = new Map(
+    (fighterProfiles || []).map((row) => [Number(row.fighter_id), normalizeFiniteInteger(row.streak)])
+  );
+  const nowIso = new Date().toISOString();
+  const fighterProfilePayloads = [];
+  const updates = [];
+
+  for (const row of eligibleRows) {
+    const fighterId = Number(row.FighterId);
+    const rowStreak = normalizeFiniteInteger(row.Streak);
+    const cachedStreak = cachedStreakByFighterId.get(fighterId);
+    let baselineStreak = Number.isFinite(normalizedPreviousWinnerId)
+      ? cachedStreak
+      : rowStreak;
+
+    if (baselineStreak === null || baselineStreak === undefined) {
+      baselineStreak = Number.isFinite(normalizedPreviousWinnerId)
+        ? rowStreak
+        : cachedStreak;
+    }
+    if (!Number.isFinite(baselineStreak)) {
+      baselineStreak = 0;
+    }
+
+    let adjustedBaseline = baselineStreak;
+    if (Number.isFinite(normalizedPreviousWinnerId)) {
+      adjustedBaseline = undoFighterStreakResult(
+        adjustedBaseline,
+        fighterId === normalizedPreviousWinnerId
+      );
+    }
+
+    const won = fighterId === normalizedWinnerId;
+    const nextStreak = nextFighterStreak(adjustedBaseline, won);
+    const eventId = Number(row.EventId);
+
+    fighterProfilePayloads.push(compactNonNullPayload({
+      fighter_id: fighterId,
+      mma_id: row.MMAId ?? null,
+      first_name: row.FirstName ?? null,
+      last_name: row.LastName ?? null,
+      normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
+      streak: nextStreak,
+      stats_source: 'fight_result',
+      stats_confidence: 'fight_result',
+      stats_as_of_event_id: Number.isFinite(eventId) ? eventId : null,
+      stats_as_of_event_date: typeof row.StartTime === 'string'
+        ? row.StartTime.split('T')[0]
+        : null,
+      last_success_at: nowIso,
+    }));
+
+    updates.push({
+      rowId: row.id,
+      fighterId,
+      previousStreak: baselineStreak,
+      adjustedBaseline,
+      nextStreak,
+      won,
+    });
+  }
+
+  if (fighterProfilePayloads.length > 0) {
+    const { error: fightersUpdateError } = await supabase
+      .from('fighters')
+      .upsert(fighterProfilePayloads, { onConflict: 'fighter_id' });
+
+    if (fightersUpdateError) {
+      throw new Error(`Failed to update fighters streaks: ${fightersUpdateError.message}`);
+    }
+  }
+
+  return {
+    skipped: false,
+    updatedFightCardRows: 0,
+    updatedFighters: fighterProfilePayloads.length,
+    updates,
+  };
+}
+
+async function resolveTapologyFighterUrlForStatRow(row, overrideUrl = '') {
+  if (overrideUrl) {
+    return overrideUrl;
+  }
+
+  if (row?.TapologyFighterURL) {
+    return row.TapologyFighterURL;
+  }
+
+  const fighterId = Number(row?.FighterId);
+  const normalizedName = normalizeFighterNameForLookup(row?.FirstName, row?.LastName);
+
+  let fighterProfileQuery = supabase
+    .from('fighters')
+    .select('tapology_fighter_url')
+    .limit(1);
+
+  if (Number.isFinite(fighterId)) {
+    fighterProfileQuery = fighterProfileQuery.eq('fighter_id', fighterId);
+  } else if (normalizedName) {
+    fighterProfileQuery = fighterProfileQuery.eq('normalized_name', normalizedName);
+  } else {
+    fighterProfileQuery = null;
+  }
+
+  const { data: fighterProfiles } = fighterProfileQuery
+    ? await fighterProfileQuery
+    : { data: [] };
+  const fighterProfile = Array.isArray(fighterProfiles) ? fighterProfiles[0] : fighterProfiles;
+
+  if (fighterProfile?.tapology_fighter_url) {
+    return fighterProfile.tapology_fighter_url;
+  }
+
+  let tapologyCacheQuery = supabase
+    .from('tapology_fighter_cache')
+    .select('tapology_fighter_url')
+    .limit(1);
+
+  if (Number.isFinite(fighterId)) {
+    tapologyCacheQuery = tapologyCacheQuery.eq('fighter_id', fighterId);
+  } else if (normalizedName) {
+    tapologyCacheQuery = tapologyCacheQuery.eq('normalized_name', normalizedName);
+  } else {
+    tapologyCacheQuery = null;
+  }
+
+  const { data: tapologyCacheRows } = tapologyCacheQuery
+    ? await tapologyCacheQuery
+    : { data: [] };
+  const tapologyCache = Array.isArray(tapologyCacheRows) ? tapologyCacheRows[0] : tapologyCacheRows;
+
+  return tapologyCache?.tapology_fighter_url || '';
+}
+
+function buildFightCardPatchFromTapologyProfile(row, profile) {
+  const patch = {};
+
+  for (const field of ADMIN_FIGHTER_STAT_FIELDS) {
+    const normalized = normalizeAdminStatValue(field, profile?.[field]);
+    if (!normalized.ok || normalized.value === null) {
+      continue;
+    }
+
+    const existingValue = normalizeAdminStatValue(field, row?.[field]);
+    if (!existingValue.ok || existingValue.value !== normalized.value) {
+      patch[field] = normalized.value;
+    }
+  }
+
+  return patch;
+}
+
+function parseOptionalInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function calculatePredictionPointsFromOdds(odds) {
   if (odds === undefined || odds === null) {
@@ -1762,7 +2212,32 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     }
 
     // Determine the winner's fighter_id
-    let winner_id = winner;  // Use the winner ID directly since that's what we're receiving
+    let winner_id = null;
+    if (winner !== null && winner !== undefined && winner !== '') {
+      winner_id = Number(winner);
+      if (!Number.isFinite(winner_id)) {
+        return res.status(400).json({ error: 'Invalid winner id' });
+      }
+
+      const validWinnerIds = new Set([
+        Number(redFighter.FighterId),
+        Number(blueFighter.FighterId),
+      ]);
+      if (!validWinnerIds.has(winner_id)) {
+        return res.status(400).json({ error: 'Winner must be one of the fight-card fighters' });
+      }
+    }
+
+    const { data: existingResult, error: existingResultError } = await supabase
+      .from('fight_results')
+      .select('fight_id, fighter_id, is_completed')
+      .eq('fight_id', id)
+      .maybeSingle();
+
+    if (existingResultError) {
+      console.error('Error fetching existing fight result:', existingResultError);
+      return res.status(500).json({ error: 'Failed to fetch existing fight result' });
+    }
 
     // Update fight_results table with fighter_id
     const { error: updateError } = await supabase
@@ -1780,6 +2255,37 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     if (updateError) {
       console.error('Error updating fight result:', updateError);
       return res.status(500).json({ error: 'Failed to update fight result' });
+    }
+
+    let fighterStreakSync = {
+      skipped: true,
+      reason: 'Fight result is not completed',
+      updates: [],
+    };
+    const previousWinnerId = existingResult?.is_completed && existingResult?.fighter_id !== null
+      ? Number(existingResult.fighter_id)
+      : null;
+    const sameCompletedWinner = winner_id !== null
+      && Number.isFinite(previousWinnerId)
+      && previousWinnerId === winner_id;
+
+    if (winner_id !== null && !sameCompletedWinner) {
+      try {
+        fighterStreakSync = await updateFighterStreaksForCompletedFight({
+          fightId: id,
+          winnerId: winner_id,
+          previousWinnerId,
+        });
+      } catch (fighterStreakError) {
+        console.error('Error updating fighter streaks from fight result:', fighterStreakError);
+        return res.status(500).json({ error: 'Failed to update fighter streaks' });
+      }
+    } else if (sameCompletedWinner) {
+      fighterStreakSync = {
+        skipped: true,
+        reason: 'Fight result winner was already recorded',
+        updates: [],
+      };
     }
 
     try {
@@ -1816,6 +2322,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       result: updatedResult,
       weightclassMap,
     });
+    transformedFight.fighterStreakSync = fighterStreakSync;
 
     await logAdminAction(req, {
       action: 'fight.result.set',
@@ -1828,6 +2335,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
         event_id,
         winner_id,
         is_completed: winner_id !== null,
+        fighter_streak_sync: fighterStreakSync,
       },
     });
 
@@ -2733,6 +3241,62 @@ app.get('/events', async (req, res) => {
   }
 });
 
+app.post('/admin/events/discover-ufc', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const result = await runUfcEventDiscovery({
+      repoRoot: REPO_ROOT,
+      startId: req.body?.startId,
+      endId: req.body?.endId,
+      maxIds: req.body?.maxIds,
+      stopAfterMisses: req.body?.stopAfterMisses,
+      delaySeconds: req.body?.delaySeconds,
+      tapologyDelaySeconds: req.body?.tapologyDelaySeconds,
+      timeoutSeconds: req.body?.timeoutSeconds,
+    });
+
+    await logAdminAction(req, {
+      action: 'events.discover_ufc',
+      status: 'success',
+      targetType: 'events',
+      targetId: null,
+      eventId: null,
+      metadata: {
+        startId: result.startId,
+        endId: result.endId,
+        scanned: result.scanned,
+        apiEventsFound: result.api_events_found,
+        eligibleEventsFound: result.eligible_events_found,
+        filteredEvents: result.filtered_events,
+        insertedCount: result.insertedCount,
+        updatedCount: result.updatedCount,
+        unchangedCount: result.unchangedCount,
+        posterCount: result.posterCount,
+        posterErrorCount: result.posterErrors?.length || 0,
+      },
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error discovering UFC events:', error);
+    await logAdminAction(req, {
+      action: 'events.discover_ufc',
+      status: 'error',
+      targetType: 'events',
+      targetId: null,
+      eventId: null,
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to discover UFC events',
+      details: error.message,
+    });
+  }
+});
+
 app.get('/events/:id/start-time', async (req, res) => {
   try {
     const eventId = Number(req.params.id);
@@ -2953,6 +3517,449 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
     });
     return res.status(500).json({
       error: 'Failed to build fight-card preview',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/tapology-cache/refresh', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const result = await refreshTapologyCacheForEvent({
+      eventId,
+      repoRoot: REPO_ROOT,
+    });
+
+    const status = result.headerErrors?.length > 0 ? 'error' : 'success';
+    await logAdminAction(req, {
+      action: 'tapology_cache.refresh',
+      status,
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowCount: result.rowCount,
+        fightCount: result.fightCount,
+        tapologyUrlCount: result.tapologyUrlCount,
+        tapologyProfileStatCount: result.tapologyProfileStatCount,
+        headerErrors: result.headerErrors,
+        csvFileName: result.csvFileName,
+      },
+    });
+
+    if (result.headerErrors?.length > 0) {
+      return res.status(500).json({
+        error: 'Tapology cache refresh generated an invalid CSV',
+        ...result,
+      });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error refreshing Tapology cache:', error);
+    await logAdminAction(req, {
+      action: 'tapology_cache.refresh',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to refresh Tapology cache',
+      details: error.message,
+    });
+  }
+});
+
+app.get('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const { data: rows, error } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .order('FightOrder', { ascending: true })
+      .order('Corner', { ascending: false });
+
+    if (error) {
+      console.error('Error loading fight-card stat rows:', error);
+      return res.status(500).json({ error: 'Failed to load fight-card stat rows' });
+    }
+
+    return res.json({
+      eventId,
+      rows: rows || [],
+      editableFields: ADMIN_FIGHTER_STAT_FIELDS,
+    });
+  } catch (error) {
+    console.error('Error loading fight-card stat rows:', error);
+    return res.status(500).json({
+      error: 'Failed to load fight-card stat rows',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    const rowId = Number(req.params.rowId);
+    if (Number.isNaN(eventId) || Number.isNaN(rowId)) {
+      return res.status(400).json({ error: 'Invalid event id or row id' });
+    }
+
+    const { data: row, error: rowError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .eq('id', rowId)
+      .maybeSingle();
+
+    if (rowError) {
+      console.error('Error loading fight-card row for Tapology scrape:', rowError);
+      return res.status(500).json({ error: 'Failed to load fight-card row' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: `Fight-card row ${rowId} was not found for event ${eventId}` });
+    }
+
+    const requestedTapologyUrl = normalizeAdminStatValue(
+      'TapologyFighterURL',
+      req.body?.tapologyFighterUrl
+    );
+    if (!requestedTapologyUrl.ok) {
+      return res.status(400).json({ error: requestedTapologyUrl.error });
+    }
+
+    const tapologyFighterUrl = await resolveTapologyFighterUrlForStatRow(
+      row,
+      requestedTapologyUrl.value || ''
+    );
+    if (!tapologyFighterUrl) {
+      return res.status(409).json({
+        error: 'No Tapology fighter URL is available for this fighter yet.',
+        details: 'Paste the Tapology fighter profile URL into this row, then click Scrape Tapology again.',
+      });
+    }
+
+    const scrapeResult = await runTapologyFighterProfileScraper({
+      tapologyFighterUrl,
+      fighterName: [row.FirstName, row.LastName].filter(Boolean).join(' '),
+      recordWins: row.Record_Wins,
+      recordLosses: row.Record_Losses,
+      timeoutMs: 120000,
+    });
+
+    const profile = scrapeResult?.profile || {};
+    const statsSource = scrapeResult?.source || 'tapology_single_profile';
+    const statsConfidence = statsSource === 'tapology_single_profile'
+      ? 'single-profile-scrape'
+      : 'validated-wikipedia-fallback';
+    const patch = buildFightCardPatchFromTapologyProfile(row, profile);
+    const fightCardPatch = {
+      ...patch,
+      TapologyFighterURL: row.TapologyFighterURL || tapologyFighterUrl,
+      TapologyMatchConfidence: statsConfidence,
+    };
+
+    if (Object.keys(fightCardPatch).length > 0) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update(fightCardPatch)
+        .eq('EventId', eventId)
+        .eq('id', rowId);
+
+      if (updateError) {
+        throw new Error(`Failed to update fight-card row ${rowId}: ${updateError.message}`);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const fighterId = Number(row.FighterId);
+    const baseProfilePayload = {
+      fighter_id: Number.isFinite(fighterId) ? fighterId : null,
+      mma_id: row.MMAId ?? null,
+      first_name: row.FirstName ?? null,
+      last_name: row.LastName ?? null,
+      normalized_name: [row.FirstName, row.LastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ') || null,
+      tapology_fighter_url: tapologyFighterUrl,
+      rank: parseOptionalInteger(profile.Rank),
+      streak: parseOptionalInteger(profile.Streak),
+      style: normalizeAdminStatValue('style', profile.style).value,
+      ko_tko_wins: normalizeAdminStatValue('KO_TKO_Wins', profile.KO_TKO_Wins).value,
+      ko_tko_losses: normalizeAdminStatValue('KO_TKO_Losses', profile.KO_TKO_Losses).value,
+      submission_wins: normalizeAdminStatValue('Submission_Wins', profile.Submission_Wins).value,
+      submission_losses: normalizeAdminStatValue('Submission_Losses', profile.Submission_Losses).value,
+      decision_wins: normalizeAdminStatValue('Decision_Wins', profile.Decision_Wins).value,
+      decision_losses: normalizeAdminStatValue('Decision_Losses', profile.Decision_Losses).value,
+      last_success_at: nowIso,
+      last_failure_at: null,
+      last_error: null,
+    };
+
+    if (baseProfilePayload.fighter_id) {
+      const fightersPayload = compactNonNullPayload({
+        ...baseProfilePayload,
+        stats_source: statsSource,
+        stats_confidence: statsConfidence,
+        stats_as_of_event_id: eventId,
+        stats_as_of_event_date: typeof row.StartTime === 'string'
+          ? row.StartTime.split('T')[0]
+          : null,
+      });
+
+      const { error: fightersError } = await supabase
+        .from('fighters')
+        .upsert([fightersPayload], { onConflict: 'fighter_id' });
+
+      if (fightersError) {
+        throw new Error(`Failed to update fighters table: ${fightersError.message}`);
+      }
+
+      const tapologyCachePayload = compactNonNullPayload({
+        ...baseProfilePayload,
+        source: statsSource,
+        match_confidence: statsConfidence,
+      });
+
+      const { error: tapologyCacheError } = await supabase
+        .from('tapology_fighter_cache')
+        .upsert([tapologyCachePayload], { onConflict: 'fighter_id' });
+
+      if (tapologyCacheError) {
+        console.error('Tapology fighter cache update skipped:', tapologyCacheError);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.scrape_tapology_fighter',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowId,
+        fighterId: row.FighterId,
+        tapologyFighterUrl,
+        statsSource,
+        updatedFields: Object.keys(patch),
+      },
+    });
+
+    return res.json({
+      eventId,
+      rowId,
+      fighterId: row.FighterId,
+      tapologyFighterUrl,
+      statsSource,
+      wikipediaTitle: scrapeResult?.wikipedia_title || null,
+      tapologyBlocked: Boolean(scrapeResult?.tapology_error),
+      updatedFields: Object.keys(patch),
+      profile,
+    });
+  } catch (error) {
+    console.error('Error scraping Tapology fighter stats:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.scrape_tapology_fighter',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        rowId: Number(req.params.rowId),
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to scrape Tapology fighter stats',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+    if (updates.length === 0) {
+      return res.json({
+        eventId,
+        updatedFightCardRows: 0,
+        updatedFighters: 0,
+      });
+    }
+
+    const rowIds = updates
+      .map((update) => Number(update?.id))
+      .filter((id) => Number.isFinite(id));
+    if (rowIds.length !== updates.length) {
+      return res.status(400).json({ error: 'Each update must include a valid fight-card row id' });
+    }
+
+    const { data: existingRows, error: existingRowsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .in('id', rowIds);
+
+    if (existingRowsError) {
+      console.error('Error loading fight-card rows for stat update:', existingRowsError);
+      return res.status(500).json({ error: 'Failed to load fight-card rows for update' });
+    }
+
+    const existingById = new Map((existingRows || []).map((row) => [Number(row.id), row]));
+    const normalizedUpdates = [];
+
+    for (const update of updates) {
+      const rowId = Number(update.id);
+      const existingRow = existingById.get(rowId);
+      if (!existingRow) {
+        return res.status(404).json({ error: `Fight-card row ${rowId} was not found for event ${eventId}` });
+      }
+
+      const patch = {};
+      const values = update.values && typeof update.values === 'object' ? update.values : {};
+      for (const [field, rawValue] of Object.entries(values)) {
+        const normalized = normalizeAdminStatValue(field, rawValue);
+        if (!normalized.ok) {
+          return res.status(400).json({ error: normalized.error });
+        }
+        patch[field] = normalized.value;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        continue;
+      }
+
+      normalizedUpdates.push({
+        rowId,
+        existingRow,
+        patch,
+      });
+    }
+
+    let updatedFightCardRows = 0;
+    const fighterProfilePayloadById = new Map();
+    const nowIso = new Date().toISOString();
+
+    for (const update of normalizedUpdates) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update(update.patch)
+        .eq('id', update.rowId)
+        .eq('EventId', eventId);
+
+      if (updateError) {
+        throw new Error(`Failed to update fight-card row ${update.rowId}: ${updateError.message}`);
+      }
+
+      updatedFightCardRows += 1;
+
+      const fighterId = Number(update.existingRow.FighterId);
+      if (!Number.isFinite(fighterId)) {
+        continue;
+      }
+
+      const payload = fighterProfilePayloadById.get(fighterId) || {
+        fighter_id: fighterId,
+        mma_id: update.existingRow.MMAId ?? null,
+        first_name: update.existingRow.FirstName ?? null,
+        last_name: update.existingRow.LastName ?? null,
+        normalized_name: [update.existingRow.FirstName, update.existingRow.LastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ') || null,
+        stats_source: 'manual_admin',
+        stats_confidence: 'manual_admin',
+        stats_as_of_event_id: eventId,
+        stats_as_of_event_date: typeof update.existingRow.StartTime === 'string'
+          ? update.existingRow.StartTime.split('T')[0]
+          : null,
+        last_success_at: nowIso,
+      };
+
+      for (const [field, value] of Object.entries(update.patch)) {
+        payload[toFighterProfileColumn(field)] = value;
+      }
+
+      fighterProfilePayloadById.set(fighterId, payload);
+    }
+
+    const fighterProfilePayloads = Array.from(fighterProfilePayloadById.values())
+      .map(compactFighterProfilePayload);
+    if (fighterProfilePayloads.length > 0) {
+      const { error: fighterUpdateError } = await supabase
+        .from('fighters')
+        .upsert(fighterProfilePayloads, { onConflict: 'fighter_id' });
+
+      if (fighterUpdateError) {
+        throw new Error(`Failed to update fighters table: ${fighterUpdateError.message}`);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.update_stats',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        updatedFightCardRows,
+        updatedFighters: fighterProfilePayloads.length,
+        requestedUpdates: updates.length,
+      },
+    });
+
+    return res.json({
+      eventId,
+      updatedFightCardRows,
+      updatedFighters: fighterProfilePayloads.length,
+    });
+  } catch (error) {
+    console.error('Error updating fight-card stats:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.update_stats',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to update fight-card stats',
       details: error.message,
     });
   }

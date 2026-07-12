@@ -128,6 +128,7 @@ From the repository root:
 - `npm run lint` runs frontend linting
 - `npm run scrape:fight-card -- 1302` runs the integrated Python scraper manually for one event and writes the CSV under `Server/scraper/fight_cards`
 - `npm run sync:fighter-style -- --event-id=1302` backfills the `fighter_style` table from imported fight-card rows for one event
+- `npm run sync:tapology-cache -- --event-id=1313` refreshes Supabase Tapology cache rows for one event without importing the fight card
 - `npm run smoke:fight-card-import -- 1302` previews and imports a single event fight card directly against Supabase, then verifies the resulting row and fight counts
 - `npm run start` starts the server
 
@@ -144,6 +145,7 @@ npm run smoke:fight-card-import -- 1302 --preview-only
 - The Express API exposes endpoints for authentication, fight data, predictions, leaderboards, highlights, player cards, vote reminders, and admin workflows.
 - Admin actions are audited in `admin_action_audit_log`, including fight-card previews/imports and other protected write operations.
 - Successful fight-card imports also backfill `fighter_style` from imported rows so future scrapes can reuse known styles before falling back to Tapology.
+- Tapology event and fighter enrichment is cached in Supabase so previews can reuse known profile URLs, streaks, finish stats, and styles when live Tapology requests are blocked.
 - Scraper source, supporting map files, and historical CSV exports now live under `Server/scraper/` so the import pipeline stays inside the app architecture.
 
 ## Deployment

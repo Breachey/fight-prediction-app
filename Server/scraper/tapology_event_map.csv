@@ -2,4 +2,6 @@ EventId,EventName,EventDate,TapologyEventURL,MatchConfidence,Notes
 1302,,,https://www.tapology.com/fightcenter/events/136873-ufc-fight-night,manual,user-provided
 1304,,,https://www.tapology.com/fightcenter/events/138212-ufc-fight-night,manual,user-provided
 1308,,,https://www.tapology.com/fightcenter/events/140511-ufc-fight-night-della-maddalena-vs-prates,manual,user-provided
+1309,,,https://www.tapology.com/fightcenter/events/137848-ufc-white-house,manual,date-utc-local-mismatch
 1310,,,https://www.tapology.com/fightcenter/events/140614-ufc-328,manual,user-provided
+1313,,,https://www.tapology.com/fightcenter/events/140934-ufc-fight-night-muhammad-vs-bonfim,manual,user-provided
