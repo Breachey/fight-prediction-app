@@ -12,7 +12,7 @@
   min-height: 34px;
   padding: 8px 12px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
   color: #d5deeb;
   font-size: 0.78rem;
@@ -48,6 +48,69 @@
   box-shadow:
     0 0 0 3px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.2),
     0 14px 28px rgba(0, 0, 0, 0.22);
+}
+
+.leaderboard-streak-fire {
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -18%;
+  height: var(--streak-fire-height, 38%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: var(--streak-fire-opacity, 0.5);
+  background:
+    radial-gradient(ellipse at 8% 100%, rgba(220, 38, 38, 0.85) 0 18%, transparent 48%),
+    radial-gradient(ellipse at 25% 100%, rgba(249, 115, 22, 0.92) 0 24%, transparent 56%),
+    radial-gradient(ellipse at 42% 100%, rgba(251, 191, 36, 0.9) 0 18%, transparent 48%),
+    radial-gradient(ellipse at 58% 100%, rgba(239, 68, 68, 0.88) 0 24%, transparent 56%),
+    radial-gradient(ellipse at 76% 100%, rgba(251, 146, 60, 0.92) 0 22%, transparent 52%),
+    radial-gradient(ellipse at 94% 100%, rgba(220, 38, 38, 0.82) 0 18%, transparent 48%),
+    linear-gradient(0deg, rgba(239, 68, 68, 0.66) 0%, rgba(249, 115, 22, 0.34) 48%, transparent 100%);
+  filter: blur(0.5px) saturate(1.25);
+  transform-origin: center bottom;
+  animation: leaderboard-fire-flicker 1.35s ease-in-out infinite alternate;
+}
+
+.leaderboard-streak-fire::before,
+.leaderboard-streak-fire::after {
+  content: "";
+  position: absolute;
+  inset: 18% 4% 0;
+  background:
+    radial-gradient(ellipse at 14% 100%, rgba(254, 226, 226, 0.45) 0 10%, transparent 34%),
+    radial-gradient(ellipse at 34% 100%, rgba(254, 240, 138, 0.64) 0 14%, transparent 38%),
+    radial-gradient(ellipse at 54% 100%, rgba(255, 237, 213, 0.5) 0 11%, transparent 35%),
+    radial-gradient(ellipse at 78% 100%, rgba(254, 240, 138, 0.6) 0 13%, transparent 38%);
+  transform-origin: center bottom;
+  animation: leaderboard-fire-lift 1s ease-in-out infinite alternate;
+}
+
+.leaderboard-streak-fire::after {
+  inset: 0 0 10%;
+  opacity: 0.52;
+  filter: blur(7px);
+  animation-duration: 1.7s;
+}
+
+@keyframes leaderboard-fire-flicker {
+  from {
+    transform: scaleY(0.95) translateY(2%);
+  }
+
+  to {
+    transform: scaleY(1.06) translateY(-1%);
+  }
+}
+
+@keyframes leaderboard-fire-lift {
+  from {
+    transform: translateY(5%) scaleX(0.96);
+  }
+
+  to {
+    transform: translateY(-4%) scaleX(1.04);
+  }
 }
 
 .leaderboard-points-explainer {
@@ -116,6 +179,10 @@
     letter-spacing: 0.03em;
   }
 
+  .leaderboard-streak-fire {
+    bottom: -14%;
+  }
+
   .leaderboard-points-explainer {
     padding: 18px 16px;
     border-radius: 16px;
@@ -132,5 +199,13 @@
 
   .leaderboard-points-explainer-note {
     font-size: 0.88rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaderboard-streak-fire,
+  .leaderboard-streak-fire::before,
+  .leaderboard-streak-fire::after {
+    animation: none;
   }
 }

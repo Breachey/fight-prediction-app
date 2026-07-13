@@ -347,10 +347,10 @@ function App() {
               </div>
             </>
           } />
-          <Route path="/stats" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/stats/:period" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/highlights" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/highlights/:year" element={<HighlightsPage user={user} defaultYear={2025} />} />
+          <Route path="/stats" element={<HighlightsPage user={user} />} />
+          <Route path="/stats/:period" element={<HighlightsPage user={user} />} />
+          <Route path="/highlights" element={<HighlightsPage user={user} />} />
+          <Route path="/highlights/:year" element={<HighlightsPage user={user} />} />
           <Route path="/profile/:user_id" element={<ProfilePage user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} />} />
         </Routes>

@@ -1091,6 +1091,7 @@ async function recalculatePredictionResultsForEvent(eventId) {
 }
 
 const USERS_IDENTITY_SELECT = 'user_id, username, phone_number, user_type';
+const DEFAULT_SELECTED_PLAYERCARD_ID = 16;
 const USERS_PROFILE_SELECT = `
   username,
   user_type,
@@ -1431,7 +1432,12 @@ app.post('/register', authRateLimit, async (req, res) => {
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([
-        { phone_number: phoneNumber, username: username, user_type: 'user' }
+        {
+          phone_number: phoneNumber,
+          username: username,
+          user_type: 'user',
+          selected_playercard_id: DEFAULT_SELECTED_PLAYERCARD_ID
+        }
       ])
       .select('user_id, username, phone_number, user_type')
       .single();
@@ -2514,10 +2520,12 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
         playercard: userIdToPlayercard.get(userIdStr) || null,
         total_predictions: 0,
         correct_predictions: 0,
-        total_points: 0
+        total_points: 0,
+        event_ids: new Set()
       };
     }
     userStats[userIdStr].total_predictions++;
+    userStats[userIdStr].event_ids.add(String(result.event_id));
     if (result.predicted_correctly) {
       userStats[userIdStr].correct_predictions++;
     }
@@ -2540,12 +2548,16 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
   });
 
   const leaderboard = Object.values(userStats)
-    .map(user => ({
-      ...user,
-      accuracy: user.total_predictions > 0
-        ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-        : '0.00'
-    }))
+    .map(user => {
+      const { event_ids, ...entry } = user;
+      return {
+        ...entry,
+        events_played: event_ids?.size || 0,
+        accuracy: user.total_predictions > 0
+          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+          : '0.00'
+      };
+    })
     .sort((a, b) =>
       b.total_points - a.total_points ||
       b.correct_predictions - a.correct_predictions ||
@@ -2739,7 +2751,7 @@ app.get('/leaderboard', async (req, res) => {
     // Get all prediction results using the pagination helper
     const resultsQuery = supabase
       .from('prediction_results')
-      .select('user_id, predicted_correctly, points, created_at')
+      .select('user_id, event_id, predicted_correctly, points, created_at')
       .in('user_id', userIds);
     const results = await fetchAllFromSupabase(resultsQuery);
 
@@ -2768,10 +2780,12 @@ app.get('/leaderboard', async (req, res) => {
           playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
-          total_points: 0
+          total_points: 0,
+          event_ids: new Set()
         };
       }
       userStats[userIdStr].total_predictions++;
+      userStats[userIdStr].event_ids.add(String(result.event_id));
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
       }
@@ -2800,11 +2814,15 @@ app.get('/leaderboard', async (req, res) => {
 
     // Convert to array and sort to get rankings
     let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points,
-      }))
+      .map(user => {
+        const { event_ids, ...entry } = user;
+        return {
+          ...entry,
+          events_played: event_ids?.size || 0,
+          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+          total_points: user.total_points,
+        };
+      })
       .sort((a, b) =>
         b.total_points - a.total_points ||
         b.correct_predictions - a.correct_predictions ||
@@ -2889,10 +2907,12 @@ app.get('/leaderboard/2025', async (req, res) => {
           playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
-          total_points: 0
+          total_points: 0,
+          event_ids: new Set()
         };
       }
       userStats[userIdStr].total_predictions++;
+      userStats[userIdStr].event_ids.add(String(result.event_id));
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
       }
@@ -2907,11 +2927,15 @@ app.get('/leaderboard/2025', async (req, res) => {
 
     // Convert to array and calculate accuracy
     let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points,
-      }))
+      .map(user => {
+        const { event_ids, ...entry } = user;
+        return {
+          ...entry,
+          events_played: event_ids?.size || 0,
+          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+          total_points: user.total_points,
+        };
+      })
       .sort((a, b) =>
         b.total_points - a.total_points ||
         b.correct_predictions - a.correct_predictions ||
@@ -3011,10 +3035,12 @@ app.get('/leaderboard/season', async (req, res) => {
           playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
-          total_points: 0
+          total_points: 0,
+          event_ids: new Set()
         };
       }
       userStats[userIdStr].total_predictions++;
+      userStats[userIdStr].event_ids.add(String(result.event_id));
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
       }
@@ -3029,13 +3055,17 @@ app.get('/leaderboard/season', async (req, res) => {
 
     // Convert to array and calculate accuracy
     let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: user.total_predictions > 0 
-          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-          : '0.00',
-        total_points: user.total_points,
-      }))
+      .map(user => {
+        const { event_ids, ...entry } = user;
+        return {
+          ...entry,
+          events_played: event_ids?.size || 0,
+          accuracy: user.total_predictions > 0
+            ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+            : '0.00',
+          total_points: user.total_points,
+        };
+      })
       .sort((a, b) =>
         b.total_points - a.total_points ||
         b.correct_predictions - a.correct_predictions ||
@@ -5437,6 +5467,9 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
         .filter(fightId => Number.isFinite(fightId) && fightId > 0)
     ));
     const usernameForUser = targetUser.username || null;
+    const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
+    const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
+    const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
 
     let userPredictions = [];
     if (userFightIds.length > 0) {
@@ -5590,14 +5623,11 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
 
     const longestWinStreak = calculateLongestWinStreak(orderedForStreak);
 
-    const eventWinners = await fetchAllFromSupabase(
-      supabase
-        .from('event_winners')
-        .select('event_id')
-        .eq('user_id', user_id)
-        .in('event_id', eventIds)
+    const seasonEventWinsByUser = await fetchHumanEventWinCounts(
+      Array.from(humanUserSet),
+      isAllTime ? undefined : numericYear
     );
-    const eventWins = (eventWinners || []).length;
+    const eventWins = seasonEventWinsByUser[String(user_id)] || 0;
 
     const bestEvent = eventStats.length > 0
       ? [...eventStats].sort((a, b) =>
@@ -5800,10 +5830,6 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     })();
 
     // Rivalry insights (humans only)
-    const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
-    const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
-    const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
-
     const myResultsByFight = new Map(
       rows
         .map(row => {
@@ -5927,21 +5953,6 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
       : null;
 
     // Cohort benchmarks (active human users for this season)
-    const seasonEventWinners = await fetchAllFromSupabase(
-      supabase
-        .from('event_winners')
-        .select('user_id, event_id')
-        .in('event_id', eventIds)
-    );
-    const seasonEventWinsByUser = {};
-    (seasonEventWinners || []).forEach((row) => {
-      const candidateUserId = String(row.user_id);
-      if (!humanUserSet.has(candidateUserId)) {
-        return;
-      }
-      seasonEventWinsByUser[candidateUserId] = (seasonEventWinsByUser[candidateUserId] || 0) + 1;
-    });
-
     const cohortByUser = new Map();
     (seasonHumanResults || []).forEach((row) => {
       const candidateUserId = String(row.user_id);
