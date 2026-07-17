@@ -1158,12 +1158,12 @@ function HighlightsPage({ user, defaultYear }) {
           <div className="highlights-section">
             <div className="highlights-insight-grid">
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 0 }}>
-                {renderInfoHint('rival-nemesis', 'User with the most shared fights where they were correct and you were wrong.')}
+                {renderInfoHint('rival-nemesis', 'User with the strongest confidence-weighted edge in decisive shared fights.')}
                 <p className="highlights-panel-kicker">Biggest Nemesis</p>
                 <h3>{rivalryInsights?.biggest_nemesis?.username || 'No nemesis yet'}</h3>
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.biggest_nemesis
-                    ? `${rivalryInsights.biggest_nemesis.times_they_were_right_you_wrong} swing fights`
+                    ? `${rivalryInsights.biggest_nemesis.times_they_were_right_you_wrong} swing fights • +${rivalryInsights.biggest_nemesis.nemesis_edge || 0} edge`
                     : 'Need more shared fights for rivalry stats.'}
                 </p>
               </article>
@@ -1178,13 +1178,13 @@ function HighlightsPage({ user, defaultYear }) {
                 </p>
               </article>
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 2 }}>
-                {renderInfoHint('rival-twin', 'User whose picks matched yours the highest percent across shared fights (minimum 3 shared picks).')}
+                {renderInfoHint('rival-twin', 'User with the highest confidence-weighted pick overlap across a qualifying shared-pick sample.')}
                 <p className="highlights-panel-kicker">Pick Twin</p>
                 <h3>{rivalryInsights?.pick_twin?.username || 'No twin yet'}</h3>
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.pick_twin
-                    ? `${rivalryInsights.pick_twin.overlap_pct}% overlap`
-                    : 'Need at least 3 shared picks to detect twin.'}
+                    ? `${rivalryInsights.pick_twin.overlap_pct}% overlap • ${rivalryInsights.pick_twin.shared_fights || 0} shared picks`
+                    : 'Need more qualifying shared picks to detect twin.'}
                 </p>
               </article>
             </div>

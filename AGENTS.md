@@ -2,6 +2,11 @@
 
 These instructions apply to the entire repository.
 
+## Styling Rules
+
+- `STYLE_GUIDELINES.md` is mandatory for every visual, styling, layout, or user-interface change. Read and follow it before editing client presentation code.
+- The logo palette and red-left/blue-right layout rule in `STYLE_GUIDELINES.md` are authoritative. Do not revive older cyan, neon, or purple-led styling directions.
+
 ## Change Log
 
 - Update `CHANGELOG.md` whenever completing a code, configuration, database, documentation, or user-visible behavior change.
@@ -13,6 +18,7 @@ These instructions apply to the entire repository.
 
 - Update the app version every time repository changes are completed.
 - The canonical app version is `Client/package.json`'s `version` field. Keep `Client/package-lock.json` in sync when that version changes.
+- The footer version displayed at the bottom of the client app must reflect the canonical client version. Keep `Client/src/buildInfo.js` wired to `Client/package.json` and update any future footer/version display source when the app version changes.
 - Follow Semantic Versioning:
   - Patch (`x.y.z + 1`) for bug fixes, internal improvements, documentation, maintenance, and non-breaking polish.
   - Minor (`x.y + 1.0`) for new backward-compatible features or notable user-facing enhancements.
@@ -25,5 +31,5 @@ These instructions apply to the entire repository.
 
 ## Before Finishing
 
-- Confirm `CHANGELOG.md`, `Client/package.json`, and `Client/package-lock.json` all agree on the version for the completed change.
+- Confirm `CHANGELOG.md`, `Client/package.json`, `Client/package-lock.json`, and the client footer version display all agree on the version for the completed change.
 - Mention the version bump and changelog entry in the final response.

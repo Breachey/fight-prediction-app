@@ -21,6 +21,16 @@ const {
   normalizeWeightclass,
 } = require('./lib/fightResponse');
 const {
+  buildRivalryRankings,
+} = require('./lib/rivalryInsights');
+const {
+  buildPropPixNotificationRecipients,
+  normalizeOutcome,
+  normalizePropPixInput,
+  normalizePropPixVote,
+} = require('./lib/propPix');
+const { createNotifications } = require('./lib/notifications');
+const {
   runUfcEventDiscovery,
 } = require('./lib/ufcEventDiscovery');
 const {
@@ -2440,6 +2450,124 @@ function calculateLongestWinStreak(orderedResults) {
   return longest;
 }
 
+function compareLeaderboardEntries(a, b) {
+  return (
+    (Number(b.total_points) || 0) - (Number(a.total_points) || 0) ||
+    (Number(b.correct_predictions) || 0) - (Number(a.correct_predictions) || 0) ||
+    parseFloat(b.accuracy || 0) - parseFloat(a.accuracy || 0)
+  );
+}
+
+function normalizeEventIdValue(eventId) {
+  const numericEventId = Number(eventId);
+  return Number.isNaN(numericEventId) ? String(eventId) : numericEventId;
+}
+
+function buildRankMap(entries) {
+  const rankMap = new Map();
+  [...(entries || [])].sort(compareLeaderboardEntries).forEach((entry, index) => {
+    rankMap.set(String(entry.user_id), index + 1);
+  });
+  return rankMap;
+}
+
+function buildPointChangeMap(results, referenceEventId) {
+  const pointChangeMap = new Map();
+  if (!referenceEventId) {
+    return pointChangeMap;
+  }
+
+  const referenceEventIdStr = String(referenceEventId);
+  (results || []).forEach(result => {
+    if (String(result.event_id) !== referenceEventIdStr) {
+      return;
+    }
+    const userIdStr = String(result.user_id);
+    pointChangeMap.set(userIdStr, (pointChangeMap.get(userIdStr) || 0) + (Number(result.points) || 0));
+  });
+  return pointChangeMap;
+}
+
+function buildLeaderboardFromResults(results, userCache) {
+  const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+  const userStats = {};
+
+  (results || []).forEach(result => {
+    const userIdStr = String(result.user_id);
+    if (!userStats[userIdStr]) {
+      userStats[userIdStr] = {
+        user_id: userIdStr,
+        username: userIdToUsername.get(userIdStr) || 'Unknown',
+        is_bot: userIdToIsBot.get(userIdStr) || false,
+        playercard: userIdToPlayercard.get(userIdStr) || null,
+        total_predictions: 0,
+        correct_predictions: 0,
+        total_points: 0,
+        event_ids: new Set()
+      };
+    }
+    userStats[userIdStr].total_predictions++;
+    userStats[userIdStr].event_ids.add(String(result.event_id));
+    if (result.predicted_correctly) {
+      userStats[userIdStr].correct_predictions++;
+    }
+    userStats[userIdStr].total_points += (Number(result.points) || 0);
+  });
+
+  return Object.values(userStats)
+    .map(user => {
+      const { event_ids, ...entry } = user;
+      return {
+        ...entry,
+        events_played: event_ids?.size || 0,
+        accuracy: user.total_predictions > 0
+          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+          : '0.00',
+        total_points: user.total_points,
+      };
+    })
+    .sort(compareLeaderboardEntries);
+}
+
+function addLeaderboardDeltas(leaderboard, baselineLeaderboard, referenceResults, referenceEventId) {
+  const currentRankMap = buildRankMap(leaderboard);
+  const baselineRankMap = buildRankMap(baselineLeaderboard);
+  const pointChangeMap = buildPointChangeMap(referenceResults, referenceEventId);
+  const fallbackBaselineRank = (baselineLeaderboard || []).length + 1;
+
+  return (leaderboard || []).map(entry => {
+    const userIdStr = String(entry.user_id);
+    const currentRank = currentRankMap.get(userIdStr);
+    const baselineRank = baselineRankMap.get(userIdStr) || fallbackBaselineRank;
+    const pointsChange = pointChangeMap.get(userIdStr) || 0;
+    return {
+      ...entry,
+      rank_change: pointsChange !== 0 && currentRank ? baselineRank - currentRank : 0,
+      points_change: pointsChange
+    };
+  });
+}
+
+function determineReferenceEventId(events, results, requestedEventId) {
+  const resultEventIds = new Set((results || []).map(result => String(result.event_id)));
+
+  if (requestedEventId && resultEventIds.has(String(requestedEventId))) {
+    return normalizeEventIdValue(requestedEventId);
+  }
+
+  const eventsWithResults = (events || [])
+    .filter(event => resultEventIds.has(String(event.id)))
+    .sort((a, b) => {
+      const aTime = a.date ? Date.parse(a.date) : Number.NEGATIVE_INFINITY;
+      const bTime = b.date ? Date.parse(b.date) : Number.NEGATIVE_INFINITY;
+      return bTime - aTime;
+    });
+
+  return eventsWithResults.length > 0
+    ? normalizeEventIdValue(eventsWithResults[0].id)
+    : null;
+}
+
 /**
  * Fetches all users along with their playercard metadata and returns lookup maps.
  */
@@ -2485,8 +2613,7 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     throw new Error('eventId is required to build leaderboard');
   }
 
-  const numericEventId = Number(eventId);
-  const eventIdFilter = Number.isNaN(numericEventId) ? eventId : numericEventId;
+  const eventIdFilter = normalizeEventIdValue(eventId);
   const effectiveUserCache = userCache || await fetchUsersWithPlayercards();
   const userIds = buildUserIdList(effectiveUserCache.users);
 
@@ -2507,31 +2634,6 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
       .select('user_id, predicted_correctly, created_at')
       .in('user_id', userIds)
   );
-  const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = effectiveUserCache;
-
-  const userStats = {};
-  (eventResults || []).forEach(result => {
-    const userIdStr = String(result.user_id);
-    if (!userStats[userIdStr]) {
-      userStats[userIdStr] = {
-        user_id: userIdStr,
-        username: userIdToUsername.get(userIdStr) || 'Unknown',
-        is_bot: userIdToIsBot.get(userIdStr) || false,
-        playercard: userIdToPlayercard.get(userIdStr) || null,
-        total_predictions: 0,
-        correct_predictions: 0,
-        total_points: 0,
-        event_ids: new Set()
-      };
-    }
-    userStats[userIdStr].total_predictions++;
-    userStats[userIdStr].event_ids.add(String(result.event_id));
-    if (result.predicted_correctly) {
-      userStats[userIdStr].correct_predictions++;
-    }
-    userStats[userIdStr].total_points += (result.points || 0);
-  });
-
   // Group all-time results by user for streak calculation
   const allTimeUserResultsMap = {};
   (effectiveAllTimeResults || []).forEach(result => {
@@ -2542,27 +2644,44 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     allTimeUserResultsMap[userIdStr].push(result);
   });
 
-  Object.keys(userStats).forEach(userIdStr => {
-    const userResults = allTimeUserResultsMap[userIdStr];
-    userStats[userIdStr].streak = calculateUserStreak(userResults);
-  });
+  let leaderboard = buildLeaderboardFromResults(eventResults, effectiveUserCache);
+  leaderboard = leaderboard.map(entry => ({
+    ...entry,
+    streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
+  }));
 
-  const leaderboard = Object.values(userStats)
-    .map(user => {
-      const { event_ids, ...entry } = user;
-      return {
-        ...entry,
-        events_played: event_ids?.size || 0,
-        accuracy: user.total_predictions > 0
-          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-          : '0.00'
-      };
-    })
-    .sort((a, b) =>
-      b.total_points - a.total_points ||
-      b.correct_predictions - a.correct_predictions ||
-      parseFloat(b.accuracy) - parseFloat(a.accuracy)
-    );
+  const eventRecords = await fetchAllFromSupabase(
+    supabase
+      .from('events')
+      .select('id, date')
+      .eq('id', eventIdFilter)
+      .limit(1)
+  );
+  const eventYear = eventRecords?.[0]?.date
+    ? new Date(eventRecords[0].date).getFullYear()
+    : new Date().getFullYear();
+  const seasonStart = `${eventYear}-01-01`;
+  const nextSeasonStart = `${eventYear + 1}-01-01`;
+  const seasonEvents = await fetchAllFromSupabase(
+    supabase
+      .from('events')
+      .select('id, date')
+      .gte('date', seasonStart)
+      .lt('date', nextSeasonStart)
+  );
+  const seasonEventIds = new Set((seasonEvents || []).map(event => String(event.id)));
+  const seasonResults = await fetchAllFromSupabase(
+    supabase
+      .from('prediction_results')
+      .select('user_id, event_id, predicted_correctly, points')
+      .in('user_id', userIds)
+  );
+  const scopedSeasonResults = (seasonResults || []).filter(result => seasonEventIds.has(String(result.event_id)));
+  const baselineLeaderboard = buildLeaderboardFromResults(
+    scopedSeasonResults.filter(result => String(result.event_id) !== String(eventIdFilter)),
+    effectiveUserCache
+  );
+  leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, eventResults, eventIdFilter);
 
   const winners = determineEventWinners(leaderboard);
 
@@ -2983,11 +3102,11 @@ app.get('/leaderboard/season', async (req, res) => {
     // Get all events from current year
     const seasonEventsQuery = supabase
       .from('events')
-      .select('id')
+      .select('id, date')
       .gte('date', seasonStart)
       .lt('date', nextSeasonStart);
     const seasonEvents = await fetchAllFromSupabase(seasonEventsQuery);
-    const seasonEventIds = new Set((seasonEvents || []).map(e => Number(e.id)));
+    const seasonEventIds = new Set((seasonEvents || []).map(e => String(e.id)));
 
     // Get all prediction results for current year events
     const allResultsQuery = supabase
@@ -2998,8 +3117,7 @@ app.get('/leaderboard/season', async (req, res) => {
     
     // Filter results to only current year events
     const results = (allResults || []).filter(result => {
-      const eventId = Number(result.event_id);
-      return seasonEventIds.has(eventId);
+      return seasonEventIds.has(String(result.event_id));
     });
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
@@ -3009,9 +3127,6 @@ app.get('/leaderboard/season', async (req, res) => {
         .select('user_id, predicted_correctly, created_at')
         .in('user_id', userIds)
     );
-
-    // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -3023,54 +3138,24 @@ app.get('/leaderboard/season', async (req, res) => {
       allTimeUserResultsMap[userIdStr].push(result);
     });
 
-    // Process the results to create the leaderboard
-    const userStats = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: userIdToUsername.get(userIdStr) || 'Unknown',
-          is_bot: userIdToIsBot.get(userIdStr) || false,
-          playercard: userIdToPlayercard.get(userIdStr) || null,
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0,
-          event_ids: new Set()
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      userStats[userIdStr].event_ids.add(String(result.event_id));
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Calculate all-time streak for each user
-    Object.keys(userStats).forEach(userIdStr => {
-      const allTimeUserResults = allTimeUserResultsMap[userIdStr] || [];
-      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
-    });
+    const requestedReferenceEventId = req.query.reference_event_id
+      ? normalizeEventIdValue(req.query.reference_event_id)
+      : null;
+    const referenceEventId = determineReferenceEventId(seasonEvents, results, requestedReferenceEventId);
 
     // Convert to array and calculate accuracy
-    let leaderboard = Object.values(userStats)
-      .map(user => {
-        const { event_ids, ...entry } = user;
-        return {
-          ...entry,
-          events_played: event_ids?.size || 0,
-          accuracy: user.total_predictions > 0
-            ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-            : '0.00',
-          total_points: user.total_points,
-        };
-      })
-      .sort((a, b) =>
-        b.total_points - a.total_points ||
-        b.correct_predictions - a.correct_predictions ||
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      );
+    let leaderboard = buildLeaderboardFromResults(results, userCache)
+      .map(entry => ({
+        ...entry,
+        streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
+      }));
+    const baselineLeaderboard = referenceEventId
+      ? buildLeaderboardFromResults(
+        results.filter(result => String(result.event_id) !== String(referenceEventId)),
+        userCache
+      )
+      : [];
+    leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, results, referenceEventId);
 
     const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
     const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
@@ -4404,6 +4489,647 @@ app.get('/events/:id/vote-counts', async (req, res) => {
   } catch (error) {
     console.error('Error fetching event vote counts:', error);
     res.status(500).json({ error: 'Failed to fetch event vote counts' });
+  }
+});
+
+async function getPropPixBetById(propPixId) {
+  const normalizedId = normalizeUserId(propPixId);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('prop_bets')
+    .select('id, event_id, creator_user_id, question, response_type, wager_label, status, outcome_text, closed_at, created_at, updated_at')
+    .eq('id', normalizedId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function getPropPixEventData(eventId, currentUserId = null) {
+  const normalizedEventId = normalizeUserId(eventId);
+  if (!normalizedEventId) {
+    return [];
+  }
+
+  const { data: bets, error: betsError } = await supabase
+    .from('prop_bets')
+    .select('id, event_id, creator_user_id, question, response_type, wager_label, status, outcome_text, closed_at, created_at, updated_at')
+    .eq('event_id', normalizedEventId)
+    .order('created_at', { ascending: false });
+
+  if (betsError) {
+    throw betsError;
+  }
+
+  if (!bets || bets.length === 0) {
+    return [];
+  }
+
+  const betIds = bets.map((bet) => bet.id);
+  const [
+    { data: options, error: optionsError },
+    { data: votes, error: votesError },
+    { data: claims, error: claimsError },
+    { data: results, error: resultsError },
+  ] = await Promise.all([
+    supabase
+      .from('prop_bet_options')
+      .select('id, prop_bet_id, label, sort_order')
+      .in('prop_bet_id', betIds)
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('prop_bet_votes')
+      .select('id, prop_bet_id, user_id, option_id, response_text, created_at, updated_at')
+      .in('prop_bet_id', betIds)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('prop_bet_claims')
+      .select('id, prop_bet_id, claimant_user_id, outcome_text, status, confirming_user_id, created_at, confirmed_at')
+      .in('prop_bet_id', betIds)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('prop_bet_results')
+      .select('id, prop_bet_id, user_id, vote_text, outcome_text, is_correct, wager_label, settled_at')
+      .in('prop_bet_id', betIds)
+      .order('settled_at', { ascending: true }),
+  ]);
+
+  if (optionsError) throw optionsError;
+  if (votesError) throw votesError;
+  if (claimsError) throw claimsError;
+  if (resultsError) throw resultsError;
+
+  const userIds = [...new Set([
+    ...bets.map((bet) => bet.creator_user_id),
+    ...(votes || []).map((vote) => vote.user_id),
+    ...(claims || []).flatMap((claim) => [claim.claimant_user_id, claim.confirming_user_id]),
+  ].filter((userId) => userId !== null && userId !== undefined))];
+  const usersById = new Map();
+
+  if (userIds.length > 0) {
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('user_id, username')
+      .in('user_id', userIds);
+
+    if (usersError) throw usersError;
+    (users || []).forEach((user) => usersById.set(String(user.user_id), user));
+  }
+
+  const optionsByBet = new Map();
+  (options || []).forEach((option) => {
+    if (!optionsByBet.has(option.prop_bet_id)) optionsByBet.set(option.prop_bet_id, []);
+    optionsByBet.get(option.prop_bet_id).push(option);
+  });
+  const votesByBet = new Map();
+  (votes || []).forEach((vote) => {
+    if (!votesByBet.has(vote.prop_bet_id)) votesByBet.set(vote.prop_bet_id, []);
+    votesByBet.get(vote.prop_bet_id).push({
+      ...vote,
+      username: usersById.get(String(vote.user_id))?.username || 'Unknown user',
+    });
+  });
+  const claimsByBet = new Map();
+  (claims || []).forEach((claim) => {
+    if (!claimsByBet.has(claim.prop_bet_id)) claimsByBet.set(claim.prop_bet_id, []);
+    claimsByBet.get(claim.prop_bet_id).push({
+      ...claim,
+      claimant_username: usersById.get(String(claim.claimant_user_id))?.username || 'Unknown user',
+      confirming_username: claim.confirming_user_id
+        ? usersById.get(String(claim.confirming_user_id))?.username || 'Unknown user'
+        : null,
+    });
+  });
+  const resultsByBet = new Map();
+  (results || []).forEach((result) => {
+    if (!resultsByBet.has(result.prop_bet_id)) resultsByBet.set(result.prop_bet_id, []);
+    resultsByBet.get(result.prop_bet_id).push({
+      ...result,
+      username: usersById.get(String(result.user_id))?.username || 'Unknown user',
+    });
+  });
+
+  return bets.map((bet) => {
+    const betVotes = votesByBet.get(bet.id) || [];
+    const betClaims = claimsByBet.get(bet.id) || [];
+    const betResults = resultsByBet.get(bet.id) || [];
+    const currentVote = currentUserId
+      ? betVotes.find((vote) => String(vote.user_id) === String(currentUserId)) || null
+      : null;
+    const currentResult = currentUserId
+      ? betResults.find((result) => String(result.user_id) === String(currentUserId)) || null
+      : null;
+
+    return {
+      ...bet,
+      creator_username: usersById.get(String(bet.creator_user_id))?.username || 'Unknown user',
+      options: optionsByBet.get(bet.id) || [],
+      votes: currentVote ? betVotes : [],
+      claims: betClaims,
+      results: currentVote ? betResults : [],
+      my_result: currentResult,
+      my_vote: currentVote,
+      participant_count: betVotes.length,
+    };
+  });
+}
+
+async function getPropPixUser(userId) {
+  const normalizedUserId = normalizeUserId(userId);
+  if (!normalizedUserId) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('user_id, username, is_bot')
+    .eq('user_id', normalizedUserId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+function getPropPixErrorStatus(error) {
+  if (error?.code === '23505' || String(error?.message || '').toLowerCase().includes('no longer pending')) {
+    return 409;
+  }
+  if (error?.code === '23503' || error?.code === '23514') {
+    return 400;
+  }
+  return 500;
+}
+
+async function getPropPixParticipants(propPixId) {
+  const { data, error } = await supabase
+    .from('prop_bet_votes')
+    .select('user_id')
+    .eq('prop_bet_id', propPixId);
+
+  if (error) throw error;
+  return (data || []).map((vote) => vote.user_id);
+}
+
+async function notifyPropPixResults({ propPixId, bet, claimId, actorUserId, closedByAdmin = false }) {
+  const { data: results, error: resultsError } = await supabase
+    .from('prop_bet_results')
+    .select('id, user_id, vote_text, outcome_text, is_correct, wager_label')
+    .eq('prop_bet_id', propPixId)
+    .order('settled_at', { ascending: true });
+
+  if (resultsError) throw resultsError;
+  if (!results || results.length === 0) return [];
+
+  const rows = results.map((result) => ({
+    recipient_user_id: result.user_id,
+    actor_user_id: actorUserId,
+    notification_type: 'prop_pix_result',
+    entity_type: 'prop_bet',
+    entity_id: propPixId,
+    title: result.is_correct ? 'Prop Pix win' : 'Prop Pix wager owed',
+    body: result.is_correct
+      ? `You got it right: ${bet.question} resolved as ${result.outcome_text}.`
+      : `You owe ${result.wager_label}: ${bet.question} resolved as ${result.outcome_text}, not ${result.vote_text}.`,
+    payload: {
+      prop_bet_id: propPixId,
+      result_id: result.id,
+      claim_id: claimId,
+      vote_text: result.vote_text,
+      outcome_text: result.outcome_text,
+      wager_label: result.wager_label,
+      is_correct: result.is_correct,
+      closed_by_admin: closedByAdmin,
+    },
+  }));
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert(rows)
+    .select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// Prop Pix is deliberately separate from fight predictions and has no scoring path.
+app.get('/events/:id/prop-pix', async (req, res) => {
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.query.user_id);
+    if (!eventId) return res.status(400).json({ error: 'Event ID must be a valid integer' });
+
+    res.set('Cache-Control', 'no-store');
+    res.json(await getPropPixEventData(eventId, currentUserId));
+  } catch (error) {
+    console.error('Error fetching Prop Pix bets:', error);
+    res.status(500).json({ error: 'Failed to fetch Prop Pix bets' });
+  }
+});
+
+app.post('/events/:id/prop-pix', async (req, res) => {
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const creatorUserId = normalizeUserId(req.body?.user_id || req.body?.creator_user_id);
+    if (!eventId || !creatorUserId) return res.status(400).json({ error: 'Event ID and user ID are required' });
+
+    const user = await getPropPixUser(creatorUserId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot create Prop Pix bets' });
+
+    const normalized = normalizePropPixInput(req.body);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const { data: bet, error: betError } = await supabase
+      .from('prop_bets')
+      .insert({
+        event_id: eventId,
+        creator_user_id: creatorUserId,
+        question: normalized.value.question,
+        response_type: normalized.value.responseType,
+        wager_label: normalized.value.wagerLabel,
+      })
+      .select('*')
+      .single();
+    if (betError) throw betError;
+
+    if (normalized.value.responseType === 'options') {
+      const { error: optionsError } = await supabase
+        .from('prop_bet_options')
+        .insert(normalized.value.options.map((label, index) => ({
+          prop_bet_id: bet.id,
+          label,
+          sort_order: index,
+        })));
+
+      if (optionsError) {
+        await supabase.from('prop_bets').delete().eq('id', bet.id);
+        throw optionsError;
+      }
+    }
+
+    res.status(201).json((await getPropPixEventData(eventId, creatorUserId)).find((row) => row.id === bet.id));
+  } catch (error) {
+    console.error('Error creating Prop Pix bet:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to create Prop Pix bet' });
+  }
+});
+
+app.post('/prop-pix/:id/vote', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot vote on Prop Pix bets' });
+    if (bet.status !== 'open') return res.status(409).json({ error: 'This Prop Pix bet is no longer accepting votes' });
+
+    const { data: existingVote, error: existingVoteError } = await supabase
+      .from('prop_bet_votes')
+      .select('id')
+      .eq('prop_bet_id', propPixId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingVoteError) throw existingVoteError;
+    if (existingVote) return res.status(409).json({ error: 'Your vote is already locked in for this Prop Pix bet' });
+
+    const normalized = normalizePropPixVote(req.body, bet.response_type);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+
+    let optionId = normalized.value.optionId;
+    if (bet.response_type === 'options') {
+      const { data: option, error: optionError } = await supabase
+        .from('prop_bet_options')
+        .select('id')
+        .eq('id', optionId)
+        .eq('prop_bet_id', propPixId)
+        .maybeSingle();
+      if (optionError) throw optionError;
+      if (!option) return res.status(400).json({ error: 'That option is not part of this Prop Pix bet' });
+    } else {
+      optionId = null;
+    }
+
+    const { data: vote, error: voteError } = await supabase
+      .from('prop_bet_votes')
+      .insert({
+        prop_bet_id: propPixId,
+        user_id: userId,
+        option_id: optionId,
+        response_text: normalized.value.responseText,
+      })
+      .select('id, prop_bet_id, user_id, option_id, response_text, created_at, updated_at')
+      .single();
+    if (voteError) throw voteError;
+
+    res.json(vote);
+  } catch (error) {
+    console.error('Error saving Prop Pix vote:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to save Prop Pix vote' });
+  }
+});
+
+app.post('/prop-pix/:id/claim', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot submit claims' });
+    if (bet.status !== 'open') return res.status(409).json({ error: 'This Prop Pix bet is not open for claims' });
+
+    const { data: voter, error: voterError } = await supabase
+      .from('prop_bet_votes')
+      .select('id')
+      .eq('prop_bet_id', propPixId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (voterError) throw voterError;
+    if (!voter) return res.status(403).json({ error: 'Vote on this Prop Pix before submitting a claim' });
+
+    const normalizedOutcome = normalizeOutcome(req.body?.outcome_text || req.body?.outcomeText);
+    if (normalizedOutcome.error) return res.status(400).json({ error: normalizedOutcome.error });
+
+    const { data: claimedBet, error: statusError } = await supabase
+      .from('prop_bets')
+      .update({ status: 'claim_pending' })
+      .eq('id', propPixId)
+      .eq('status', 'open')
+      .select('id')
+      .maybeSingle();
+    if (statusError) throw statusError;
+    if (!claimedBet) return res.status(409).json({ error: 'Another claim is already pending for this bet' });
+
+    const { data: claim, error: claimError } = await supabase
+      .from('prop_bet_claims')
+      .insert({
+        prop_bet_id: propPixId,
+        claimant_user_id: userId,
+        outcome_text: normalizedOutcome.value,
+      })
+      .select('id, prop_bet_id, claimant_user_id, outcome_text, status, created_at')
+      .single();
+
+    if (claimError) {
+      await supabase.from('prop_bets').update({ status: 'open' }).eq('id', propPixId).eq('status', 'claim_pending');
+      throw claimError;
+    }
+
+    try {
+      const voterIds = await getPropPixParticipants(propPixId);
+      const recipients = buildPropPixNotificationRecipients({
+        creatorUserId: bet.creator_user_id,
+        claimantUserId: userId,
+        voterUserIds: voterIds,
+      }).filter((recipientId) => recipientId !== userId);
+      await createNotifications({
+        supabase,
+        recipientUserIds: recipients,
+        actorUserId: userId,
+        notificationType: 'prop_pix_claim_submitted',
+        entityType: 'prop_bet',
+        entityId: propPixId,
+        title: 'Prop Pix claim submitted',
+        body: `${user.username} says the outcome is: ${normalizedOutcome.value}`,
+        payload: { prop_bet_id: propPixId, claim_id: claim.id },
+      });
+    } catch (notificationError) {
+      console.error('Prop Pix claim notification error:', notificationError);
+    }
+
+    res.status(201).json(claim);
+  } catch (error) {
+    console.error('Error submitting Prop Pix claim:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to submit Prop Pix claim' });
+  }
+});
+
+app.post('/prop-pix/:id/claim/:claimId/confirm', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const claimId = normalizeUserId(req.params.claimId);
+    const confirmingUserId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !claimId || !confirmingUserId) {
+      return res.status(400).json({ error: 'Prop Pix ID, claim ID, and user ID are required' });
+    }
+
+    const user = await getPropPixUser(confirmingUserId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot confirm claims' });
+
+    const { data: claim, error: claimLookupError } = await supabase
+      .from('prop_bet_claims')
+      .select('id, prop_bet_id')
+      .eq('id', claimId)
+      .eq('prop_bet_id', propPixId)
+      .maybeSingle();
+    if (claimLookupError) throw claimLookupError;
+    if (!claim) return res.status(404).json({ error: 'Claim not found for this Prop Pix bet' });
+
+    const { data: confirmation, error: confirmationError } = await supabase.rpc('confirm_prop_pix_claim', {
+      p_claim_id: claimId,
+      p_confirming_user_id: confirmingUserId,
+    });
+    if (confirmationError) throw confirmationError;
+
+    const bet = await getPropPixBetById(propPixId);
+    try {
+      await notifyPropPixResults({
+        propPixId,
+        bet,
+        claimId,
+        actorUserId: confirmingUserId,
+      });
+    } catch (notificationError) {
+      console.error('Prop Pix closure notification error:', notificationError);
+    }
+
+    res.json({ confirmation: confirmation?.[0] || null, bet });
+  } catch (error) {
+    console.error('Error confirming Prop Pix claim:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: error?.message || 'Failed to confirm Prop Pix claim' });
+  }
+});
+
+app.post('/admin/prop-pix/:id/claim/:claimId/close', requireAdminSession, async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const claimId = normalizeUserId(req.params.claimId);
+    if (!propPixId || !claimId) {
+      return res.status(400).json({ error: 'Prop Pix ID and claim ID are required' });
+    }
+
+    const { data: closure, error: closureError } = await supabase.rpc('admin_close_prop_pix_claim', {
+      p_prop_bet_id: propPixId,
+      p_claim_id: claimId,
+      p_admin_user_id: req.adminUser.user_id,
+    });
+    if (closureError) throw closureError;
+
+    const closedClaim = closure?.[0];
+    if (!closedClaim) {
+      return res.status(404).json({ error: 'Pending claim not found for this Prop Pix bet' });
+    }
+
+    const bet = await getPropPixBetById(propPixId);
+    try {
+      await notifyPropPixResults({
+        propPixId,
+        bet,
+        claimId,
+        actorUserId: req.adminUser.user_id,
+        closedByAdmin: true,
+      });
+    } catch (notificationError) {
+      console.error('Admin Prop Pix closure notification error:', notificationError);
+    }
+
+    res.json({ confirmation: closedClaim, bet });
+  } catch (error) {
+    console.error('Error closing Prop Pix claim as admin:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: error?.message || 'Failed to close Prop Pix claim' });
+  }
+});
+
+app.post('/prop-pix/:id/cancel', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (String(bet.creator_user_id) !== String(userId)) return res.status(403).json({ error: 'Only the creator can cancel this Prop Pix bet' });
+    if (!['open', 'claim_pending'].includes(bet.status)) return res.status(409).json({ error: 'This Prop Pix bet cannot be cancelled' });
+
+    const { data: updatedBet, error: updateError } = await supabase
+      .from('prop_bets')
+      .update({ status: 'cancelled' })
+      .eq('id', propPixId)
+      .in('status', ['open', 'claim_pending'])
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+
+    await supabase
+      .from('prop_bet_claims')
+      .update({ status: 'rejected' })
+      .eq('prop_bet_id', propPixId)
+      .eq('status', 'pending');
+
+    res.json(updatedBet);
+  } catch (error) {
+    console.error('Error cancelling Prop Pix bet:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to cancel Prop Pix bet' });
+  }
+});
+
+app.get('/user/:user_id/notifications', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
+
+    const requestedLimit = Number.parseInt(String(req.query.limit || '40'), 10);
+    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1), 100);
+    const unreadOnly = String(req.query.unread_only || '').toLowerCase() === 'true';
+    let notificationsQuery = supabase
+      .from('notifications')
+      .select('id, recipient_user_id, actor_user_id, notification_type, entity_type, entity_id, title, body, payload, read_at, created_at')
+      .eq('recipient_user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (unreadOnly) notificationsQuery = notificationsQuery.is('read_at', null);
+
+    const [{ data: notifications, error: notificationsError }, { count: unreadCount, error: countError }] = await Promise.all([
+      notificationsQuery,
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_user_id', userId)
+        .is('read_at', null),
+    ]);
+    if (notificationsError) throw notificationsError;
+    if (countError) throw countError;
+
+    const actorIds = [...new Set((notifications || []).map((notification) => notification.actor_user_id).filter(Boolean))];
+    const actorMap = new Map();
+    if (actorIds.length > 0) {
+      const { data: actors, error: actorsError } = await supabase
+        .from('users')
+        .select('user_id, username')
+        .in('user_id', actorIds);
+      if (actorsError) throw actorsError;
+      (actors || []).forEach((actor) => actorMap.set(String(actor.user_id), actor.username));
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      notifications: (notifications || []).map((notification) => ({
+        ...notification,
+        actor_username: notification.actor_user_id ? actorMap.get(String(notification.actor_user_id)) || null : null,
+      })),
+      unread_count: unreadCount || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+app.patch('/user/:user_id/notifications/:notification_id/read', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    const notificationId = normalizeUserId(req.params.notification_id);
+    if (!userId || !notificationId) return res.status(400).json({ error: 'User ID and notification ID must be valid integers' });
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notificationId)
+      .eq('recipient_user_id', userId)
+      .select('id, read_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Notification not found' });
+    res.json(data);
+  } catch (error) {
+    console.error('Error marking notification read:', error);
+    res.status(500).json({ error: 'Failed to mark notification read' });
+  }
+});
+
+app.post('/user/:user_id/notifications/read-all', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('recipient_user_id', userId)
+      .is('read_at', null);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error marking all notifications read:', error);
+    res.status(500).json({ error: 'Failed to mark notifications read' });
   }
 });
 
@@ -5919,38 +6645,16 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
       }
     });
 
-    const rivalryRows = [...opponentMap.values()]
-      .map(item => ({
-        ...item,
-        net_edge: item.you_right_they_wrong - item.they_right_you_wrong,
-        pick_overlap_pct: item.shared_pick_fights > 0
-          ? Number(((item.same_picks / item.shared_pick_fights) * 100).toFixed(2))
-          : 0
-      }))
-      .filter(item => item.shared_fights > 0 || item.shared_pick_fights > 0);
-
-    const biggestNemesis = rivalryRows.length > 0
-      ? [...rivalryRows].sort((a, b) =>
-        b.they_right_you_wrong - a.they_right_you_wrong ||
-        b.shared_fights - a.shared_fights
-      )[0]
-      : null;
-
-    const headToHead = rivalryRows.length > 0
-      ? [...rivalryRows].sort((a, b) =>
-        b.shared_fights - a.shared_fights ||
-        Math.abs(b.net_edge) - Math.abs(a.net_edge)
-      )[0]
-      : null;
-
-    const pickTwin = rivalryRows.length > 0
-      ? [...rivalryRows]
-        .filter(item => item.shared_pick_fights >= 3)
-        .sort((a, b) =>
-          b.pick_overlap_pct - a.pick_overlap_pct ||
-          b.shared_pick_fights - a.shared_pick_fights
-        )[0] || null
-      : null;
+    const rivalryRows = [...opponentMap.values()];
+    const {
+      biggestNemesis,
+      headToHead,
+      pickTwin,
+      sampleRequirements: rivalrySampleRequirements,
+    } = buildRivalryRankings(rivalryRows, {
+      totalUserPickFights: myPredictionByFight.size,
+      totalUserResultFights: myResultsByFight.size,
+    });
 
     // Cohort benchmarks (active human users for this season)
     const cohortByUser = new Map();
@@ -6402,7 +7106,14 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
             user_id: biggestNemesis.user_id,
             username: biggestNemesis.username,
             times_they_were_right_you_wrong: biggestNemesis.they_right_you_wrong,
-            shared_fights: biggestNemesis.shared_fights
+            you_right_they_wrong: biggestNemesis.you_right_they_wrong,
+            shared_fights: biggestNemesis.shared_fights,
+            decisive_swing_fights: biggestNemesis.decisive_swing_fights,
+            nemesis_edge: biggestNemesis.nemesis_edge,
+            swing_pct: biggestNemesis.nemesis_swing_pct,
+            confidence_score: biggestNemesis.nemesis_score,
+            minimum_shared_fights: rivalrySampleRequirements.nemesis_min_shared_fights,
+            minimum_swing_fights: rivalrySampleRequirements.nemesis_min_swing_fights
           }
           : null,
         head_to_head: headToHead
@@ -6421,9 +7132,12 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
             username: pickTwin.username,
             overlap_pct: pickTwin.pick_overlap_pct,
             shared_fights: pickTwin.shared_pick_fights,
-            same_picks: pickTwin.same_picks
+            same_picks: pickTwin.same_picks,
+            confidence_score: pickTwin.pick_twin_score,
+            minimum_shared_fights: rivalrySampleRequirements.pick_twin_min_shared_picks
           }
-          : null
+          : null,
+        sample_requirements: rivalrySampleRequirements
       },
       community_insights: {
         most_voted_fighter: mostVotedFighter,

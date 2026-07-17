@@ -411,7 +411,7 @@ function ProfilePage({ user: loggedInUser }) {
                     </>
                   ) : (
                     <div style={{ color: 'rgba(255, 238, 238, 0.75)', fontSize: '0.9rem' }}>
-                      No nemesis identified yet this season.
+                      No qualifying nemesis identified yet this season.
                     </div>
                   )}
                 </div>
@@ -441,7 +441,7 @@ function ProfilePage({ user: loggedInUser }) {
                     </>
                   ) : (
                     <div style={{ color: 'rgba(220, 250, 255, 0.75)', fontSize: '0.9rem' }}>
-                      Need at least 3 shared picks to detect a twin.
+                      Need more qualifying shared picks to detect a twin.
                     </div>
                   )}
                 </div>

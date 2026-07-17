@@ -286,6 +286,12 @@
 }
 
 /* Hamburger Menu Styles */
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .hamburger-menu-container {
   position: relative;
 }
