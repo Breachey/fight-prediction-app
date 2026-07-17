@@ -77,8 +77,24 @@
 }
 
 .playercard-selector-content.expanded {
-  max-height: 780px;
+  max-height: min(780px, calc(100vh - 180px));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 4px 0 2px;
+}
+
+.playercard-selector-content.expanded::-webkit-scrollbar {
+  width: 8px;
+}
+
+.playercard-selector-content.expanded::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.playercard-selector-content.expanded::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.5);
+  border-radius: 999px;
 }
 
 .playercard-selector-mobile-hint {
@@ -99,7 +115,7 @@
 .playercard-selector-item {
   appearance: none;
   background: linear-gradient(140deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(76, 88, 118, 0.34);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -125,7 +141,7 @@
 
 .playercard-selector-item:hover {
   transform: translateY(-2px);
-  border-color: rgba(34, 211, 238, 0.42);
+  border-color: rgba(118, 134, 168, 0.46);
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
 }
 
@@ -135,12 +151,12 @@
 }
 
 .playercard-selector-item.selected {
-  border-color: rgba(34, 211, 238, 0.85);
-  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.7), 0 10px 24px rgba(34, 211, 238, 0.18);
+  border-color: rgba(34, 211, 238, 0.58);
+  box-shadow: 0 10px 24px rgba(34, 211, 238, 0.14);
 }
 
 .playercard-selector-item.locked {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(76, 88, 118, 0.22);
 }
 
 .playercard-selector-item:disabled {
@@ -259,6 +275,7 @@
 @media (max-width: 768px) {
   .playercard-selector-content.expanded {
     max-height: 560px;
+    overflow-y: hidden;
   }
 
   .playercard-selector-mobile-hint {

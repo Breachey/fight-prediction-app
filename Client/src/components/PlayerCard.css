@@ -32,8 +32,6 @@
 }
 
 .playercard-root.playercard-current-user {
-  outline: 1px solid rgba(59, 130, 246, 0.55);
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.24);
   z-index: 2;
 }
 

@@ -108,7 +108,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 button {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--glass-button-border);
   padding: 0.65em 1.2em;
   font-size: 1rem;

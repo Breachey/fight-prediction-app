@@ -151,8 +151,6 @@
 
 .fighter-card {
   --fighter-card-radius: 16px;
-  --fighter-card-top-accent-height: 7px;
-  --fighter-card-top-accent-side-inset: 2px;
   flex: 1;
   min-width: 250px;
   background: rgba(255, 255, 255, 0.08);
@@ -180,29 +178,6 @@
   z-index: 0;
   pointer-events: none;
   clip-path: inset(0 round 16px);
-}
-
-.fighter-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: var(--fighter-card-top-accent-side-inset);
-  right: var(--fighter-card-top-accent-side-inset);
-  height: var(--fighter-card-top-accent-height);
-  border-radius:
-    calc(var(--fighter-card-radius) - var(--fighter-card-top-accent-side-inset))
-    calc(var(--fighter-card-radius) - var(--fighter-card-top-accent-side-inset))
-    6px
-    6px;
-  pointer-events: none;
-}
-/*first-child = red corner, last-child = blue corner*/
-.fighter-card:first-child::before {
-  background: linear-gradient(90deg, #ef4444, #b91c1c);
-}
-
-.fighter-card:last-child::before {
-  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
 .fighter-card:first-child {

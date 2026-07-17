@@ -278,9 +278,12 @@ function PointsTrendChart({ data }) {
   );
 }
 
-function HighlightsPage({ user, defaultYear = 2025 }) {
+function HighlightsPage({ user, defaultYear }) {
   const params = useParams();
   const navigate = useNavigate();
+  const currentYear = new Date().getFullYear();
+  const previousYear = currentYear - 1;
+  const defaultPeriodYear = defaultYear || currentYear;
   const routePeriod = params.period || params.year;
   const selectedPeriod = useMemo(() => {
     const raw = (routePeriod || '').toString().trim().toLowerCase();
@@ -291,17 +294,18 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
     if (Number.isInteger(parsed) && parsed >= 2000 && parsed <= 2100) {
       return String(parsed);
     }
-    return String(defaultYear);
-  }, [routePeriod, defaultYear]);
+    return String(defaultPeriodYear);
+  }, [routePeriod, defaultPeriodYear]);
   const isAllTime = selectedPeriod === 'all-time';
   const selectedPeriodLabel = isAllTime ? 'All Time' : selectedPeriod;
   const periodOptions = [
-    { key: '2026', label: '2026' },
-    { key: '2025', label: '2025' },
+    { key: String(currentYear), label: String(currentYear) },
+    { key: String(previousYear), label: String(previousYear) },
     { key: 'all-time', label: 'All Time' }
   ];
 
   const [data, setData] = useState(null);
+  const [leaderboardCrownCount, setLeaderboardCrownCount] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [openTooltipId, setOpenTooltipId] = useState(null);
@@ -320,7 +324,7 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
         const endpoint = `${API_URL}/user/${encodeURIComponent(user.user_id)}/highlights/${selectedPeriod}`;
         const payload = await cachedFetchJson(endpoint, {
           ttlMs: 300000,
-          cacheKey: `stats:${user.user_id}:${selectedPeriod}:v9`
+          cacheKey: `stats:${user.user_id}:${selectedPeriod}:v10`
         });
         if (!cancelled) {
           setData(payload);
@@ -341,6 +345,54 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
       cancelled = true;
     };
   }, [selectedPeriod, user?.user_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLeaderboardCrowns = async () => {
+      if (!user?.user_id) {
+        setLeaderboardCrownCount(null);
+        return;
+      }
+
+      const endpoint = selectedPeriod === 'all-time'
+        ? `${API_URL}/leaderboard`
+        : selectedPeriod === String(currentYear)
+        ? `${API_URL}/leaderboard/season`
+        : selectedPeriod === String(previousYear)
+        ? `${API_URL}/leaderboard/${previousYear}`
+        : null;
+
+      if (!endpoint) {
+        setLeaderboardCrownCount(null);
+        return;
+      }
+
+      try {
+        const leaderboard = await cachedFetchJson(endpoint, {
+          ttlMs: 120000,
+          cacheKey: `stats-crowns:${selectedPeriod}:v1`
+        });
+        const entry = Array.isArray(leaderboard)
+          ? leaderboard.find((item) => String(item.user_id) === String(user.user_id))
+          : null;
+        const crownValue = entry
+          ? Number(entry.event_win_count_human ?? entry.event_win_count)
+          : null;
+        if (!cancelled) {
+          setLeaderboardCrownCount(Number.isFinite(crownValue) ? crownValue : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setLeaderboardCrownCount(null);
+        }
+      }
+    };
+
+    loadLeaderboardCrowns();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentYear, previousYear, selectedPeriod, user?.user_id]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -365,7 +417,14 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
     };
   }, []);
 
-  const summary = data?.summary;
+  const summary = useMemo(() => {
+    if (!data?.summary) return data?.summary;
+    if (leaderboardCrownCount === null) return data.summary;
+    return {
+      ...data.summary,
+      event_wins: leaderboardCrownCount
+    };
+  }, [data?.summary, leaderboardCrownCount]);
   const eventRows = useMemo(() => data?.events || [], [data?.events]);
   const bestEvent = data?.best_event;
   const toughestEvent = data?.toughest_event;
@@ -1099,12 +1158,12 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
           <div className="highlights-section">
             <div className="highlights-insight-grid">
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 0 }}>
-                {renderInfoHint('rival-nemesis', 'User with the most shared fights where they were correct and you were wrong.')}
+                {renderInfoHint('rival-nemesis', 'User with the strongest confidence-weighted edge in decisive shared fights.')}
                 <p className="highlights-panel-kicker">Biggest Nemesis</p>
                 <h3>{rivalryInsights?.biggest_nemesis?.username || 'No nemesis yet'}</h3>
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.biggest_nemesis
-                    ? `${rivalryInsights.biggest_nemesis.times_they_were_right_you_wrong} swing fights`
+                    ? `${rivalryInsights.biggest_nemesis.times_they_were_right_you_wrong} swing fights • +${rivalryInsights.biggest_nemesis.nemesis_edge || 0} edge`
                     : 'Need more shared fights for rivalry stats.'}
                 </p>
               </article>
@@ -1119,13 +1178,13 @@ function HighlightsPage({ user, defaultYear = 2025 }) {
                 </p>
               </article>
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 2 }}>
-                {renderInfoHint('rival-twin', 'User whose picks matched yours the highest percent across shared fights (minimum 3 shared picks).')}
+                {renderInfoHint('rival-twin', 'User with the highest confidence-weighted pick overlap across a qualifying shared-pick sample.')}
                 <p className="highlights-panel-kicker">Pick Twin</p>
                 <h3>{rivalryInsights?.pick_twin?.username || 'No twin yet'}</h3>
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.pick_twin
-                    ? `${rivalryInsights.pick_twin.overlap_pct}% overlap`
-                    : 'Need at least 3 shared picks to detect twin.'}
+                    ? `${rivalryInsights.pick_twin.overlap_pct}% overlap • ${rivalryInsights.pick_twin.shared_fights || 0} shared picks`
+                    : 'Need more qualifying shared picks to detect twin.'}
                 </p>
               </article>
             </div>

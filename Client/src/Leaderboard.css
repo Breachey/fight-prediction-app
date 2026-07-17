@@ -12,7 +12,7 @@
   min-height: 34px;
   padding: 8px 12px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
   color: #d5deeb;
   font-size: 0.78rem;
@@ -48,6 +48,48 @@
   box-shadow:
     0 0 0 3px rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.2),
     0 14px 28px rgba(0, 0, 0, 0.22);
+}
+
+.leaderboard-streak-warm-frost {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: var(--streak-warm-frost-opacity, 0.36);
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(254, 215, 170, 0.34), rgba(251, 146, 60, 0.17) 44%, rgba(154, 52, 18, 0.22)),
+    radial-gradient(circle at 14% 18%, rgba(255, 247, 237, 0.36) 0 1px, transparent 2px),
+    radial-gradient(circle at 34% 72%, rgba(255, 237, 213, 0.3) 0 1px, transparent 2px),
+    radial-gradient(circle at 60% 28%, rgba(254, 215, 170, 0.34) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 68%, rgba(255, 237, 213, 0.26) 0 1px, transparent 2px),
+    repeating-linear-gradient(120deg, rgba(255, 237, 213, 0.07) 0 1px, transparent 1px 8px);
+  backdrop-filter: blur(var(--streak-warm-frost-blur, 2px)) saturate(1.08) sepia(0.1);
+  -webkit-backdrop-filter: blur(var(--streak-warm-frost-blur, 2px)) saturate(1.08) sepia(0.1);
+  box-shadow:
+    inset 0 0 22px rgba(251, 146, 60, 0.22),
+    inset 0 0 6px rgba(255, 237, 213, 0.22);
+}
+
+.leaderboard-streak-frost {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: var(--streak-frost-opacity, 0.36);
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.36), rgba(125, 211, 252, 0.16) 44%, rgba(30, 64, 175, 0.2)),
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.42) 0 1px, transparent 2px),
+    radial-gradient(circle at 34% 72%, rgba(255, 255, 255, 0.34) 0 1px, transparent 2px),
+    radial-gradient(circle at 60% 28%, rgba(255, 255, 255, 0.38) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 68%, rgba(255, 255, 255, 0.32) 0 1px, transparent 2px),
+    repeating-linear-gradient(120deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 8px);
+  backdrop-filter: blur(var(--streak-frost-blur, 2px)) saturate(0.8);
+  -webkit-backdrop-filter: blur(var(--streak-frost-blur, 2px)) saturate(0.8);
+  box-shadow:
+    inset 0 0 22px rgba(191, 219, 254, 0.28),
+    inset 0 0 6px rgba(255, 255, 255, 0.28);
 }
 
 .leaderboard-points-explainer {

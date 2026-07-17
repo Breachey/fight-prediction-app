@@ -5,6 +5,8 @@ import { Link, Routes, Route, useLocation } from 'react-router-dom';
 import EventSelector from './EventSelector'; // Dropdown to select an event
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
+import NotificationCenter from './components/NotificationCenter';
+import PropPix from './components/PropPix';
 import logo from './assets/fytpix_500x500.png';
 import { API_URL } from './config';
 import { APP_VERSION_LABEL } from './buildInfo';
@@ -271,40 +273,43 @@ function App() {
         <Link to="/">
           <img src={logo} alt="Fight Picks Logo" className="logo" style={{ cursor: 'pointer' }} />
         </Link>
-        <div className="hamburger-menu-container" ref={menuRef}>
-          <button 
-            className="hamburger-menu-button" 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            aria-label="Menu"
-          >
-            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
-            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
-            <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
-          </button>
-          {isMenuOpen && (
-            <div className="hamburger-menu-dropdown">
-              <Link 
-                to={`/profile/${user.user_id}`} 
-                className="hamburger-menu-item"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Profile
-              </Link>
-              <Link
-                to="/stats"
-                className="hamburger-menu-item"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Stats
-              </Link>
-              <button 
-                className="hamburger-menu-item hamburger-menu-logout"
-                onClick={handleLogout}
-              >
-                Logout
-              </button>
-            </div>
-          )}
+        <div className="app-header-actions">
+          <NotificationCenter userId={user.user_id} />
+          <div className="hamburger-menu-container" ref={menuRef}>
+            <button
+              className="hamburger-menu-button"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-label="Menu"
+            >
+              <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
+              <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
+              <span className={`hamburger-line ${isMenuOpen ? 'open' : ''}`}></span>
+            </button>
+            {isMenuOpen && (
+              <div className="hamburger-menu-dropdown">
+                <Link
+                  to={`/profile/${user.user_id}`}
+                  className="hamburger-menu-item"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Profile
+                </Link>
+                <Link
+                  to="/stats"
+                  className="hamburger-menu-item"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Stats
+                </Link>
+                <button
+                  className="hamburger-menu-item hamburger-menu-logout"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
       <Suspense fallback={<div className="loading-message">Loading...</div>}>
@@ -336,6 +341,10 @@ function App() {
                 />
               </div>
               <div className="section-divider" aria-hidden="true"></div>
+              <div className="section prop-pix-section">
+                <PropPix eventId={selectedEventId} userId={user.user_id} userType={user.user_type} />
+              </div>
+              <div className="section-divider" aria-hidden="true"></div>
               {/* Leaderboard for selected event */}
               <div className="section leaderboard-section">
                 <Leaderboard
@@ -347,10 +356,10 @@ function App() {
               </div>
             </>
           } />
-          <Route path="/stats" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/stats/:period" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/highlights" element={<HighlightsPage user={user} defaultYear={2025} />} />
-          <Route path="/highlights/:year" element={<HighlightsPage user={user} defaultYear={2025} />} />
+          <Route path="/stats" element={<HighlightsPage user={user} />} />
+          <Route path="/stats/:period" element={<HighlightsPage user={user} />} />
+          <Route path="/highlights" element={<HighlightsPage user={user} />} />
+          <Route path="/highlights/:year" element={<HighlightsPage user={user} />} />
           <Route path="/profile/:user_id" element={<ProfilePage user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} />} />
         </Routes>

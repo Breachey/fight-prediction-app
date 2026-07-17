@@ -41,7 +41,8 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       return `${API_URL}/leaderboard`;
     }
     if (type === 'season') {
-      return `${API_URL}/leaderboard/season`;
+      const referenceParam = eventId ? `?reference_event_id=${encodeURIComponent(eventId)}` : '';
+      return `${API_URL}/leaderboard/season${referenceParam}`;
     }
     if (type === '2025') {
       return `${API_URL}/leaderboard/2025`;
@@ -203,9 +204,22 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     fontSize: '1.8rem',
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: '25px',
+    marginBottom: '4px',
     color: '#ffffff',
-    letterSpacing: '-0.01em'
+    letterSpacing: 0
+  };
+
+  const sectionHeaderStyle = {
+    textAlign: 'center',
+    marginBottom: '25px'
+  };
+
+  const sectionMetaStyle = {
+    fontSize: '0.82rem',
+    fontWeight: 600,
+    color: 'rgba(255, 255, 255, 0.68)',
+    letterSpacing: 0,
+    textTransform: 'uppercase'
   };
 
   // Error message style
@@ -332,7 +346,8 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       alignItems: 'center',
       gap: 4,
       border: '1px solid rgba(251, 191, 36, 0.4)',
-      minWidth: 0
+      minWidth: 0,
+      flexShrink: 0
     };
     const seasonWinnerBadgeStyle = {
       background: 'rgba(255, 215, 0, 0.2)',
@@ -347,7 +362,8 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       alignItems: 'center',
       gap: 4,
       border: '1px solid rgba(255, 215, 0, 0.4)',
-      minWidth: 0
+      minWidth: 0,
+      flexShrink: 0
     };
     const rivalryBadgeStyle = (type) => ({
       background: type === 'twin'
@@ -368,10 +384,12 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       border: type === 'twin'
         ? '1px solid rgba(34, 211, 238, 0.52)'
         : '1px solid rgba(168, 85, 247, 0.54)',
-      minWidth: 0
+      minWidth: 0,
+      flexShrink: 0,
+      whiteSpace: 'nowrap'
     });
     const baseBoxShadow = isCurrentUser
-      ? '0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(255, 255, 255, 0.2)'
+      ? '0 2px 10px rgba(0, 0, 0, 0.24)'
       : index === 0
       ? '0 0 16px 2px #FFD70088, 0 2px 8px rgba(0,0,0,0.15)'
       : index === 1
@@ -384,20 +402,56 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       : isNemesis
       ? ', 0 0 0 2px rgba(168, 85, 247, 0.9), 0 0 18px rgba(168, 85, 247, 0.28)'
       : '';
-    const baseBorder = isCurrentUser
-      ? '2.5px solid rgba(255, 255, 255, 0.6)'
-      : index === 0
+    const baseBorder = index === 0
       ? '2.5px solid #FFD700'
       : index === 1
       ? '2.5px solid #C0C0C0'
       : index === 2
       ? '2.5px solid #CD7F32'
-      : '1px solid rgba(255, 255, 255, 0.2)';
+      : '1px solid rgba(38, 46, 65, 0.9)';
     const rivalryBorder = isPickTwin
       ? '2.5px solid rgba(34, 211, 238, 0.9)'
       : isNemesis
       ? '2.5px solid rgba(168, 85, 247, 0.95)'
       : baseBorder;
+    const statTextShadow = '0 2px 5px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.95)';
+    const winStreakCount = entry.streak?.type === 'win' ? Number(entry.streak.count) || 0 : 0;
+    const lossStreakCount = entry.streak?.type === 'loss' ? Number(entry.streak.count) || 0 : 0;
+    const showStreakWarmFrost = winStreakCount >= 3;
+    const showStreakFrost = lossStreakCount >= 2;
+    const streakWarmFrostOpacity = Math.min(0.72, 0.2 + winStreakCount * 0.055);
+    const streakWarmFrostBlur = Math.min(4.8, 0.9 + winStreakCount * 0.34);
+    const streakFrostOpacity = Math.min(0.82, 0.28 + lossStreakCount * 0.08);
+    const streakFrostBlur = Math.min(5, 1 + lossStreakCount * 0.45);
+    const formatChange = (value) => {
+      const numericValue = Number(value) || 0;
+      return numericValue > 0 ? `+${numericValue}` : String(numericValue);
+    };
+    const getChangeColor = (value) => {
+      const numericValue = Number(value) || 0;
+      if (numericValue > 0) return '#22c55e';
+      if (numericValue < 0) return '#ef4444';
+      return '#d8d3ec';
+    };
+    const rankChange = Number(entry.rank_change) || 0;
+    const pointsChange = Number(entry.points_change) || 0;
+    const rankChangeStyle = {
+      marginTop: 2,
+      fontSize: 11,
+      fontWeight: 800,
+      lineHeight: 1,
+      color: getChangeColor(rankChange),
+      textShadow: statTextShadow
+    };
+    const pointsChangeStyle = {
+      marginTop: 1,
+      fontSize: 12,
+      fontWeight: 800,
+      lineHeight: 1,
+      textAlign: 'right',
+      color: getChangeColor(pointsChange),
+      textShadow: statTextShadow
+    };
     return (
       <div
         style={{
@@ -420,14 +474,34 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(90deg, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.4) 100%)',
+          background: 'linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.52) 58%, rgba(0,0,0,0.66) 100%)',
           zIndex: 1,
           pointerEvents: 'none',
         }} />
+        {showStreakWarmFrost && (
+          <div
+            className="leaderboard-streak-warm-frost"
+            aria-hidden="true"
+            style={{
+              '--streak-warm-frost-opacity': streakWarmFrostOpacity,
+              '--streak-warm-frost-blur': `${streakWarmFrostBlur}px`
+            }}
+          />
+        )}
+        {showStreakFrost && (
+          <div
+            className="leaderboard-streak-frost"
+            aria-hidden="true"
+            style={{
+              '--streak-frost-opacity': streakFrostOpacity,
+              '--streak-frost-blur': `${streakFrostBlur}px`
+            }}
+          />
+        )}
         {/* Card Content */}
         <div style={{
           position: 'relative',
-          zIndex: 2,
+          zIndex: 3,
           width: '100%',
           display: 'flex',
           alignItems: 'center',
@@ -436,7 +510,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
           flexWrap: 'wrap',
         }}>
           {/* Rank & Medal */}
-          <div style={{ display: 'flex', alignItems: 'center', minWidth: 48 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 48 }}>
             <span
               style={{
                 fontSize: 24,
@@ -466,30 +540,38 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
             >
               {index === 0 ? 'C' : index}
             </span>
+            {rankChange !== 0 && (
+              <span style={rankChangeStyle}>{formatChange(rankChange)}</span>
+            )}
           </div>
           {/* Name & Details */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: '1 1 0', minWidth: 0, paddingRight: 12 }}>
             <div style={{ fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
                 minWidth: 0,
+                width: '100%',
                 maxWidth: '100%',
                 flexShrink: 1,
               }}>
                 <span style={{
+                  display: 'block',
+                  width: '100%',
                   fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'normal',
+                  textAlign: 'left',
                   overflow: 'visible',
-                  lineHeight: 1.1,
+                  overflowWrap: 'break-word',
+                  lineHeight: 1.05,
                   color: '#fff',
                   textShadow: '0 2px 8px #000a, 0 0 2px #000',
                   fontWeight: 700,
                 }}>
                   {entry.username}
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', marginTop: 2, maxWidth: '100%' }}>
                   {entry.is_bot && (
                     <span style={{
                       background: 'rgba(59,130,246,0.2)',
@@ -504,6 +586,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
                       alignItems: 'center',
                       minHeight: 0,
                       minWidth: 0,
+                      flexShrink: 0,
                     }}>
                       AI
                     </span>
@@ -525,6 +608,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
                       gap: 2,
                       minHeight: 0,
                       minWidth: 0,
+                      flexShrink: 0,
                       border: entry.streak.type === 'win'
                         ? '1px solid rgba(34, 197, 94, 0.3)'
                         : '1px solid rgba(59, 130, 246, 0.3)',
@@ -558,11 +642,14 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
           </div>
           {/* Points (big) and stats (small, no text) */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 70 }}>
-            <div style={{ fontSize: 28, fontWeight: 800, textAlign: 'right', color: getStatColor(entry.total_points, minPoints, maxPoints) }}>{entry.total_points}</div>
-            <div style={{ fontSize: 20, color: '#b0a8c9', fontWeight: 500, marginTop: 4, letterSpacing: 1, display: 'flex', gap: 18 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, textAlign: 'right', color: getStatColor(entry.total_points, minPoints, maxPoints), textShadow: statTextShadow }}>{entry.total_points}</div>
+            {pointsChange !== 0 && (
+              <div style={pointsChangeStyle}>{formatChange(pointsChange)}</div>
+            )}
+            <div style={{ fontSize: 20, color: '#d8d3ec', fontWeight: 500, marginTop: 4, letterSpacing: 1, display: 'flex', gap: 18, textShadow: statTextShadow }}>
               <span>
                 <span style={{ color: getStatColor(entry.correct_predictions, minCorrect, maxCorrect) }}>{entry.correct_predictions}</span>
-                /<span style={{ color: '#b0a8c9' }}>{entry.total_predictions}</span>
+                /<span style={{ color: '#d8d3ec' }}>{entry.total_predictions}</span>
               </span>
               <span>
                 <span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>{roundedAccuracy}<span style={{ color: getStatColor(roundedAccuracy, minAcc, maxAcc) }}>%</span></span>
@@ -577,7 +664,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
   // --- LeaderboardCardsList subcomponent ---
   // Renders a list of leaderboard cards for the given data and title
   // Memoize this component to prevent unnecessary re-renders
-  const LeaderboardCardsList = ({ data, title }) => {
+  const LeaderboardCardsList = ({ data, title, showEventCount = true }) => {
     if (!data.length) {
       return (
         <div style={emptyStyle}>
@@ -592,6 +679,25 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       const bValue = Number(b.total_points) || 0;
       return bValue - aValue;
     });
+    if (!sortedData.length) {
+      return (
+        <div style={emptyStyle}>
+          No predictions have been made yet
+        </div>
+      );
+    }
+    const fightCount = sortedData.reduce((max, entry) => {
+      const totalPredictions = Number(entry.total_predictions) || 0;
+      return Math.max(max, totalPredictions);
+    }, 0);
+    const eventCount = sortedData.reduce((max, entry) => {
+      const eventsPlayed = Number(entry.events_played) || 0;
+      return Math.max(max, eventsPlayed);
+    }, 0);
+    const metaParts = [
+      `${fightCount} Fights`,
+      ...(showEventCount && eventCount > 0 ? [`${eventCount} Events`] : [])
+    ];
 
     // Find min/max for each stat
     const corrects = sortedData.map(e => e.correct_predictions);
@@ -606,7 +712,10 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
 
     return (
       <>
-        <h2 style={sectionTitleStyle}>{title}</h2>
+        <div style={sectionHeaderStyle}>
+          <h2 style={sectionTitleStyle}>{title}</h2>
+          <div style={sectionMetaStyle}>{metaParts.join(' | ')}</div>
+        </div>
         <div style={{ width: '100%', maxWidth: 500, margin: '0 auto' }}>
           {sortedData.map((entry, index) => (
             <LeaderboardCard
@@ -730,6 +839,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
         <LeaderboardCardsList
           data={eventLeaderboard}
           title="Event Leaderboard"
+          showEventCount={false}
         />
       )}
       {selectedLeaderboard === 'season' && (

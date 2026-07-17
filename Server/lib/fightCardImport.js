@@ -87,7 +87,19 @@ const COMPLETENESS_FIELDS = [
   'TapologyMatchConfidence',
 ];
 const MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS = 2;
-const MANUAL_PREVIEW_EDIT_FIELDS = ['odds', 'style'];
+const METHOD_STAT_FIELDS = [
+  'KO_TKO_Wins',
+  'KO_TKO_Losses',
+  'Submission_Wins',
+  'Submission_Losses',
+  'Decision_Wins',
+  'Decision_Losses',
+];
+const MANUAL_PREVIEW_EDIT_FIELDS = ['odds', 'style', ...METHOD_STAT_FIELDS];
+
+for (const field of METHOD_STAT_FIELDS) {
+  INTEGER_FIELDS.add(field);
+}
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -163,8 +175,9 @@ function buildEditableFightCardPreviewRows(rows) {
     .map((row) => {
       const missingOdds = !normalizeText(row.odds);
       const missingStyle = !normalizeText(row.style);
+      const missingStats = METHOD_STAT_FIELDS.filter((field) => !normalizeText(row[field]));
 
-      if (!missingOdds && !missingStyle) {
+      if (!missingOdds && !missingStyle && missingStats.length === 0) {
         return null;
       }
 
@@ -180,9 +193,27 @@ function buildEditableFightCardPreviewRows(rows) {
         style: row.style || null,
         missingOdds,
         missingStyle,
+        missingStats,
       };
     })
     .filter(Boolean);
+}
+
+function normalizeManualPreviewFieldValue(field, value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return '';
+  }
+
+  if (!METHOD_STAT_FIELDS.includes(field)) {
+    return normalized;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return '';
+  }
+
+  return String(Number.parseInt(normalized, 10));
 }
 
 function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
@@ -205,7 +236,7 @@ function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
     let nextRow = row;
 
     for (const field of MANUAL_PREVIEW_EDIT_FIELDS) {
-      const value = normalizeText(rowUpdates[field]);
+      const value = normalizeManualPreviewFieldValue(field, rowUpdates[field]);
 
       if (!value || normalizeText(row[field])) {
         continue;
@@ -522,6 +553,19 @@ function buildFieldCompletenessSummary(rawRows, fieldCompleteness) {
   };
 }
 
+function isCachedTapologyConfidence(value) {
+  return normalizeText(value).toLowerCase().includes('cache');
+}
+
+function didLiveTapologyRefreshFail(scraperOutput) {
+  const combinedOutput = [
+    normalizeText(scraperOutput?.stdout),
+    normalizeText(scraperOutput?.stderr),
+  ].filter(Boolean).join('\n');
+
+  return /Unable to fetch Tapology|Tapology request failed|Cloudflare challenge/i.test(combinedOutput);
+}
+
 async function removePreviewAssets(scratchDir) {
   if (!scratchDir) {
     return;
@@ -615,6 +659,7 @@ async function runFightCardScraper({
   timeoutMs = 300000,
   imageDelaySeconds = '0.25',
   tapologyDelaySeconds = process.env.TAPOLOGY_DELAY_SECONDS || '1.25',
+  tapologyProfileLimit = process.env.TAPOLOGY_PREVIEW_PROFILE_LIMIT || '4',
 }) {
   const scratchDir = await fs.mkdtemp(path.join(os.tmpdir(), `fight-card-${eventId}-`));
   const scraperRoot = path.join(repoRoot, 'Server', 'scraper');
@@ -634,6 +679,8 @@ async function runFightCardScraper({
     String(imageDelaySeconds),
     '--tapology-delay-seconds',
     String(tapologyDelaySeconds),
+    '--tapology-profile-limit',
+    String(tapologyProfileLimit),
   ];
 
   return new Promise((resolve, reject) => {
@@ -709,6 +756,68 @@ async function runFightCardScraper({
       });
     });
   });
+}
+
+function summarizeTapologyRows(rows) {
+  const rawRows = rows || [];
+  const fieldCompleteness = Object.fromEntries(
+    COMPLETENESS_FIELDS.map((field) => [
+      field,
+      rawRows.reduce((count, row) => count + (normalizeText(row[field]) ? 0 : 1), 0),
+    ])
+  );
+
+  return {
+    rowCount: rawRows.length,
+    fightCount: new Set(rawRows.map((row) => normalizeText(row.FightId)).filter(Boolean)).size,
+    fieldCompleteness,
+    fieldCompletenessSummary: buildFieldCompletenessSummary(rawRows, fieldCompleteness),
+    tapologyUrlCount: rawRows.reduce(
+      (count, row) => count + (normalizeText(row.TapologyFighterURL) ? 1 : 0),
+      0
+    ),
+    tapologyProfileStatCount: rawRows.reduce(
+      (count, row) => count + (normalizeText(row.KO_TKO_Wins) ? 1 : 0),
+      0
+    ),
+  };
+}
+
+async function refreshTapologyCacheForEvent({
+  eventId,
+  repoRoot,
+  timeoutMs = 300000,
+  imageDelaySeconds = '0',
+  tapologyDelaySeconds = process.env.TAPOLOGY_DELAY_SECONDS || '1.25',
+  tapologyProfileLimit = '-1',
+}) {
+  let scraperOutput = null;
+
+  try {
+    scraperOutput = await runFightCardScraper({
+      eventId,
+      repoRoot,
+      timeoutMs,
+      imageDelaySeconds,
+      tapologyDelaySeconds,
+      tapologyProfileLimit,
+    });
+
+    const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
+    return {
+      eventId: Number(eventId),
+      csvFileName: path.basename(scraperOutput.csvPath),
+      metadata: scraperOutput.metadata,
+      headerErrors: parsedCsv.headerErrors,
+      ...summarizeTapologyRows(parsedCsv.rows),
+      scraperStdout: normalizeText(scraperOutput.stdout) || null,
+      scraperStderr: normalizeText(scraperOutput.stderr) || null,
+    };
+  } finally {
+    if (scraperOutput?.scratchDir) {
+      await removePreviewAssets(scraperOutput.scratchDir);
+    }
+  }
 }
 
 async function runEventOddsScraper({
@@ -960,6 +1069,11 @@ async function buildFightCardPreview({
     ])
   );
   const fieldCompletenessSummary = buildFieldCompletenessSummary(rawRows, fieldCompleteness);
+  const cachedTapologyRowCount = rawRows.reduce(
+    (count, row) => count + (isCachedTapologyConfidence(row.TapologyMatchConfidence) ? 1 : 0),
+    0
+  );
+  const liveTapologyRefreshFailed = didLiveTapologyRefreshFail(scraperOutput);
 
   if (
     rawRows.length >= 6 &&
@@ -979,13 +1093,33 @@ async function buildFightCardPreview({
     warnings.push(`odds is blank on ${fieldCompleteness.odds} row(s).`);
   }
 
+  if (cachedTapologyRowCount > 0) {
+    warnings.push(
+      `Using cached Tapology data for ${cachedTapologyRowCount}/${rawRows.length} row(s).`
+    );
+  }
+
+  if (liveTapologyRefreshFailed) {
+    warnings.push('Live Tapology refresh failed; preview is using cached or partial Tapology data.');
+  }
+
+  if (fieldCompletenessSummary.tapologyProfiles.missing > 0 && rawRows.length > 0) {
+    warnings.push(
+      `Tapology data is missing for ${fieldCompletenessSummary.tapologyProfiles.missing} row(s).`
+    );
+  }
+
   if (fieldCompletenessSummary.odds.populated === 0 && rawRows.length > 0) {
     warnings.push(
       `No odds were scraped for this preview (${fieldCompletenessSummary.odds.populated}/${rawRows.length}). Refresh the preview before importing if odds should already be available.`
     );
   }
 
-  if (fieldCompletenessSummary.tapologyProfiles.populated === 0 && rawRows.length > 0) {
+  if (
+    fieldCompletenessSummary.tapologyProfiles.populated === 0
+    && cachedTapologyRowCount === 0
+    && rawRows.length > 0
+  ) {
     warnings.push(
       `No Tapology fighter profiles were matched for this preview (${fieldCompletenessSummary.tapologyProfiles.populated}/${rawRows.length}). Refresh the preview before importing if Tapology data should already be available.`
     );
@@ -1058,6 +1192,7 @@ module.exports = {
   parseFightCardCsvFile,
   removePreviewAssets,
   runFightCardScraper,
+  refreshTapologyCacheForEvent,
   runEventOddsScraper,
   buildOddsRefreshPlan,
   applyManualFightCardPreviewUpdates,

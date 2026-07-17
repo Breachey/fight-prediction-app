@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const { spawn } = require('child_process');
 require('dotenv').config();
 const {
   createRequireAdminSession,
@@ -20,6 +21,19 @@ const {
   normalizeWeightclass,
 } = require('./lib/fightResponse');
 const {
+  buildRivalryRankings,
+} = require('./lib/rivalryInsights');
+const {
+  buildPropPixNotificationRecipients,
+  normalizeOutcome,
+  normalizePropPixInput,
+  normalizePropPixVote,
+} = require('./lib/propPix');
+const { createNotifications } = require('./lib/notifications');
+const {
+  runUfcEventDiscovery,
+} = require('./lib/ufcEventDiscovery');
+const {
   backfillEventImageIfMissing,
   buildOddsRefreshPlan,
   buildFightCardPreview,
@@ -30,6 +44,7 @@ const {
   parseFightCardCsvFile,
   replaceFightCardPreview,
   removePreviewAssets,
+  refreshTapologyCacheForEvent,
   runFightCardScraper,
   runEventOddsScraper,
 } = require('./lib/fightCardImport');
@@ -387,6 +402,451 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
 const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, IsTitleFight, TitleFightName';
+const ADMIN_FIGHTER_STAT_FIELDS = [
+  'TapologyFighterURL',
+  'style',
+  'Streak',
+  'KO_TKO_Wins',
+  'KO_TKO_Losses',
+  'Submission_Wins',
+  'Submission_Losses',
+  'Decision_Wins',
+  'Decision_Losses',
+];
+const ADMIN_INTEGER_FIGHTER_STAT_FIELDS = new Set(
+  ADMIN_FIGHTER_STAT_FIELDS.filter((field) => !['style', 'TapologyFighterURL', 'Streak'].includes(field))
+);
+const ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS = new Set(['Streak']);
+const FIGHTER_PROFILE_EDIT_COLUMNS = new Set(
+  ADMIN_FIGHTER_STAT_FIELDS.map(toFighterProfileColumn)
+);
+const FIGHT_CARD_STAT_SELECT = [
+  'id',
+  'FightId',
+  'FightOrder',
+  'EventId',
+  'StartTime',
+  'Corner',
+  'FighterId',
+  'MMAId',
+  'FirstName',
+  'LastName',
+  'Nickname',
+  'Record_Wins',
+  'Record_Losses',
+  'Streak',
+  'style',
+  'KO_TKO_Wins',
+  'KO_TKO_Losses',
+  'Submission_Wins',
+  'Submission_Losses',
+  'Decision_Wins',
+  'Decision_Losses',
+  'TapologyFighterURL',
+  'TapologyMatchConfidence',
+].join(',');
+
+function normalizeAdminStatValue(field, value) {
+  if (!ADMIN_FIGHTER_STAT_FIELDS.includes(field)) {
+    return { ok: false, error: `Unsupported field: ${field}` };
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return { ok: true, value: null };
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return { ok: true, value: null };
+  }
+
+  if (ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS.has(field)) {
+    if (!/^-?\d+$/.test(trimmed)) {
+      return { ok: false, error: `${field} must be a whole number` };
+    }
+
+    return { ok: true, value: Number.parseInt(trimmed, 10) };
+  }
+
+  if (!ADMIN_INTEGER_FIGHTER_STAT_FIELDS.has(field)) {
+    if (field === 'TapologyFighterURL' && trimmed && !/^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//i.test(trimmed)) {
+      return { ok: false, error: 'TapologyFighterURL must be a Tapology fighter profile URL' };
+    }
+
+    return { ok: true, value: trimmed };
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, error: `${field} must be a non-negative whole number` };
+  }
+
+  return { ok: true, value: Number.parseInt(trimmed, 10) };
+}
+
+function toFighterProfileColumn(field) {
+  return {
+    TapologyFighterURL: 'tapology_fighter_url',
+    style: 'style',
+    Streak: 'streak',
+    KO_TKO_Wins: 'ko_tko_wins',
+    KO_TKO_Losses: 'ko_tko_losses',
+    Submission_Wins: 'submission_wins',
+    Submission_Losses: 'submission_losses',
+    Decision_Wins: 'decision_wins',
+    Decision_Losses: 'decision_losses',
+  }[field];
+}
+
+function compactFighterProfilePayload(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => (
+      value !== null
+      && value !== undefined
+    ) || FIGHTER_PROFILE_EDIT_COLUMNS.has(key))
+  );
+}
+
+function compactNonNullPayload(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== null && value !== undefined)
+  );
+}
+
+function parseTapologyProfileScraperOutput(stdout) {
+  const lines = String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch (error) {
+      // Ignore non-JSON logging from proxy fallbacks.
+    }
+  }
+
+  throw new Error('Tapology scraper did not return JSON.');
+}
+
+function runTapologyFighterProfileScraper({
+  tapologyFighterUrl,
+  fighterName = '',
+  recordWins = null,
+  recordLosses = null,
+  timeoutMs = 120000,
+}) {
+  const scriptPath = path.join(REPO_ROOT, 'Server', 'scraper', 'scrape_tapology_fighter_profile.py');
+  const args = [
+    scriptPath,
+    tapologyFighterUrl,
+    '--timeout',
+    String(Math.ceil(timeoutMs / 1000)),
+  ];
+
+  if (fighterName) {
+    args.push('--fighter-name', fighterName);
+  }
+
+  if (recordWins !== null && recordWins !== undefined) {
+    args.push('--record-wins', String(recordWins));
+  }
+
+  if (recordLosses !== null && recordLosses !== undefined) {
+    args.push('--record-losses', String(recordLosses));
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('python3', args, {
+      cwd: path.join(REPO_ROOT, 'Server', 'scraper'),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeoutId);
+
+      if (timedOut) {
+        reject(new Error('Tapology fighter profile scrape timed out.'));
+        return;
+      }
+
+      if (code !== 0) {
+        let parsedError = null;
+        try {
+          parsedError = parseTapologyProfileScraperOutput(stderr);
+        } catch (error) {
+          parsedError = null;
+        }
+
+        reject(new Error(parsedError?.error || stderr.trim() || `Tapology scraper exited with code ${code}.`));
+        return;
+      }
+
+      try {
+        resolve(parseTapologyProfileScraperOutput(stdout));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function normalizeFighterNameForLookup(firstName, lastName) {
+  return [firstName, lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeFiniteInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nextFighterStreak(currentStreak, won) {
+  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
+  if (won) {
+    return baseline > 0 ? baseline + 1 : 1;
+  }
+  return baseline < 0 ? baseline - 1 : -1;
+}
+
+function undoFighterStreakResult(currentStreak, won) {
+  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
+  if (won) {
+    return baseline > 1 ? baseline - 1 : 0;
+  }
+  return baseline < -1 ? baseline + 1 : 0;
+}
+
+async function updateFighterStreaksForCompletedFight({
+  fightId,
+  winnerId,
+  previousWinnerId = null,
+}) {
+  const normalizedFightId = Number(fightId);
+  const normalizedWinnerId = Number(winnerId);
+  const normalizedPreviousWinnerId = previousWinnerId === null || previousWinnerId === undefined
+    ? null
+    : Number(previousWinnerId);
+
+  if (!Number.isFinite(normalizedFightId) || !Number.isFinite(normalizedWinnerId)) {
+    return { skipped: true, reason: 'Invalid fight or winner id', updates: [] };
+  }
+
+  const { data: fightRows, error: fightRowsError } = await supabase
+    .from('ufc_full_fight_card')
+    .select('id,FightId,EventId,StartTime,Corner,FighterId,MMAId,FirstName,LastName,Streak')
+    .eq('FightId', normalizedFightId);
+
+  if (fightRowsError) {
+    throw new Error(`Failed to load fight-card rows for streak update: ${fightRowsError.message}`);
+  }
+
+  const eligibleRows = (fightRows || []).filter((row) => Number.isFinite(Number(row.FighterId)));
+  if (eligibleRows.length === 0) {
+    return { skipped: true, reason: 'No fight-card fighter rows found', updates: [] };
+  }
+
+  const fighterIds = eligibleRows.map((row) => Number(row.FighterId));
+  const { data: fighterProfiles, error: fighterProfilesError } = await supabase
+    .from('fighters')
+    .select('fighter_id,streak')
+    .in('fighter_id', fighterIds);
+
+  if (fighterProfilesError) {
+    throw new Error(`Failed to load fighter profiles for streak update: ${fighterProfilesError.message}`);
+  }
+
+  const cachedStreakByFighterId = new Map(
+    (fighterProfiles || []).map((row) => [Number(row.fighter_id), normalizeFiniteInteger(row.streak)])
+  );
+  const nowIso = new Date().toISOString();
+  const fighterProfilePayloads = [];
+  const updates = [];
+
+  for (const row of eligibleRows) {
+    const fighterId = Number(row.FighterId);
+    const rowStreak = normalizeFiniteInteger(row.Streak);
+    const cachedStreak = cachedStreakByFighterId.get(fighterId);
+    let baselineStreak = Number.isFinite(normalizedPreviousWinnerId)
+      ? cachedStreak
+      : rowStreak;
+
+    if (baselineStreak === null || baselineStreak === undefined) {
+      baselineStreak = Number.isFinite(normalizedPreviousWinnerId)
+        ? rowStreak
+        : cachedStreak;
+    }
+    if (!Number.isFinite(baselineStreak)) {
+      baselineStreak = 0;
+    }
+
+    let adjustedBaseline = baselineStreak;
+    if (Number.isFinite(normalizedPreviousWinnerId)) {
+      adjustedBaseline = undoFighterStreakResult(
+        adjustedBaseline,
+        fighterId === normalizedPreviousWinnerId
+      );
+    }
+
+    const won = fighterId === normalizedWinnerId;
+    const nextStreak = nextFighterStreak(adjustedBaseline, won);
+    const eventId = Number(row.EventId);
+
+    fighterProfilePayloads.push(compactNonNullPayload({
+      fighter_id: fighterId,
+      mma_id: row.MMAId ?? null,
+      first_name: row.FirstName ?? null,
+      last_name: row.LastName ?? null,
+      normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
+      streak: nextStreak,
+      stats_source: 'fight_result',
+      stats_confidence: 'fight_result',
+      stats_as_of_event_id: Number.isFinite(eventId) ? eventId : null,
+      stats_as_of_event_date: typeof row.StartTime === 'string'
+        ? row.StartTime.split('T')[0]
+        : null,
+      last_success_at: nowIso,
+    }));
+
+    updates.push({
+      rowId: row.id,
+      fighterId,
+      previousStreak: baselineStreak,
+      adjustedBaseline,
+      nextStreak,
+      won,
+    });
+  }
+
+  if (fighterProfilePayloads.length > 0) {
+    const { error: fightersUpdateError } = await supabase
+      .from('fighters')
+      .upsert(fighterProfilePayloads, { onConflict: 'fighter_id' });
+
+    if (fightersUpdateError) {
+      throw new Error(`Failed to update fighters streaks: ${fightersUpdateError.message}`);
+    }
+  }
+
+  return {
+    skipped: false,
+    updatedFightCardRows: 0,
+    updatedFighters: fighterProfilePayloads.length,
+    updates,
+  };
+}
+
+async function resolveTapologyFighterUrlForStatRow(row, overrideUrl = '') {
+  if (overrideUrl) {
+    return overrideUrl;
+  }
+
+  if (row?.TapologyFighterURL) {
+    return row.TapologyFighterURL;
+  }
+
+  const fighterId = Number(row?.FighterId);
+  const normalizedName = normalizeFighterNameForLookup(row?.FirstName, row?.LastName);
+
+  let fighterProfileQuery = supabase
+    .from('fighters')
+    .select('tapology_fighter_url')
+    .limit(1);
+
+  if (Number.isFinite(fighterId)) {
+    fighterProfileQuery = fighterProfileQuery.eq('fighter_id', fighterId);
+  } else if (normalizedName) {
+    fighterProfileQuery = fighterProfileQuery.eq('normalized_name', normalizedName);
+  } else {
+    fighterProfileQuery = null;
+  }
+
+  const { data: fighterProfiles } = fighterProfileQuery
+    ? await fighterProfileQuery
+    : { data: [] };
+  const fighterProfile = Array.isArray(fighterProfiles) ? fighterProfiles[0] : fighterProfiles;
+
+  if (fighterProfile?.tapology_fighter_url) {
+    return fighterProfile.tapology_fighter_url;
+  }
+
+  let tapologyCacheQuery = supabase
+    .from('tapology_fighter_cache')
+    .select('tapology_fighter_url')
+    .limit(1);
+
+  if (Number.isFinite(fighterId)) {
+    tapologyCacheQuery = tapologyCacheQuery.eq('fighter_id', fighterId);
+  } else if (normalizedName) {
+    tapologyCacheQuery = tapologyCacheQuery.eq('normalized_name', normalizedName);
+  } else {
+    tapologyCacheQuery = null;
+  }
+
+  const { data: tapologyCacheRows } = tapologyCacheQuery
+    ? await tapologyCacheQuery
+    : { data: [] };
+  const tapologyCache = Array.isArray(tapologyCacheRows) ? tapologyCacheRows[0] : tapologyCacheRows;
+
+  return tapologyCache?.tapology_fighter_url || '';
+}
+
+function buildFightCardPatchFromTapologyProfile(row, profile) {
+  const patch = {};
+
+  for (const field of ADMIN_FIGHTER_STAT_FIELDS) {
+    const normalized = normalizeAdminStatValue(field, profile?.[field]);
+    if (!normalized.ok || normalized.value === null) {
+      continue;
+    }
+
+    const existingValue = normalizeAdminStatValue(field, row?.[field]);
+    if (!existingValue.ok || existingValue.value !== normalized.value) {
+      patch[field] = normalized.value;
+    }
+  }
+
+  return patch;
+}
+
+function parseOptionalInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function calculatePredictionPointsFromOdds(odds) {
   if (odds === undefined || odds === null) {
@@ -641,6 +1101,7 @@ async function recalculatePredictionResultsForEvent(eventId) {
 }
 
 const USERS_IDENTITY_SELECT = 'user_id, username, phone_number, user_type';
+const DEFAULT_SELECTED_PLAYERCARD_ID = 16;
 const USERS_PROFILE_SELECT = `
   username,
   user_type,
@@ -981,7 +1442,12 @@ app.post('/register', authRateLimit, async (req, res) => {
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([
-        { phone_number: phoneNumber, username: username, user_type: 'user' }
+        {
+          phone_number: phoneNumber,
+          username: username,
+          user_type: 'user',
+          selected_playercard_id: DEFAULT_SELECTED_PLAYERCARD_ID
+        }
       ])
       .select('user_id, username, phone_number, user_type')
       .single();
@@ -1762,7 +2228,32 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     }
 
     // Determine the winner's fighter_id
-    let winner_id = winner;  // Use the winner ID directly since that's what we're receiving
+    let winner_id = null;
+    if (winner !== null && winner !== undefined && winner !== '') {
+      winner_id = Number(winner);
+      if (!Number.isFinite(winner_id)) {
+        return res.status(400).json({ error: 'Invalid winner id' });
+      }
+
+      const validWinnerIds = new Set([
+        Number(redFighter.FighterId),
+        Number(blueFighter.FighterId),
+      ]);
+      if (!validWinnerIds.has(winner_id)) {
+        return res.status(400).json({ error: 'Winner must be one of the fight-card fighters' });
+      }
+    }
+
+    const { data: existingResult, error: existingResultError } = await supabase
+      .from('fight_results')
+      .select('fight_id, fighter_id, is_completed')
+      .eq('fight_id', id)
+      .maybeSingle();
+
+    if (existingResultError) {
+      console.error('Error fetching existing fight result:', existingResultError);
+      return res.status(500).json({ error: 'Failed to fetch existing fight result' });
+    }
 
     // Update fight_results table with fighter_id
     const { error: updateError } = await supabase
@@ -1780,6 +2271,37 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     if (updateError) {
       console.error('Error updating fight result:', updateError);
       return res.status(500).json({ error: 'Failed to update fight result' });
+    }
+
+    let fighterStreakSync = {
+      skipped: true,
+      reason: 'Fight result is not completed',
+      updates: [],
+    };
+    const previousWinnerId = existingResult?.is_completed && existingResult?.fighter_id !== null
+      ? Number(existingResult.fighter_id)
+      : null;
+    const sameCompletedWinner = winner_id !== null
+      && Number.isFinite(previousWinnerId)
+      && previousWinnerId === winner_id;
+
+    if (winner_id !== null && !sameCompletedWinner) {
+      try {
+        fighterStreakSync = await updateFighterStreaksForCompletedFight({
+          fightId: id,
+          winnerId: winner_id,
+          previousWinnerId,
+        });
+      } catch (fighterStreakError) {
+        console.error('Error updating fighter streaks from fight result:', fighterStreakError);
+        return res.status(500).json({ error: 'Failed to update fighter streaks' });
+      }
+    } else if (sameCompletedWinner) {
+      fighterStreakSync = {
+        skipped: true,
+        reason: 'Fight result winner was already recorded',
+        updates: [],
+      };
     }
 
     try {
@@ -1816,6 +2338,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       result: updatedResult,
       weightclassMap,
     });
+    transformedFight.fighterStreakSync = fighterStreakSync;
 
     await logAdminAction(req, {
       action: 'fight.result.set',
@@ -1828,6 +2351,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
         event_id,
         winner_id,
         is_completed: winner_id !== null,
+        fighter_streak_sync: fighterStreakSync,
       },
     });
 
@@ -1926,6 +2450,124 @@ function calculateLongestWinStreak(orderedResults) {
   return longest;
 }
 
+function compareLeaderboardEntries(a, b) {
+  return (
+    (Number(b.total_points) || 0) - (Number(a.total_points) || 0) ||
+    (Number(b.correct_predictions) || 0) - (Number(a.correct_predictions) || 0) ||
+    parseFloat(b.accuracy || 0) - parseFloat(a.accuracy || 0)
+  );
+}
+
+function normalizeEventIdValue(eventId) {
+  const numericEventId = Number(eventId);
+  return Number.isNaN(numericEventId) ? String(eventId) : numericEventId;
+}
+
+function buildRankMap(entries) {
+  const rankMap = new Map();
+  [...(entries || [])].sort(compareLeaderboardEntries).forEach((entry, index) => {
+    rankMap.set(String(entry.user_id), index + 1);
+  });
+  return rankMap;
+}
+
+function buildPointChangeMap(results, referenceEventId) {
+  const pointChangeMap = new Map();
+  if (!referenceEventId) {
+    return pointChangeMap;
+  }
+
+  const referenceEventIdStr = String(referenceEventId);
+  (results || []).forEach(result => {
+    if (String(result.event_id) !== referenceEventIdStr) {
+      return;
+    }
+    const userIdStr = String(result.user_id);
+    pointChangeMap.set(userIdStr, (pointChangeMap.get(userIdStr) || 0) + (Number(result.points) || 0));
+  });
+  return pointChangeMap;
+}
+
+function buildLeaderboardFromResults(results, userCache) {
+  const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+  const userStats = {};
+
+  (results || []).forEach(result => {
+    const userIdStr = String(result.user_id);
+    if (!userStats[userIdStr]) {
+      userStats[userIdStr] = {
+        user_id: userIdStr,
+        username: userIdToUsername.get(userIdStr) || 'Unknown',
+        is_bot: userIdToIsBot.get(userIdStr) || false,
+        playercard: userIdToPlayercard.get(userIdStr) || null,
+        total_predictions: 0,
+        correct_predictions: 0,
+        total_points: 0,
+        event_ids: new Set()
+      };
+    }
+    userStats[userIdStr].total_predictions++;
+    userStats[userIdStr].event_ids.add(String(result.event_id));
+    if (result.predicted_correctly) {
+      userStats[userIdStr].correct_predictions++;
+    }
+    userStats[userIdStr].total_points += (Number(result.points) || 0);
+  });
+
+  return Object.values(userStats)
+    .map(user => {
+      const { event_ids, ...entry } = user;
+      return {
+        ...entry,
+        events_played: event_ids?.size || 0,
+        accuracy: user.total_predictions > 0
+          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
+          : '0.00',
+        total_points: user.total_points,
+      };
+    })
+    .sort(compareLeaderboardEntries);
+}
+
+function addLeaderboardDeltas(leaderboard, baselineLeaderboard, referenceResults, referenceEventId) {
+  const currentRankMap = buildRankMap(leaderboard);
+  const baselineRankMap = buildRankMap(baselineLeaderboard);
+  const pointChangeMap = buildPointChangeMap(referenceResults, referenceEventId);
+  const fallbackBaselineRank = (baselineLeaderboard || []).length + 1;
+
+  return (leaderboard || []).map(entry => {
+    const userIdStr = String(entry.user_id);
+    const currentRank = currentRankMap.get(userIdStr);
+    const baselineRank = baselineRankMap.get(userIdStr) || fallbackBaselineRank;
+    const pointsChange = pointChangeMap.get(userIdStr) || 0;
+    return {
+      ...entry,
+      rank_change: pointsChange !== 0 && currentRank ? baselineRank - currentRank : 0,
+      points_change: pointsChange
+    };
+  });
+}
+
+function determineReferenceEventId(events, results, requestedEventId) {
+  const resultEventIds = new Set((results || []).map(result => String(result.event_id)));
+
+  if (requestedEventId && resultEventIds.has(String(requestedEventId))) {
+    return normalizeEventIdValue(requestedEventId);
+  }
+
+  const eventsWithResults = (events || [])
+    .filter(event => resultEventIds.has(String(event.id)))
+    .sort((a, b) => {
+      const aTime = a.date ? Date.parse(a.date) : Number.NEGATIVE_INFINITY;
+      const bTime = b.date ? Date.parse(b.date) : Number.NEGATIVE_INFINITY;
+      return bTime - aTime;
+    });
+
+  return eventsWithResults.length > 0
+    ? normalizeEventIdValue(eventsWithResults[0].id)
+    : null;
+}
+
 /**
  * Fetches all users along with their playercard metadata and returns lookup maps.
  */
@@ -1971,8 +2613,7 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     throw new Error('eventId is required to build leaderboard');
   }
 
-  const numericEventId = Number(eventId);
-  const eventIdFilter = Number.isNaN(numericEventId) ? eventId : numericEventId;
+  const eventIdFilter = normalizeEventIdValue(eventId);
   const effectiveUserCache = userCache || await fetchUsersWithPlayercards();
   const userIds = buildUserIdList(effectiveUserCache.users);
 
@@ -1993,29 +2634,6 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
       .select('user_id, predicted_correctly, created_at')
       .in('user_id', userIds)
   );
-  const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = effectiveUserCache;
-
-  const userStats = {};
-  (eventResults || []).forEach(result => {
-    const userIdStr = String(result.user_id);
-    if (!userStats[userIdStr]) {
-      userStats[userIdStr] = {
-        user_id: userIdStr,
-        username: userIdToUsername.get(userIdStr) || 'Unknown',
-        is_bot: userIdToIsBot.get(userIdStr) || false,
-        playercard: userIdToPlayercard.get(userIdStr) || null,
-        total_predictions: 0,
-        correct_predictions: 0,
-        total_points: 0
-      };
-    }
-    userStats[userIdStr].total_predictions++;
-    if (result.predicted_correctly) {
-      userStats[userIdStr].correct_predictions++;
-    }
-    userStats[userIdStr].total_points += (result.points || 0);
-  });
-
   // Group all-time results by user for streak calculation
   const allTimeUserResultsMap = {};
   (effectiveAllTimeResults || []).forEach(result => {
@@ -2026,23 +2644,44 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     allTimeUserResultsMap[userIdStr].push(result);
   });
 
-  Object.keys(userStats).forEach(userIdStr => {
-    const userResults = allTimeUserResultsMap[userIdStr];
-    userStats[userIdStr].streak = calculateUserStreak(userResults);
-  });
+  let leaderboard = buildLeaderboardFromResults(eventResults, effectiveUserCache);
+  leaderboard = leaderboard.map(entry => ({
+    ...entry,
+    streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
+  }));
 
-  const leaderboard = Object.values(userStats)
-    .map(user => ({
-      ...user,
-      accuracy: user.total_predictions > 0
-        ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-        : '0.00'
-    }))
-    .sort((a, b) =>
-      b.total_points - a.total_points ||
-      b.correct_predictions - a.correct_predictions ||
-      parseFloat(b.accuracy) - parseFloat(a.accuracy)
-    );
+  const eventRecords = await fetchAllFromSupabase(
+    supabase
+      .from('events')
+      .select('id, date')
+      .eq('id', eventIdFilter)
+      .limit(1)
+  );
+  const eventYear = eventRecords?.[0]?.date
+    ? new Date(eventRecords[0].date).getFullYear()
+    : new Date().getFullYear();
+  const seasonStart = `${eventYear}-01-01`;
+  const nextSeasonStart = `${eventYear + 1}-01-01`;
+  const seasonEvents = await fetchAllFromSupabase(
+    supabase
+      .from('events')
+      .select('id, date')
+      .gte('date', seasonStart)
+      .lt('date', nextSeasonStart)
+  );
+  const seasonEventIds = new Set((seasonEvents || []).map(event => String(event.id)));
+  const seasonResults = await fetchAllFromSupabase(
+    supabase
+      .from('prediction_results')
+      .select('user_id, event_id, predicted_correctly, points')
+      .in('user_id', userIds)
+  );
+  const scopedSeasonResults = (seasonResults || []).filter(result => seasonEventIds.has(String(result.event_id)));
+  const baselineLeaderboard = buildLeaderboardFromResults(
+    scopedSeasonResults.filter(result => String(result.event_id) !== String(eventIdFilter)),
+    effectiveUserCache
+  );
+  leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, eventResults, eventIdFilter);
 
   const winners = determineEventWinners(leaderboard);
 
@@ -2231,7 +2870,7 @@ app.get('/leaderboard', async (req, res) => {
     // Get all prediction results using the pagination helper
     const resultsQuery = supabase
       .from('prediction_results')
-      .select('user_id, predicted_correctly, points, created_at')
+      .select('user_id, event_id, predicted_correctly, points, created_at')
       .in('user_id', userIds);
     const results = await fetchAllFromSupabase(resultsQuery);
 
@@ -2260,10 +2899,12 @@ app.get('/leaderboard', async (req, res) => {
           playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
-          total_points: 0
+          total_points: 0,
+          event_ids: new Set()
         };
       }
       userStats[userIdStr].total_predictions++;
+      userStats[userIdStr].event_ids.add(String(result.event_id));
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
       }
@@ -2292,11 +2933,15 @@ app.get('/leaderboard', async (req, res) => {
 
     // Convert to array and sort to get rankings
     let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points,
-      }))
+      .map(user => {
+        const { event_ids, ...entry } = user;
+        return {
+          ...entry,
+          events_played: event_ids?.size || 0,
+          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+          total_points: user.total_points,
+        };
+      })
       .sort((a, b) =>
         b.total_points - a.total_points ||
         b.correct_predictions - a.correct_predictions ||
@@ -2381,10 +3026,12 @@ app.get('/leaderboard/2025', async (req, res) => {
           playercard: userIdToPlayercard.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
-          total_points: 0
+          total_points: 0,
+          event_ids: new Set()
         };
       }
       userStats[userIdStr].total_predictions++;
+      userStats[userIdStr].event_ids.add(String(result.event_id));
       if (result.predicted_correctly) {
         userStats[userIdStr].correct_predictions++;
       }
@@ -2399,11 +3046,15 @@ app.get('/leaderboard/2025', async (req, res) => {
 
     // Convert to array and calculate accuracy
     let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points,
-      }))
+      .map(user => {
+        const { event_ids, ...entry } = user;
+        return {
+          ...entry,
+          events_played: event_ids?.size || 0,
+          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+          total_points: user.total_points,
+        };
+      })
       .sort((a, b) =>
         b.total_points - a.total_points ||
         b.correct_predictions - a.correct_predictions ||
@@ -2451,11 +3102,11 @@ app.get('/leaderboard/season', async (req, res) => {
     // Get all events from current year
     const seasonEventsQuery = supabase
       .from('events')
-      .select('id')
+      .select('id, date')
       .gte('date', seasonStart)
       .lt('date', nextSeasonStart);
     const seasonEvents = await fetchAllFromSupabase(seasonEventsQuery);
-    const seasonEventIds = new Set((seasonEvents || []).map(e => Number(e.id)));
+    const seasonEventIds = new Set((seasonEvents || []).map(e => String(e.id)));
 
     // Get all prediction results for current year events
     const allResultsQuery = supabase
@@ -2466,8 +3117,7 @@ app.get('/leaderboard/season', async (req, res) => {
     
     // Filter results to only current year events
     const results = (allResults || []).filter(result => {
-      const eventId = Number(result.event_id);
-      return seasonEventIds.has(eventId);
+      return seasonEventIds.has(String(result.event_id));
     });
 
     // Get all-time prediction results for streak calculation (streaks continue from past)
@@ -2477,9 +3127,6 @@ app.get('/leaderboard/season', async (req, res) => {
         .select('user_id, predicted_correctly, created_at')
         .in('user_id', userIds)
     );
-
-    // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -2491,48 +3138,24 @@ app.get('/leaderboard/season', async (req, res) => {
       allTimeUserResultsMap[userIdStr].push(result);
     });
 
-    // Process the results to create the leaderboard
-    const userStats = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: userIdToUsername.get(userIdStr) || 'Unknown',
-          is_bot: userIdToIsBot.get(userIdStr) || false,
-          playercard: userIdToPlayercard.get(userIdStr) || null,
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Calculate all-time streak for each user
-    Object.keys(userStats).forEach(userIdStr => {
-      const allTimeUserResults = allTimeUserResultsMap[userIdStr] || [];
-      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
-    });
+    const requestedReferenceEventId = req.query.reference_event_id
+      ? normalizeEventIdValue(req.query.reference_event_id)
+      : null;
+    const referenceEventId = determineReferenceEventId(seasonEvents, results, requestedReferenceEventId);
 
     // Convert to array and calculate accuracy
-    let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: user.total_predictions > 0 
-          ? ((user.correct_predictions / user.total_predictions) * 100).toFixed(2)
-          : '0.00',
-        total_points: user.total_points,
-      }))
-      .sort((a, b) =>
-        b.total_points - a.total_points ||
-        b.correct_predictions - a.correct_predictions ||
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      );
+    let leaderboard = buildLeaderboardFromResults(results, userCache)
+      .map(entry => ({
+        ...entry,
+        streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
+      }));
+    const baselineLeaderboard = referenceEventId
+      ? buildLeaderboardFromResults(
+        results.filter(result => String(result.event_id) !== String(referenceEventId)),
+        userCache
+      )
+      : [];
+    leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, results, referenceEventId);
 
     const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
     const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
@@ -2729,6 +3352,62 @@ app.get('/events', async (req, res) => {
       error: 'Internal server error',
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+app.post('/admin/events/discover-ufc', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const result = await runUfcEventDiscovery({
+      repoRoot: REPO_ROOT,
+      startId: req.body?.startId,
+      endId: req.body?.endId,
+      maxIds: req.body?.maxIds,
+      stopAfterMisses: req.body?.stopAfterMisses,
+      delaySeconds: req.body?.delaySeconds,
+      tapologyDelaySeconds: req.body?.tapologyDelaySeconds,
+      timeoutSeconds: req.body?.timeoutSeconds,
+    });
+
+    await logAdminAction(req, {
+      action: 'events.discover_ufc',
+      status: 'success',
+      targetType: 'events',
+      targetId: null,
+      eventId: null,
+      metadata: {
+        startId: result.startId,
+        endId: result.endId,
+        scanned: result.scanned,
+        apiEventsFound: result.api_events_found,
+        eligibleEventsFound: result.eligible_events_found,
+        filteredEvents: result.filtered_events,
+        insertedCount: result.insertedCount,
+        updatedCount: result.updatedCount,
+        unchangedCount: result.unchangedCount,
+        posterCount: result.posterCount,
+        posterErrorCount: result.posterErrors?.length || 0,
+      },
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error discovering UFC events:', error);
+    await logAdminAction(req, {
+      action: 'events.discover_ufc',
+      status: 'error',
+      targetType: 'events',
+      targetId: null,
+      eventId: null,
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to discover UFC events',
+      details: error.message,
     });
   }
 });
@@ -2953,6 +3632,449 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
     });
     return res.status(500).json({
       error: 'Failed to build fight-card preview',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/tapology-cache/refresh', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const result = await refreshTapologyCacheForEvent({
+      eventId,
+      repoRoot: REPO_ROOT,
+    });
+
+    const status = result.headerErrors?.length > 0 ? 'error' : 'success';
+    await logAdminAction(req, {
+      action: 'tapology_cache.refresh',
+      status,
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowCount: result.rowCount,
+        fightCount: result.fightCount,
+        tapologyUrlCount: result.tapologyUrlCount,
+        tapologyProfileStatCount: result.tapologyProfileStatCount,
+        headerErrors: result.headerErrors,
+        csvFileName: result.csvFileName,
+      },
+    });
+
+    if (result.headerErrors?.length > 0) {
+      return res.status(500).json({
+        error: 'Tapology cache refresh generated an invalid CSV',
+        ...result,
+      });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error refreshing Tapology cache:', error);
+    await logAdminAction(req, {
+      action: 'tapology_cache.refresh',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to refresh Tapology cache',
+      details: error.message,
+    });
+  }
+});
+
+app.get('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const { data: rows, error } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .order('FightOrder', { ascending: true })
+      .order('Corner', { ascending: false });
+
+    if (error) {
+      console.error('Error loading fight-card stat rows:', error);
+      return res.status(500).json({ error: 'Failed to load fight-card stat rows' });
+    }
+
+    return res.json({
+      eventId,
+      rows: rows || [],
+      editableFields: ADMIN_FIGHTER_STAT_FIELDS,
+    });
+  } catch (error) {
+    console.error('Error loading fight-card stat rows:', error);
+    return res.status(500).json({
+      error: 'Failed to load fight-card stat rows',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    const rowId = Number(req.params.rowId);
+    if (Number.isNaN(eventId) || Number.isNaN(rowId)) {
+      return res.status(400).json({ error: 'Invalid event id or row id' });
+    }
+
+    const { data: row, error: rowError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .eq('id', rowId)
+      .maybeSingle();
+
+    if (rowError) {
+      console.error('Error loading fight-card row for Tapology scrape:', rowError);
+      return res.status(500).json({ error: 'Failed to load fight-card row' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: `Fight-card row ${rowId} was not found for event ${eventId}` });
+    }
+
+    const requestedTapologyUrl = normalizeAdminStatValue(
+      'TapologyFighterURL',
+      req.body?.tapologyFighterUrl
+    );
+    if (!requestedTapologyUrl.ok) {
+      return res.status(400).json({ error: requestedTapologyUrl.error });
+    }
+
+    const tapologyFighterUrl = await resolveTapologyFighterUrlForStatRow(
+      row,
+      requestedTapologyUrl.value || ''
+    );
+    if (!tapologyFighterUrl) {
+      return res.status(409).json({
+        error: 'No Tapology fighter URL is available for this fighter yet.',
+        details: 'Paste the Tapology fighter profile URL into this row, then click Scrape Tapology again.',
+      });
+    }
+
+    const scrapeResult = await runTapologyFighterProfileScraper({
+      tapologyFighterUrl,
+      fighterName: [row.FirstName, row.LastName].filter(Boolean).join(' '),
+      recordWins: row.Record_Wins,
+      recordLosses: row.Record_Losses,
+      timeoutMs: 120000,
+    });
+
+    const profile = scrapeResult?.profile || {};
+    const statsSource = scrapeResult?.source || 'tapology_single_profile';
+    const statsConfidence = statsSource === 'tapology_single_profile'
+      ? 'single-profile-scrape'
+      : 'validated-wikipedia-fallback';
+    const patch = buildFightCardPatchFromTapologyProfile(row, profile);
+    const fightCardPatch = {
+      ...patch,
+      TapologyFighterURL: row.TapologyFighterURL || tapologyFighterUrl,
+      TapologyMatchConfidence: statsConfidence,
+    };
+
+    if (Object.keys(fightCardPatch).length > 0) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update(fightCardPatch)
+        .eq('EventId', eventId)
+        .eq('id', rowId);
+
+      if (updateError) {
+        throw new Error(`Failed to update fight-card row ${rowId}: ${updateError.message}`);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const fighterId = Number(row.FighterId);
+    const baseProfilePayload = {
+      fighter_id: Number.isFinite(fighterId) ? fighterId : null,
+      mma_id: row.MMAId ?? null,
+      first_name: row.FirstName ?? null,
+      last_name: row.LastName ?? null,
+      normalized_name: [row.FirstName, row.LastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ') || null,
+      tapology_fighter_url: tapologyFighterUrl,
+      rank: parseOptionalInteger(profile.Rank),
+      streak: parseOptionalInteger(profile.Streak),
+      style: normalizeAdminStatValue('style', profile.style).value,
+      ko_tko_wins: normalizeAdminStatValue('KO_TKO_Wins', profile.KO_TKO_Wins).value,
+      ko_tko_losses: normalizeAdminStatValue('KO_TKO_Losses', profile.KO_TKO_Losses).value,
+      submission_wins: normalizeAdminStatValue('Submission_Wins', profile.Submission_Wins).value,
+      submission_losses: normalizeAdminStatValue('Submission_Losses', profile.Submission_Losses).value,
+      decision_wins: normalizeAdminStatValue('Decision_Wins', profile.Decision_Wins).value,
+      decision_losses: normalizeAdminStatValue('Decision_Losses', profile.Decision_Losses).value,
+      last_success_at: nowIso,
+      last_failure_at: null,
+      last_error: null,
+    };
+
+    if (baseProfilePayload.fighter_id) {
+      const fightersPayload = compactNonNullPayload({
+        ...baseProfilePayload,
+        stats_source: statsSource,
+        stats_confidence: statsConfidence,
+        stats_as_of_event_id: eventId,
+        stats_as_of_event_date: typeof row.StartTime === 'string'
+          ? row.StartTime.split('T')[0]
+          : null,
+      });
+
+      const { error: fightersError } = await supabase
+        .from('fighters')
+        .upsert([fightersPayload], { onConflict: 'fighter_id' });
+
+      if (fightersError) {
+        throw new Error(`Failed to update fighters table: ${fightersError.message}`);
+      }
+
+      const tapologyCachePayload = compactNonNullPayload({
+        ...baseProfilePayload,
+        source: statsSource,
+        match_confidence: statsConfidence,
+      });
+
+      const { error: tapologyCacheError } = await supabase
+        .from('tapology_fighter_cache')
+        .upsert([tapologyCachePayload], { onConflict: 'fighter_id' });
+
+      if (tapologyCacheError) {
+        console.error('Tapology fighter cache update skipped:', tapologyCacheError);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.scrape_tapology_fighter',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowId,
+        fighterId: row.FighterId,
+        tapologyFighterUrl,
+        statsSource,
+        updatedFields: Object.keys(patch),
+      },
+    });
+
+    return res.json({
+      eventId,
+      rowId,
+      fighterId: row.FighterId,
+      tapologyFighterUrl,
+      statsSource,
+      wikipediaTitle: scrapeResult?.wikipedia_title || null,
+      tapologyBlocked: Boolean(scrapeResult?.tapology_error),
+      updatedFields: Object.keys(patch),
+      profile,
+    });
+  } catch (error) {
+    console.error('Error scraping Tapology fighter stats:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.scrape_tapology_fighter',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        rowId: Number(req.params.rowId),
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to scrape Tapology fighter stats',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    if (Number.isNaN(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+    if (updates.length === 0) {
+      return res.json({
+        eventId,
+        updatedFightCardRows: 0,
+        updatedFighters: 0,
+      });
+    }
+
+    const rowIds = updates
+      .map((update) => Number(update?.id))
+      .filter((id) => Number.isFinite(id));
+    if (rowIds.length !== updates.length) {
+      return res.status(400).json({ error: 'Each update must include a valid fight-card row id' });
+    }
+
+    const { data: existingRows, error: existingRowsError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .in('id', rowIds);
+
+    if (existingRowsError) {
+      console.error('Error loading fight-card rows for stat update:', existingRowsError);
+      return res.status(500).json({ error: 'Failed to load fight-card rows for update' });
+    }
+
+    const existingById = new Map((existingRows || []).map((row) => [Number(row.id), row]));
+    const normalizedUpdates = [];
+
+    for (const update of updates) {
+      const rowId = Number(update.id);
+      const existingRow = existingById.get(rowId);
+      if (!existingRow) {
+        return res.status(404).json({ error: `Fight-card row ${rowId} was not found for event ${eventId}` });
+      }
+
+      const patch = {};
+      const values = update.values && typeof update.values === 'object' ? update.values : {};
+      for (const [field, rawValue] of Object.entries(values)) {
+        const normalized = normalizeAdminStatValue(field, rawValue);
+        if (!normalized.ok) {
+          return res.status(400).json({ error: normalized.error });
+        }
+        patch[field] = normalized.value;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        continue;
+      }
+
+      normalizedUpdates.push({
+        rowId,
+        existingRow,
+        patch,
+      });
+    }
+
+    let updatedFightCardRows = 0;
+    const fighterProfilePayloadById = new Map();
+    const nowIso = new Date().toISOString();
+
+    for (const update of normalizedUpdates) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update(update.patch)
+        .eq('id', update.rowId)
+        .eq('EventId', eventId);
+
+      if (updateError) {
+        throw new Error(`Failed to update fight-card row ${update.rowId}: ${updateError.message}`);
+      }
+
+      updatedFightCardRows += 1;
+
+      const fighterId = Number(update.existingRow.FighterId);
+      if (!Number.isFinite(fighterId)) {
+        continue;
+      }
+
+      const payload = fighterProfilePayloadById.get(fighterId) || {
+        fighter_id: fighterId,
+        mma_id: update.existingRow.MMAId ?? null,
+        first_name: update.existingRow.FirstName ?? null,
+        last_name: update.existingRow.LastName ?? null,
+        normalized_name: [update.existingRow.FirstName, update.existingRow.LastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ') || null,
+        stats_source: 'manual_admin',
+        stats_confidence: 'manual_admin',
+        stats_as_of_event_id: eventId,
+        stats_as_of_event_date: typeof update.existingRow.StartTime === 'string'
+          ? update.existingRow.StartTime.split('T')[0]
+          : null,
+        last_success_at: nowIso,
+      };
+
+      for (const [field, value] of Object.entries(update.patch)) {
+        payload[toFighterProfileColumn(field)] = value;
+      }
+
+      fighterProfilePayloadById.set(fighterId, payload);
+    }
+
+    const fighterProfilePayloads = Array.from(fighterProfilePayloadById.values())
+      .map(compactFighterProfilePayload);
+    if (fighterProfilePayloads.length > 0) {
+      const { error: fighterUpdateError } = await supabase
+        .from('fighters')
+        .upsert(fighterProfilePayloads, { onConflict: 'fighter_id' });
+
+      if (fighterUpdateError) {
+        throw new Error(`Failed to update fighters table: ${fighterUpdateError.message}`);
+      }
+    }
+
+    await logAdminAction(req, {
+      action: 'fight_card.update_stats',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        updatedFightCardRows,
+        updatedFighters: fighterProfilePayloads.length,
+        requestedUpdates: updates.length,
+      },
+    });
+
+    return res.json({
+      eventId,
+      updatedFightCardRows,
+      updatedFighters: fighterProfilePayloads.length,
+    });
+  } catch (error) {
+    console.error('Error updating fight-card stats:', error);
+    await logAdminAction(req, {
+      action: 'fight_card.update_stats',
+      status: 'error',
+      targetType: 'event',
+      targetId: req.params.id,
+      eventId: Number(req.params.id),
+      metadata: {
+        message: error.message,
+      },
+    });
+    return res.status(500).json({
+      error: 'Failed to update fight-card stats',
       details: error.message,
     });
   }
@@ -3367,6 +4489,647 @@ app.get('/events/:id/vote-counts', async (req, res) => {
   } catch (error) {
     console.error('Error fetching event vote counts:', error);
     res.status(500).json({ error: 'Failed to fetch event vote counts' });
+  }
+});
+
+async function getPropPixBetById(propPixId) {
+  const normalizedId = normalizeUserId(propPixId);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('prop_bets')
+    .select('id, event_id, creator_user_id, question, response_type, wager_label, status, outcome_text, closed_at, created_at, updated_at')
+    .eq('id', normalizedId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function getPropPixEventData(eventId, currentUserId = null) {
+  const normalizedEventId = normalizeUserId(eventId);
+  if (!normalizedEventId) {
+    return [];
+  }
+
+  const { data: bets, error: betsError } = await supabase
+    .from('prop_bets')
+    .select('id, event_id, creator_user_id, question, response_type, wager_label, status, outcome_text, closed_at, created_at, updated_at')
+    .eq('event_id', normalizedEventId)
+    .order('created_at', { ascending: false });
+
+  if (betsError) {
+    throw betsError;
+  }
+
+  if (!bets || bets.length === 0) {
+    return [];
+  }
+
+  const betIds = bets.map((bet) => bet.id);
+  const [
+    { data: options, error: optionsError },
+    { data: votes, error: votesError },
+    { data: claims, error: claimsError },
+    { data: results, error: resultsError },
+  ] = await Promise.all([
+    supabase
+      .from('prop_bet_options')
+      .select('id, prop_bet_id, label, sort_order')
+      .in('prop_bet_id', betIds)
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('prop_bet_votes')
+      .select('id, prop_bet_id, user_id, option_id, response_text, created_at, updated_at')
+      .in('prop_bet_id', betIds)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('prop_bet_claims')
+      .select('id, prop_bet_id, claimant_user_id, outcome_text, status, confirming_user_id, created_at, confirmed_at')
+      .in('prop_bet_id', betIds)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('prop_bet_results')
+      .select('id, prop_bet_id, user_id, vote_text, outcome_text, is_correct, wager_label, settled_at')
+      .in('prop_bet_id', betIds)
+      .order('settled_at', { ascending: true }),
+  ]);
+
+  if (optionsError) throw optionsError;
+  if (votesError) throw votesError;
+  if (claimsError) throw claimsError;
+  if (resultsError) throw resultsError;
+
+  const userIds = [...new Set([
+    ...bets.map((bet) => bet.creator_user_id),
+    ...(votes || []).map((vote) => vote.user_id),
+    ...(claims || []).flatMap((claim) => [claim.claimant_user_id, claim.confirming_user_id]),
+  ].filter((userId) => userId !== null && userId !== undefined))];
+  const usersById = new Map();
+
+  if (userIds.length > 0) {
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('user_id, username')
+      .in('user_id', userIds);
+
+    if (usersError) throw usersError;
+    (users || []).forEach((user) => usersById.set(String(user.user_id), user));
+  }
+
+  const optionsByBet = new Map();
+  (options || []).forEach((option) => {
+    if (!optionsByBet.has(option.prop_bet_id)) optionsByBet.set(option.prop_bet_id, []);
+    optionsByBet.get(option.prop_bet_id).push(option);
+  });
+  const votesByBet = new Map();
+  (votes || []).forEach((vote) => {
+    if (!votesByBet.has(vote.prop_bet_id)) votesByBet.set(vote.prop_bet_id, []);
+    votesByBet.get(vote.prop_bet_id).push({
+      ...vote,
+      username: usersById.get(String(vote.user_id))?.username || 'Unknown user',
+    });
+  });
+  const claimsByBet = new Map();
+  (claims || []).forEach((claim) => {
+    if (!claimsByBet.has(claim.prop_bet_id)) claimsByBet.set(claim.prop_bet_id, []);
+    claimsByBet.get(claim.prop_bet_id).push({
+      ...claim,
+      claimant_username: usersById.get(String(claim.claimant_user_id))?.username || 'Unknown user',
+      confirming_username: claim.confirming_user_id
+        ? usersById.get(String(claim.confirming_user_id))?.username || 'Unknown user'
+        : null,
+    });
+  });
+  const resultsByBet = new Map();
+  (results || []).forEach((result) => {
+    if (!resultsByBet.has(result.prop_bet_id)) resultsByBet.set(result.prop_bet_id, []);
+    resultsByBet.get(result.prop_bet_id).push({
+      ...result,
+      username: usersById.get(String(result.user_id))?.username || 'Unknown user',
+    });
+  });
+
+  return bets.map((bet) => {
+    const betVotes = votesByBet.get(bet.id) || [];
+    const betClaims = claimsByBet.get(bet.id) || [];
+    const betResults = resultsByBet.get(bet.id) || [];
+    const currentVote = currentUserId
+      ? betVotes.find((vote) => String(vote.user_id) === String(currentUserId)) || null
+      : null;
+    const currentResult = currentUserId
+      ? betResults.find((result) => String(result.user_id) === String(currentUserId)) || null
+      : null;
+
+    return {
+      ...bet,
+      creator_username: usersById.get(String(bet.creator_user_id))?.username || 'Unknown user',
+      options: optionsByBet.get(bet.id) || [],
+      votes: currentVote ? betVotes : [],
+      claims: betClaims,
+      results: currentVote ? betResults : [],
+      my_result: currentResult,
+      my_vote: currentVote,
+      participant_count: betVotes.length,
+    };
+  });
+}
+
+async function getPropPixUser(userId) {
+  const normalizedUserId = normalizeUserId(userId);
+  if (!normalizedUserId) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('user_id, username, is_bot')
+    .eq('user_id', normalizedUserId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+function getPropPixErrorStatus(error) {
+  if (error?.code === '23505' || String(error?.message || '').toLowerCase().includes('no longer pending')) {
+    return 409;
+  }
+  if (error?.code === '23503' || error?.code === '23514') {
+    return 400;
+  }
+  return 500;
+}
+
+async function getPropPixParticipants(propPixId) {
+  const { data, error } = await supabase
+    .from('prop_bet_votes')
+    .select('user_id')
+    .eq('prop_bet_id', propPixId);
+
+  if (error) throw error;
+  return (data || []).map((vote) => vote.user_id);
+}
+
+async function notifyPropPixResults({ propPixId, bet, claimId, actorUserId, closedByAdmin = false }) {
+  const { data: results, error: resultsError } = await supabase
+    .from('prop_bet_results')
+    .select('id, user_id, vote_text, outcome_text, is_correct, wager_label')
+    .eq('prop_bet_id', propPixId)
+    .order('settled_at', { ascending: true });
+
+  if (resultsError) throw resultsError;
+  if (!results || results.length === 0) return [];
+
+  const rows = results.map((result) => ({
+    recipient_user_id: result.user_id,
+    actor_user_id: actorUserId,
+    notification_type: 'prop_pix_result',
+    entity_type: 'prop_bet',
+    entity_id: propPixId,
+    title: result.is_correct ? 'Prop Pix win' : 'Prop Pix wager owed',
+    body: result.is_correct
+      ? `You got it right: ${bet.question} resolved as ${result.outcome_text}.`
+      : `You owe ${result.wager_label}: ${bet.question} resolved as ${result.outcome_text}, not ${result.vote_text}.`,
+    payload: {
+      prop_bet_id: propPixId,
+      result_id: result.id,
+      claim_id: claimId,
+      vote_text: result.vote_text,
+      outcome_text: result.outcome_text,
+      wager_label: result.wager_label,
+      is_correct: result.is_correct,
+      closed_by_admin: closedByAdmin,
+    },
+  }));
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert(rows)
+    .select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// Prop Pix is deliberately separate from fight predictions and has no scoring path.
+app.get('/events/:id/prop-pix', async (req, res) => {
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.query.user_id);
+    if (!eventId) return res.status(400).json({ error: 'Event ID must be a valid integer' });
+
+    res.set('Cache-Control', 'no-store');
+    res.json(await getPropPixEventData(eventId, currentUserId));
+  } catch (error) {
+    console.error('Error fetching Prop Pix bets:', error);
+    res.status(500).json({ error: 'Failed to fetch Prop Pix bets' });
+  }
+});
+
+app.post('/events/:id/prop-pix', async (req, res) => {
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const creatorUserId = normalizeUserId(req.body?.user_id || req.body?.creator_user_id);
+    if (!eventId || !creatorUserId) return res.status(400).json({ error: 'Event ID and user ID are required' });
+
+    const user = await getPropPixUser(creatorUserId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot create Prop Pix bets' });
+
+    const normalized = normalizePropPixInput(req.body);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const { data: bet, error: betError } = await supabase
+      .from('prop_bets')
+      .insert({
+        event_id: eventId,
+        creator_user_id: creatorUserId,
+        question: normalized.value.question,
+        response_type: normalized.value.responseType,
+        wager_label: normalized.value.wagerLabel,
+      })
+      .select('*')
+      .single();
+    if (betError) throw betError;
+
+    if (normalized.value.responseType === 'options') {
+      const { error: optionsError } = await supabase
+        .from('prop_bet_options')
+        .insert(normalized.value.options.map((label, index) => ({
+          prop_bet_id: bet.id,
+          label,
+          sort_order: index,
+        })));
+
+      if (optionsError) {
+        await supabase.from('prop_bets').delete().eq('id', bet.id);
+        throw optionsError;
+      }
+    }
+
+    res.status(201).json((await getPropPixEventData(eventId, creatorUserId)).find((row) => row.id === bet.id));
+  } catch (error) {
+    console.error('Error creating Prop Pix bet:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to create Prop Pix bet' });
+  }
+});
+
+app.post('/prop-pix/:id/vote', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot vote on Prop Pix bets' });
+    if (bet.status !== 'open') return res.status(409).json({ error: 'This Prop Pix bet is no longer accepting votes' });
+
+    const { data: existingVote, error: existingVoteError } = await supabase
+      .from('prop_bet_votes')
+      .select('id')
+      .eq('prop_bet_id', propPixId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingVoteError) throw existingVoteError;
+    if (existingVote) return res.status(409).json({ error: 'Your vote is already locked in for this Prop Pix bet' });
+
+    const normalized = normalizePropPixVote(req.body, bet.response_type);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+
+    let optionId = normalized.value.optionId;
+    if (bet.response_type === 'options') {
+      const { data: option, error: optionError } = await supabase
+        .from('prop_bet_options')
+        .select('id')
+        .eq('id', optionId)
+        .eq('prop_bet_id', propPixId)
+        .maybeSingle();
+      if (optionError) throw optionError;
+      if (!option) return res.status(400).json({ error: 'That option is not part of this Prop Pix bet' });
+    } else {
+      optionId = null;
+    }
+
+    const { data: vote, error: voteError } = await supabase
+      .from('prop_bet_votes')
+      .insert({
+        prop_bet_id: propPixId,
+        user_id: userId,
+        option_id: optionId,
+        response_text: normalized.value.responseText,
+      })
+      .select('id, prop_bet_id, user_id, option_id, response_text, created_at, updated_at')
+      .single();
+    if (voteError) throw voteError;
+
+    res.json(vote);
+  } catch (error) {
+    console.error('Error saving Prop Pix vote:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to save Prop Pix vote' });
+  }
+});
+
+app.post('/prop-pix/:id/claim', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot submit claims' });
+    if (bet.status !== 'open') return res.status(409).json({ error: 'This Prop Pix bet is not open for claims' });
+
+    const { data: voter, error: voterError } = await supabase
+      .from('prop_bet_votes')
+      .select('id')
+      .eq('prop_bet_id', propPixId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (voterError) throw voterError;
+    if (!voter) return res.status(403).json({ error: 'Vote on this Prop Pix before submitting a claim' });
+
+    const normalizedOutcome = normalizeOutcome(req.body?.outcome_text || req.body?.outcomeText);
+    if (normalizedOutcome.error) return res.status(400).json({ error: normalizedOutcome.error });
+
+    const { data: claimedBet, error: statusError } = await supabase
+      .from('prop_bets')
+      .update({ status: 'claim_pending' })
+      .eq('id', propPixId)
+      .eq('status', 'open')
+      .select('id')
+      .maybeSingle();
+    if (statusError) throw statusError;
+    if (!claimedBet) return res.status(409).json({ error: 'Another claim is already pending for this bet' });
+
+    const { data: claim, error: claimError } = await supabase
+      .from('prop_bet_claims')
+      .insert({
+        prop_bet_id: propPixId,
+        claimant_user_id: userId,
+        outcome_text: normalizedOutcome.value,
+      })
+      .select('id, prop_bet_id, claimant_user_id, outcome_text, status, created_at')
+      .single();
+
+    if (claimError) {
+      await supabase.from('prop_bets').update({ status: 'open' }).eq('id', propPixId).eq('status', 'claim_pending');
+      throw claimError;
+    }
+
+    try {
+      const voterIds = await getPropPixParticipants(propPixId);
+      const recipients = buildPropPixNotificationRecipients({
+        creatorUserId: bet.creator_user_id,
+        claimantUserId: userId,
+        voterUserIds: voterIds,
+      }).filter((recipientId) => recipientId !== userId);
+      await createNotifications({
+        supabase,
+        recipientUserIds: recipients,
+        actorUserId: userId,
+        notificationType: 'prop_pix_claim_submitted',
+        entityType: 'prop_bet',
+        entityId: propPixId,
+        title: 'Prop Pix claim submitted',
+        body: `${user.username} says the outcome is: ${normalizedOutcome.value}`,
+        payload: { prop_bet_id: propPixId, claim_id: claim.id },
+      });
+    } catch (notificationError) {
+      console.error('Prop Pix claim notification error:', notificationError);
+    }
+
+    res.status(201).json(claim);
+  } catch (error) {
+    console.error('Error submitting Prop Pix claim:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to submit Prop Pix claim' });
+  }
+});
+
+app.post('/prop-pix/:id/claim/:claimId/confirm', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const claimId = normalizeUserId(req.params.claimId);
+    const confirmingUserId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !claimId || !confirmingUserId) {
+      return res.status(400).json({ error: 'Prop Pix ID, claim ID, and user ID are required' });
+    }
+
+    const user = await getPropPixUser(confirmingUserId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_bot) return res.status(403).json({ error: 'AI users cannot confirm claims' });
+
+    const { data: claim, error: claimLookupError } = await supabase
+      .from('prop_bet_claims')
+      .select('id, prop_bet_id')
+      .eq('id', claimId)
+      .eq('prop_bet_id', propPixId)
+      .maybeSingle();
+    if (claimLookupError) throw claimLookupError;
+    if (!claim) return res.status(404).json({ error: 'Claim not found for this Prop Pix bet' });
+
+    const { data: confirmation, error: confirmationError } = await supabase.rpc('confirm_prop_pix_claim', {
+      p_claim_id: claimId,
+      p_confirming_user_id: confirmingUserId,
+    });
+    if (confirmationError) throw confirmationError;
+
+    const bet = await getPropPixBetById(propPixId);
+    try {
+      await notifyPropPixResults({
+        propPixId,
+        bet,
+        claimId,
+        actorUserId: confirmingUserId,
+      });
+    } catch (notificationError) {
+      console.error('Prop Pix closure notification error:', notificationError);
+    }
+
+    res.json({ confirmation: confirmation?.[0] || null, bet });
+  } catch (error) {
+    console.error('Error confirming Prop Pix claim:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: error?.message || 'Failed to confirm Prop Pix claim' });
+  }
+});
+
+app.post('/admin/prop-pix/:id/claim/:claimId/close', requireAdminSession, async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const claimId = normalizeUserId(req.params.claimId);
+    if (!propPixId || !claimId) {
+      return res.status(400).json({ error: 'Prop Pix ID and claim ID are required' });
+    }
+
+    const { data: closure, error: closureError } = await supabase.rpc('admin_close_prop_pix_claim', {
+      p_prop_bet_id: propPixId,
+      p_claim_id: claimId,
+      p_admin_user_id: req.adminUser.user_id,
+    });
+    if (closureError) throw closureError;
+
+    const closedClaim = closure?.[0];
+    if (!closedClaim) {
+      return res.status(404).json({ error: 'Pending claim not found for this Prop Pix bet' });
+    }
+
+    const bet = await getPropPixBetById(propPixId);
+    try {
+      await notifyPropPixResults({
+        propPixId,
+        bet,
+        claimId,
+        actorUserId: req.adminUser.user_id,
+        closedByAdmin: true,
+      });
+    } catch (notificationError) {
+      console.error('Admin Prop Pix closure notification error:', notificationError);
+    }
+
+    res.json({ confirmation: closedClaim, bet });
+  } catch (error) {
+    console.error('Error closing Prop Pix claim as admin:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: error?.message || 'Failed to close Prop Pix claim' });
+  }
+});
+
+app.post('/prop-pix/:id/cancel', async (req, res) => {
+  try {
+    const propPixId = normalizeUserId(req.params.id);
+    const userId = normalizeUserId(req.body?.user_id);
+    if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
+
+    const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
+    if (!bet) return res.status(404).json({ error: 'Prop Pix bet not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (String(bet.creator_user_id) !== String(userId)) return res.status(403).json({ error: 'Only the creator can cancel this Prop Pix bet' });
+    if (!['open', 'claim_pending'].includes(bet.status)) return res.status(409).json({ error: 'This Prop Pix bet cannot be cancelled' });
+
+    const { data: updatedBet, error: updateError } = await supabase
+      .from('prop_bets')
+      .update({ status: 'cancelled' })
+      .eq('id', propPixId)
+      .in('status', ['open', 'claim_pending'])
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+
+    await supabase
+      .from('prop_bet_claims')
+      .update({ status: 'rejected' })
+      .eq('prop_bet_id', propPixId)
+      .eq('status', 'pending');
+
+    res.json(updatedBet);
+  } catch (error) {
+    console.error('Error cancelling Prop Pix bet:', error);
+    res.status(getPropPixErrorStatus(error)).json({ error: 'Failed to cancel Prop Pix bet' });
+  }
+});
+
+app.get('/user/:user_id/notifications', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
+
+    const requestedLimit = Number.parseInt(String(req.query.limit || '40'), 10);
+    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1), 100);
+    const unreadOnly = String(req.query.unread_only || '').toLowerCase() === 'true';
+    let notificationsQuery = supabase
+      .from('notifications')
+      .select('id, recipient_user_id, actor_user_id, notification_type, entity_type, entity_id, title, body, payload, read_at, created_at')
+      .eq('recipient_user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (unreadOnly) notificationsQuery = notificationsQuery.is('read_at', null);
+
+    const [{ data: notifications, error: notificationsError }, { count: unreadCount, error: countError }] = await Promise.all([
+      notificationsQuery,
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_user_id', userId)
+        .is('read_at', null),
+    ]);
+    if (notificationsError) throw notificationsError;
+    if (countError) throw countError;
+
+    const actorIds = [...new Set((notifications || []).map((notification) => notification.actor_user_id).filter(Boolean))];
+    const actorMap = new Map();
+    if (actorIds.length > 0) {
+      const { data: actors, error: actorsError } = await supabase
+        .from('users')
+        .select('user_id, username')
+        .in('user_id', actorIds);
+      if (actorsError) throw actorsError;
+      (actors || []).forEach((actor) => actorMap.set(String(actor.user_id), actor.username));
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      notifications: (notifications || []).map((notification) => ({
+        ...notification,
+        actor_username: notification.actor_user_id ? actorMap.get(String(notification.actor_user_id)) || null : null,
+      })),
+      unread_count: unreadCount || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+app.patch('/user/:user_id/notifications/:notification_id/read', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    const notificationId = normalizeUserId(req.params.notification_id);
+    if (!userId || !notificationId) return res.status(400).json({ error: 'User ID and notification ID must be valid integers' });
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notificationId)
+      .eq('recipient_user_id', userId)
+      .select('id, read_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Notification not found' });
+    res.json(data);
+  } catch (error) {
+    console.error('Error marking notification read:', error);
+    res.status(500).json({ error: 'Failed to mark notification read' });
+  }
+});
+
+app.post('/user/:user_id/notifications/read-all', async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.user_id);
+    if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('recipient_user_id', userId)
+      .is('read_at', null);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error marking all notifications read:', error);
+    res.status(500).json({ error: 'Failed to mark notifications read' });
   }
 });
 
@@ -4430,6 +6193,9 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
         .filter(fightId => Number.isFinite(fightId) && fightId > 0)
     ));
     const usernameForUser = targetUser.username || null;
+    const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
+    const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
+    const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
 
     let userPredictions = [];
     if (userFightIds.length > 0) {
@@ -4583,14 +6349,11 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
 
     const longestWinStreak = calculateLongestWinStreak(orderedForStreak);
 
-    const eventWinners = await fetchAllFromSupabase(
-      supabase
-        .from('event_winners')
-        .select('event_id')
-        .eq('user_id', user_id)
-        .in('event_id', eventIds)
+    const seasonEventWinsByUser = await fetchHumanEventWinCounts(
+      Array.from(humanUserSet),
+      isAllTime ? undefined : numericYear
     );
-    const eventWins = (eventWinners || []).length;
+    const eventWins = seasonEventWinsByUser[String(user_id)] || 0;
 
     const bestEvent = eventStats.length > 0
       ? [...eventStats].sort((a, b) =>
@@ -4793,10 +6556,6 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     })();
 
     // Rivalry insights (humans only)
-    const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
-    const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
-    const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
-
     const myResultsByFight = new Map(
       rows
         .map(row => {
@@ -4886,55 +6645,18 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
       }
     });
 
-    const rivalryRows = [...opponentMap.values()]
-      .map(item => ({
-        ...item,
-        net_edge: item.you_right_they_wrong - item.they_right_you_wrong,
-        pick_overlap_pct: item.shared_pick_fights > 0
-          ? Number(((item.same_picks / item.shared_pick_fights) * 100).toFixed(2))
-          : 0
-      }))
-      .filter(item => item.shared_fights > 0 || item.shared_pick_fights > 0);
-
-    const biggestNemesis = rivalryRows.length > 0
-      ? [...rivalryRows].sort((a, b) =>
-        b.they_right_you_wrong - a.they_right_you_wrong ||
-        b.shared_fights - a.shared_fights
-      )[0]
-      : null;
-
-    const headToHead = rivalryRows.length > 0
-      ? [...rivalryRows].sort((a, b) =>
-        b.shared_fights - a.shared_fights ||
-        Math.abs(b.net_edge) - Math.abs(a.net_edge)
-      )[0]
-      : null;
-
-    const pickTwin = rivalryRows.length > 0
-      ? [...rivalryRows]
-        .filter(item => item.shared_pick_fights >= 3)
-        .sort((a, b) =>
-          b.pick_overlap_pct - a.pick_overlap_pct ||
-          b.shared_pick_fights - a.shared_pick_fights
-        )[0] || null
-      : null;
-
-    // Cohort benchmarks (active human users for this season)
-    const seasonEventWinners = await fetchAllFromSupabase(
-      supabase
-        .from('event_winners')
-        .select('user_id, event_id')
-        .in('event_id', eventIds)
-    );
-    const seasonEventWinsByUser = {};
-    (seasonEventWinners || []).forEach((row) => {
-      const candidateUserId = String(row.user_id);
-      if (!humanUserSet.has(candidateUserId)) {
-        return;
-      }
-      seasonEventWinsByUser[candidateUserId] = (seasonEventWinsByUser[candidateUserId] || 0) + 1;
+    const rivalryRows = [...opponentMap.values()];
+    const {
+      biggestNemesis,
+      headToHead,
+      pickTwin,
+      sampleRequirements: rivalrySampleRequirements,
+    } = buildRivalryRankings(rivalryRows, {
+      totalUserPickFights: myPredictionByFight.size,
+      totalUserResultFights: myResultsByFight.size,
     });
 
+    // Cohort benchmarks (active human users for this season)
     const cohortByUser = new Map();
     (seasonHumanResults || []).forEach((row) => {
       const candidateUserId = String(row.user_id);
@@ -5384,7 +7106,14 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
             user_id: biggestNemesis.user_id,
             username: biggestNemesis.username,
             times_they_were_right_you_wrong: biggestNemesis.they_right_you_wrong,
-            shared_fights: biggestNemesis.shared_fights
+            you_right_they_wrong: biggestNemesis.you_right_they_wrong,
+            shared_fights: biggestNemesis.shared_fights,
+            decisive_swing_fights: biggestNemesis.decisive_swing_fights,
+            nemesis_edge: biggestNemesis.nemesis_edge,
+            swing_pct: biggestNemesis.nemesis_swing_pct,
+            confidence_score: biggestNemesis.nemesis_score,
+            minimum_shared_fights: rivalrySampleRequirements.nemesis_min_shared_fights,
+            minimum_swing_fights: rivalrySampleRequirements.nemesis_min_swing_fights
           }
           : null,
         head_to_head: headToHead
@@ -5403,9 +7132,12 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
             username: pickTwin.username,
             overlap_pct: pickTwin.pick_overlap_pct,
             shared_fights: pickTwin.shared_pick_fights,
-            same_picks: pickTwin.same_picks
+            same_picks: pickTwin.same_picks,
+            confidence_score: pickTwin.pick_twin_score,
+            minimum_shared_fights: rivalrySampleRequirements.pick_twin_min_shared_picks
           }
-          : null
+          : null,
+        sample_requirements: rivalrySampleRequirements
       },
       community_insights: {
         most_voted_fighter: mostVotedFighter,

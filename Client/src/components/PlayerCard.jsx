@@ -22,7 +22,6 @@ function PlayerCard({ username, playercard, size = 'medium', isCurrentUser = fal
       className={`playercard-root playercard-size-${size} playercard-category-${cardCategory}${isCurrentUser ? ' playercard-current-user' : ''}`}
       style={{
         background: bgUrl ? `url('${bgUrl}') center/cover no-repeat` : fallbackBg,
-        boxShadow: isCurrentUser ? '0 0 0 3px #22d3ee, 0 2px 8px rgba(0,0,0,0.18)' : undefined,
       }}
       title={cardName}
     >
