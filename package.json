@@ -16,6 +16,7 @@
     "sync:fighter-style": "npm --prefix Server run sync:fighter-style --",
     "sync:tapology-cache": "npm --prefix Server run sync:tapology-cache --",
     "sync:ufc-events": "npm --prefix Server run sync:ufc-events --",
+    "automate:fight-cards": "npm --prefix Server run automate:fight-cards --",
     "start": "npm --prefix Server run start"
   },
   "devDependencies": {

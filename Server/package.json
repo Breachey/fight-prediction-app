@@ -12,7 +12,8 @@
     "sync:fighter-style": "node scripts/syncFighterStyle.js",
     "sync:fighters": "node scripts/syncFighterStyle.js",
     "sync:tapology-cache": "node scripts/syncTapologyCache.js",
-    "sync:ufc-events": "node scripts/syncUfcEvents.js"
+    "sync:ufc-events": "node scripts/syncUfcEvents.js",
+    "automate:fight-cards": "node scripts/automateUpcomingFightCards.js"
   },
   "keywords": [],
   "author": "",

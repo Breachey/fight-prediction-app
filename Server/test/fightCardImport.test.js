@@ -2,13 +2,17 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   applyManualFightCardPreviewUpdates,
+  buildImportedFightCardEditorPreview,
   buildFightCardPreview,
+  markFightCardPreviewImported,
+  saveFightCardPreviewProgress,
+  storeFightCardPreview,
 } = require('../lib/fightCardImport');
 const {
   syncFighterStyleFromFightCardRows,
 } = require('../lib/fighterStyleSync');
 
-test('applyManualFightCardPreviewUpdates fills blank odds, style, and stats without overwriting scraped values', () => {
+test('applyManualFightCardPreviewUpdates edits complete or missing preview values', () => {
   const preview = {
     rows: [
       {
@@ -17,6 +21,8 @@ test('applyManualFightCardPreviewUpdates fills blank odds, style, and stats with
         Corner: 'Red',
         odds: null,
         style: null,
+        Streak: null,
+        TapologyFighterURL: null,
         KO_TKO_Wins: null,
         KO_TKO_Losses: null,
         Submission_Wins: null,
@@ -39,6 +45,8 @@ test('applyManualFightCardPreviewUpdates fills blank odds, style, and stats with
     '10|100|Red': {
       odds: ' +105 ',
       style: ' Wrestling ',
+      Streak: '-2',
+      TapologyFighterURL: 'https://www.tapology.com/fightcenter/fighters/100-test',
       KO_TKO_Wins: ' 7 ',
       KO_TKO_Losses: '0',
       Submission_Wins: '2',
@@ -53,18 +61,106 @@ test('applyManualFightCardPreviewUpdates fills blank odds, style, and stats with
     },
   });
 
-  assert.equal(result.appliedManualUpdateCount, 8);
+  assert.equal(result.appliedManualUpdateCount, 13);
   assert.equal(result.preview.rows[0].odds, '+105');
   assert.equal(result.preview.rows[0].style, 'Wrestling');
+  assert.equal(result.preview.rows[0].Streak, '-2');
+  assert.equal(result.preview.rows[0].TapologyFighterURL, 'https://www.tapology.com/fightcenter/fighters/100-test');
   assert.equal(result.preview.rows[0].KO_TKO_Wins, '7');
   assert.equal(result.preview.rows[0].KO_TKO_Losses, '0');
   assert.equal(result.preview.rows[0].Submission_Wins, '2');
   assert.equal(result.preview.rows[0].Submission_Losses, '1');
   assert.equal(result.preview.rows[0].Decision_Wins, '4');
   assert.equal(result.preview.rows[0].Decision_Losses, '3');
-  assert.equal(result.preview.rows[1].odds, '-125');
-  assert.equal(result.preview.rows[1].style, 'Kickboxing');
-  assert.equal(result.preview.rows[1].KO_TKO_Wins, 3);
+  assert.equal(result.preview.rows[1].odds, '+130');
+  assert.equal(result.preview.rows[1].style, 'Grappling');
+  assert.equal(result.preview.rows[1].KO_TKO_Wins, '10');
+});
+
+test('saveFightCardPreviewProgress updates the active preview and keeps all rows editable', () => {
+  const stored = storeFightCardPreview({
+    eventId: 1313,
+    rows: [{
+      FightId: 10,
+      FighterId: 100,
+      Corner: 'Red',
+      FirstName: 'Preview',
+      LastName: 'Fighter',
+      odds: '-110',
+      style: 'Wrestling',
+      Streak: 2,
+    }],
+  });
+
+  const result = saveFightCardPreviewProgress(stored.previewToken, 1313, {
+    '10|100|Red': { odds: '+125', Streak: '-1' },
+  });
+
+  assert.equal(result.appliedManualUpdateCount, 2);
+  assert.equal(result.preview.rows[0].odds, '+125');
+  assert.equal(result.preview.rows[0].Streak, '-1');
+  assert.equal(result.preview.editableRows.length, 1);
+  assert.equal(result.preview.editableRows[0].odds, '+125');
+});
+
+test('markFightCardPreviewImported retains an editable preview for post-import saves', () => {
+  const stored = storeFightCardPreview({
+    eventId: 1318,
+    rows: [{
+      FightId: 20,
+      FighterId: 200,
+      Corner: 'Blue',
+      FirstName: 'Imported',
+      LastName: 'Fighter',
+      odds: '-115',
+      style: 'Boxing',
+      Streak: -1,
+    }],
+  });
+
+  const importedPreview = markFightCardPreviewImported(stored.previewToken, 1318);
+  assert.equal(importedPreview.isImported, true);
+  assert.equal(importedPreview.existingFightCardRowCount, 1);
+  assert.equal(importedPreview.editableRows.length, 1);
+
+  const saved = saveFightCardPreviewProgress(stored.previewToken, 1318, {
+    '20|200|Blue': { odds: '+105' },
+  });
+  assert.equal(saved.preview.isImported, true);
+  assert.equal(saved.preview.rows[0].odds, '+105');
+});
+
+test('buildImportedFightCardEditorPreview rebuilds the full editor from stored rows', () => {
+  const preview = buildImportedFightCardEditorPreview({
+    eventId: 1318,
+    eventRecord: {
+      id: 1318,
+      name: 'UFC Test Event',
+      date: '2026-07-25',
+      venue: 'Test Arena',
+    },
+    rows: [{
+      id: 900,
+      EventId: 1318,
+      FightId: 20,
+      FighterId: 200,
+      Corner: 'Red',
+      FirstName: 'Stored',
+      LastName: 'Fighter',
+      odds: '+110',
+      TapologyFighterURL: 'https://www.tapology.com/fightcenter/fighters/200-stored',
+      style: 'Wrestling',
+      Streak: 3,
+      KO_TKO_Wins: 5,
+    }],
+  });
+
+  assert.equal(preview.rowCount, 1);
+  assert.equal(preview.fightCount, 1);
+  assert.equal(preview.previewEvent.name, 'UFC Test Event');
+  assert.equal(preview.editableRows[0].odds, '+110');
+  assert.equal(preview.rows[0].id, undefined);
+  assert.equal(preview.rows[0].FighterId, 200);
 });
 
 test('buildFightCardPreview distinguishes cached Tapology data from no Tapology matches', async () => {
@@ -117,7 +213,7 @@ test('buildFightCardPreview distinguishes cached Tapology data from no Tapology 
   );
 });
 
-test('syncFighterStyleFromFightCardRows inserts manual style and stat values into fighters', async () => {
+test('syncFighterStyleFromFightCardRows does not recycle fight-card stats into fighters', async () => {
   const fighterRows = [];
   const fakeSupabase = {
     from(tableName) {
@@ -147,6 +243,7 @@ test('syncFighterStyleFromFightCardRows inserts manual style and stat values int
         FirstName: 'Manual',
         LastName: 'Style',
         style: 'Wrestling',
+        Streak: '5',
         KO_TKO_Wins: '4',
         KO_TKO_Losses: '1',
         Submission_Wins: '2',
@@ -163,7 +260,56 @@ test('syncFighterStyleFromFightCardRows inserts manual style and stat values int
   assert.equal(fighterRows[0].first_name, 'Manual');
   assert.equal(fighterRows[0].last_name, 'Style');
   assert.equal(fighterRows[0].style, 'Wrestling');
-  assert.equal(fighterRows[0].ko_tko_wins, 4);
-  assert.equal(fighterRows[0].submission_wins, 2);
-  assert.equal(fighterRows[0].decision_losses, 2);
+  assert.equal(fighterRows[0].streak, undefined);
+  assert.equal(fighterRows[0].ko_tko_wins, undefined);
+  assert.equal(fighterRows[0].submission_wins, undefined);
+  assert.equal(fighterRows[0].decision_losses, undefined);
+});
+
+test('syncFighterStyleFromFightCardRows leaves existing dynamic fighter stats unchanged', async () => {
+  const upserts = [];
+  const existingRows = [{
+    fighter_id: 101,
+    mma_id: 202,
+    first_name: 'Existing',
+    last_name: 'Fighter',
+    normalized_name: 'existing fighter',
+    style: 'Wrestling',
+    tapology_fighter_url: 'https://example.com/existing-fighter',
+  }];
+  const fakeSupabase = {
+    from(tableName) {
+      assert.equal(tableName, 'fighters');
+      return {
+        select() {
+          return {
+            range() {
+              return Promise.resolve({ data: existingRows, error: null });
+            },
+          };
+        },
+        upsert(rows) {
+          upserts.push(...rows);
+          return Promise.resolve({ error: null });
+        },
+      };
+    },
+  };
+
+  const result = await syncFighterStyleFromFightCardRows({
+    supabase: fakeSupabase,
+    fightCardRows: [{
+      FighterId: 101,
+      MMAId: 202,
+      FirstName: 'Existing',
+      LastName: 'Fighter',
+      style: 'Wrestling',
+      TapologyFighterURL: 'https://example.com/existing-fighter',
+      Streak: '-4',
+      KO_TKO_Wins: '99',
+    }],
+  });
+
+  assert.equal(result.updatedFighters, 0);
+  assert.deepEqual(upserts, []);
 });

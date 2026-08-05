@@ -95,7 +95,13 @@ const METHOD_STAT_FIELDS = [
   'Decision_Wins',
   'Decision_Losses',
 ];
-const MANUAL_PREVIEW_EDIT_FIELDS = ['odds', 'style', ...METHOD_STAT_FIELDS];
+const MANUAL_PREVIEW_EDIT_FIELDS = [
+  'odds',
+  'TapologyFighterURL',
+  'style',
+  'Streak',
+  ...METHOD_STAT_FIELDS,
+];
 
 for (const field of METHOD_STAT_FIELDS) {
   INTEGER_FIELDS.add(field);
@@ -175,11 +181,8 @@ function buildEditableFightCardPreviewRows(rows) {
     .map((row) => {
       const missingOdds = !normalizeText(row.odds);
       const missingStyle = !normalizeText(row.style);
-      const missingStats = METHOD_STAT_FIELDS.filter((field) => !normalizeText(row[field]));
-
-      if (!missingOdds && !missingStyle && missingStats.length === 0) {
-        return null;
-      }
+      const missingStats = ['Streak', ...METHOD_STAT_FIELDS]
+        .filter((field) => !normalizeText(row[field]));
 
       return {
         rowKey: buildFightCardPreviewRowKey(row),
@@ -190,30 +193,48 @@ function buildEditableFightCardPreviewRows(rows) {
         lastName: row.LastName || null,
         nickname: row.Nickname || null,
         odds: row.odds || null,
+        TapologyFighterURL: row.TapologyFighterURL || null,
+        Streak: row.Streak ?? null,
         style: row.style || null,
+        ...Object.fromEntries(METHOD_STAT_FIELDS.map((field) => [field, row[field] ?? null])),
         missingOdds,
         missingStyle,
         missingStats,
       };
-    })
-    .filter(Boolean);
+    });
 }
 
 function normalizeManualPreviewFieldValue(field, value) {
   const normalized = normalizeText(value);
   if (!normalized) {
-    return '';
+    return { ok: true, value: null };
   }
 
-  if (!METHOD_STAT_FIELDS.includes(field)) {
-    return normalized;
+  if (field === 'TapologyFighterURL') {
+    return /^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//i.test(normalized)
+      ? { ok: true, value: normalized }
+      : { ok: false, value: null };
   }
 
-  if (!/^\d+$/.test(normalized)) {
-    return '';
+  if (field === 'odds') {
+    return /^[+-]?\d+$/.test(normalized)
+      ? { ok: true, value: normalized }
+      : { ok: false, value: null };
   }
 
-  return String(Number.parseInt(normalized, 10));
+  if (field === 'Streak') {
+    return /^-?\d+$/.test(normalized)
+      ? { ok: true, value: String(Number.parseInt(normalized, 10)) }
+      : { ok: false, value: null };
+  }
+
+  if (METHOD_STAT_FIELDS.includes(field)) {
+    return /^\d+$/.test(normalized)
+      ? { ok: true, value: String(Number.parseInt(normalized, 10)) }
+      : { ok: false, value: null };
+  }
+
+  return { ok: true, value: normalized };
 }
 
 function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
@@ -236,9 +257,17 @@ function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
     let nextRow = row;
 
     for (const field of MANUAL_PREVIEW_EDIT_FIELDS) {
-      const value = normalizeManualPreviewFieldValue(field, rowUpdates[field]);
+      if (!Object.prototype.hasOwnProperty.call(rowUpdates, field)) {
+        continue;
+      }
 
-      if (!value || normalizeText(row[field])) {
+      const normalized = normalizeManualPreviewFieldValue(field, rowUpdates[field]);
+      if (!normalized.ok) {
+        continue;
+      }
+
+      const nextValue = normalized.value;
+      if (normalizeText(row[field]) === normalizeText(nextValue)) {
         continue;
       }
 
@@ -246,7 +275,7 @@ function applyManualFightCardPreviewUpdates(preview, manualRowUpdates) {
         nextRow = { ...row };
       }
 
-      nextRow[field] = value;
+      nextRow[field] = nextValue;
       appliedManualUpdateCount += 1;
     }
 
@@ -643,6 +672,58 @@ function getFightCardPreview(previewToken, eventId) {
   return preview;
 }
 
+function saveFightCardPreviewProgress(previewToken, eventId, manualRowUpdates) {
+  const storedPreview = getFightCardPreview(previewToken, eventId);
+  if (!storedPreview) {
+    return null;
+  }
+
+  const { preview, appliedManualUpdateCount } = applyManualFightCardPreviewUpdates(
+    storedPreview,
+    manualRowUpdates
+  );
+  const summary = summarizeTapologyRows(preview.rows || []);
+  const expiresAt = Date.now() + FIGHT_CARD_PREVIEW_TTL_MS;
+  const updatedPreview = {
+    ...preview,
+    ...summary,
+    editableRows: buildEditableFightCardPreviewRows(preview.rows),
+    previewToken,
+    expiresAt,
+  };
+
+  PREVIEW_STORE.set(previewToken, updatedPreview);
+
+  return {
+    preview: updatedPreview,
+    appliedManualUpdateCount,
+  };
+}
+
+function markFightCardPreviewImported(previewToken, eventId, preview) {
+  const storedPreview = getFightCardPreview(previewToken, eventId);
+  if (!storedPreview) {
+    return null;
+  }
+
+  const nextPreview = preview || storedPreview;
+  const summary = summarizeTapologyRows(nextPreview.rows || []);
+  const expiresAt = Date.now() + FIGHT_CARD_PREVIEW_TTL_MS;
+  const importedPreview = {
+    ...nextPreview,
+    ...summary,
+    isImported: true,
+    importedAt: new Date().toISOString(),
+    existingFightCardRowCount: (nextPreview.rows || []).length,
+    editableRows: buildEditableFightCardPreviewRows(nextPreview.rows),
+    previewToken,
+    expiresAt,
+  };
+
+  PREVIEW_STORE.set(previewToken, importedPreview);
+  return importedPreview;
+}
+
 async function deleteFightCardPreview(previewToken) {
   const preview = PREVIEW_STORE.get(previewToken);
   if (!preview) {
@@ -780,6 +861,55 @@ function summarizeTapologyRows(rows) {
       (count, row) => count + (normalizeText(row.KO_TKO_Wins) ? 1 : 0),
       0
     ),
+  };
+}
+
+function buildImportedFightCardEditorPreview({ eventId, eventRecord, rows }) {
+  const importedRows = (rows || []).map((row) => {
+    const normalizedRow = { ...row };
+    delete normalizedRow.id;
+    return normalizedRow;
+  });
+  const summary = summarizeTapologyRows(importedRows);
+  const warnings = [];
+
+  if (summary.fieldCompleteness.style > 0) {
+    warnings.push(`style is blank on ${summary.fieldCompleteness.style} row(s).`);
+  }
+  if (summary.fieldCompleteness.odds > 0) {
+    warnings.push(`odds is blank on ${summary.fieldCompleteness.odds} row(s).`);
+  }
+  if (summary.fieldCompletenessSummary.tapologyProfiles.missing > 0) {
+    warnings.push(
+      `Tapology data is missing for ${summary.fieldCompletenessSummary.tapologyProfiles.missing} row(s).`
+    );
+  }
+
+  const previewEvent = {
+    name: normalizeText(eventRecord?.name) || null,
+    date: normalizeText(eventRecord?.date) || null,
+    venue: normalizeText(eventRecord?.venue) || null,
+    location_city: normalizeText(eventRecord?.location_city) || null,
+    location_state: normalizeText(eventRecord?.location_state) || null,
+    location_country: normalizeText(eventRecord?.location_country) || null,
+    image_url: normalizeText(eventRecord?.image_url) || null,
+  };
+
+  return {
+    eventId: Number(eventId),
+    ...summary,
+    fighterCount: importedRows.length,
+    previewEvent,
+    currentEvent: eventRecord ? { ...previewEvent, id: eventRecord.id } : null,
+    eventFieldChanges: [],
+    existingFightCardRowCount: importedRows.length,
+    existingFightCount: summary.fightCount,
+    existingFightResultCount: 0,
+    changedFightCard: false,
+    editableRows: buildEditableFightCardPreviewRows(importedRows),
+    blockers: [],
+    warnings,
+    rows: importedRows,
   };
 }
 
@@ -1185,13 +1315,17 @@ async function buildFightCardPreview({
 module.exports = {
   EXPECTED_FIGHT_CARD_HEADERS,
   FIGHT_CARD_PREVIEW_TTL_MS,
+  buildImportedFightCardEditorPreview,
+  buildFightCardPreviewRowKey,
   buildFightCardPreview,
   cleanupExpiredFightCardPreviews,
   deleteFightCardPreview,
   getFightCardPreview,
+  markFightCardPreviewImported,
   parseFightCardCsvFile,
   removePreviewAssets,
   runFightCardScraper,
+  saveFightCardPreviewProgress,
   refreshTapologyCacheForEvent,
   runEventOddsScraper,
   buildOddsRefreshPlan,

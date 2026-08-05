@@ -1,0 +1,65 @@
+name: Automate upcoming fight cards
+
+on:
+  schedule:
+    - cron: '29 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      event_id:
+        description: Optional event table ID to process immediately
+        required: false
+        type: string
+      dry_run:
+        description: Select and inspect events without scraping or writing
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: automate-upcoming-fight-cards
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      AUTOMATION_EVENT_ID: ${{ inputs.event_id }}
+      AUTOMATION_DRY_RUN: ${{ inputs.dry_run }}
+      AUTOMATION_TIME_ZONE: America/Denver
+      AUTOMATION_MAX_EVENTS: '2'
+      AUTOMATION_NEW_CARD_PROFILE_LIMIT: '4'
+      AUTOMATION_REFRESH_PROFILE_LIMIT: '2'
+      TAPOLOGY_DELAY_SECONDS: '2.5'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Server/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Server/scraper/requirements.txt
+
+      - name: Install server dependencies
+        run: npm ci --prefix Server --ignore-scripts
+
+      - name: Install scraper dependencies
+        run: python -m pip install --disable-pip-version-check -r Server/scraper/requirements.txt
+
+      - name: Scrape and incrementally fill due fight cards
+        run: npm run automate:fight-cards

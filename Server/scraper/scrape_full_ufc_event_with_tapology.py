@@ -64,6 +64,16 @@ DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
 DEFAULT_TAPOLOGY_CACHE_DIR = os.path.join(SCRIPT_DIR, "tapology_cache")
 DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
 DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT = 4
+CURRENT_STREAK_SOURCES = {
+    "cached_profile_url",
+    "fight_result",
+    "live_profile",
+    "manual_streak",
+    "tapology_partial_profile",
+    "tapology_single_profile",
+    "tapology_wikipedia_merged",
+    "wikipedia_record_breakdown",
+}
 TAPOLOGY_ENRICHMENT_FIELDS = [
     "TapologyFighterURL",
     "TapologyMatchConfidence",
@@ -434,6 +444,11 @@ def cache_confidence(value: object, prefix: str = "cache") -> str:
     return f"{prefix}:{confidence}" if confidence else prefix
 
 
+def cached_streak_is_current(row: Dict[str, object]) -> bool:
+    source = cache_value_to_csv(row.get("stats_source") or row.get("source")).lower()
+    return source in CURRENT_STREAK_SOURCES
+
+
 def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
     return {
         "TapologyFighterURL": cache_value_to_csv(row.get("tapology_fighter_url")),
@@ -441,7 +456,11 @@ def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
             row.get("match_confidence") or row.get("stats_confidence")
         ),
         "Rank": cache_value_to_csv(row.get("rank")),
-        "Streak": cache_value_to_csv(row.get("streak")),
+        "Streak": (
+            cache_value_to_csv(row.get("streak"))
+            if cached_streak_is_current(row)
+            else ""
+        ),
         "style": cache_value_to_csv(row.get("style")),
         "KO_TKO_Wins": cache_value_to_csv(row.get("ko_tko_wins")),
         "KO_TKO_Losses": cache_value_to_csv(row.get("ko_tko_losses")),
@@ -747,10 +766,18 @@ def upsert_tapology_fighter_cache(
     if not payloads:
         return
 
+    tapology_cache_payloads = []
+    for payload in payloads:
+        cache_payload = dict(payload)
+        if cache_payload.get("streak") is None:
+            cache_payload["source"] = None
+            cache_payload["last_success_at"] = None
+        tapology_cache_payloads.append(cache_payload)
+
     try:
         upserted_count = upsert_supabase_rows(
             "tapology_fighter_cache",
-            payloads,
+            tapology_cache_payloads,
             "fighter_id",
             timeout,
         )
@@ -762,7 +789,8 @@ def upsert_tapology_fighter_cache(
     event_date = str(event.get("StartTime", "")).split("T")[0] or None
     fighter_profile_payloads = []
     for payload in payloads:
-        fighter_profile_payloads.append({
+        has_current_streak = payload.get("streak") is not None
+        fighter_profile_payload = {
             "fighter_id": payload.get("fighter_id"),
             "mma_id": payload.get("mma_id"),
             "first_name": payload.get("first_name"),
@@ -778,14 +806,18 @@ def upsert_tapology_fighter_cache(
             "submission_losses": payload.get("submission_losses"),
             "decision_wins": payload.get("decision_wins"),
             "decision_losses": payload.get("decision_losses"),
-            "stats_source": source,
-            "stats_confidence": payload.get("match_confidence"),
-            "stats_as_of_event_id": parse_optional_int(event.get("EventId")),
-            "stats_as_of_event_date": event_date,
-            "last_success_at": payload.get("last_success_at"),
             "last_failure_at": payload.get("last_failure_at"),
             "last_error": payload.get("last_error"),
-        })
+        }
+        if has_current_streak:
+            fighter_profile_payload.update({
+                "stats_source": source,
+                "stats_confidence": payload.get("match_confidence"),
+                "stats_as_of_event_id": parse_optional_int(event.get("EventId")),
+                "stats_as_of_event_date": event_date,
+                "last_success_at": payload.get("last_success_at"),
+            })
+        fighter_profile_payloads.append(fighter_profile_payload)
 
     try:
         upserted_count = upsert_supabase_rows(
@@ -2320,9 +2352,10 @@ def fetch_tapology_profiles_for_enrichment(
     timeout: float,
     tapology_delay_seconds: float,
     tapology_profile_limit: int,
-) -> Tuple[int, int]:
+) -> Tuple[int, int, Dict[str, Dict[str, str]]]:
     profile_count = 0
     profile_attempt_count = 0
+    refreshed_profiles: Dict[str, Dict[str, str]] = {}
 
     for fighter_key, fighter_data in enrichment.items():
         fighter_url = fighter_data.get("TapologyFighterURL", "")
@@ -2350,6 +2383,11 @@ def fetch_tapology_profiles_for_enrichment(
         fighter_profile = parse_tapology_fighter_profile(fighter_html)
         fighter_data.update(fighter_profile)
         enrichment[fighter_key] = fighter_data
+        refreshed_profiles[fighter_key] = {
+            "TapologyFighterURL": fighter_url,
+            "TapologyMatchConfidence": fighter_data.get("TapologyMatchConfidence", ""),
+            **fighter_profile,
+        }
         profile_count += 1
 
     if tapology_profile_limit >= 0 and profile_attempt_count >= tapology_profile_limit:
@@ -2358,7 +2396,7 @@ def fetch_tapology_profiles_for_enrichment(
             f"{tapology_profile_limit} attempt(s)."
         )
 
-    return profile_count, profile_attempt_count
+    return profile_count, profile_attempt_count, refreshed_profiles
 
 
 def fetch_tapology_fighter_enrichment(
@@ -2386,7 +2424,7 @@ def fetch_tapology_fighter_enrichment(
         )
     except (requests.RequestException, RuntimeError) as err:
         print(f"Unable to fetch Tapology event page {tapology_event_url}: {err}")
-        profile_count, _ = fetch_tapology_profiles_for_enrichment(
+        profile_count, _, refreshed_profiles = fetch_tapology_profiles_for_enrichment(
             tapology_session=tapology_session,
             enrichment=enrichment,
             timeout=timeout,
@@ -2397,7 +2435,7 @@ def fetch_tapology_fighter_enrichment(
             print(f"Fetched {profile_count} Tapology fighter profiles from cached URLs.")
             upsert_tapology_fighter_cache(
                 event=event,
-                enrichment=enrichment,
+                enrichment=refreshed_profiles,
                 timeout=timeout,
                 source="cached_profile_url",
             )
@@ -2448,7 +2486,7 @@ def fetch_tapology_fighter_enrichment(
         if cache_value_to_csv(live_match.get("TapologyMatchConfidence")):
             enrichment[fighter_key]["TapologyMatchConfidence"] = live_match["TapologyMatchConfidence"]
 
-    profile_count, _ = fetch_tapology_profiles_for_enrichment(
+    profile_count, _, refreshed_profiles = fetch_tapology_profiles_for_enrichment(
         tapology_session=tapology_session,
         enrichment=enrichment,
         timeout=timeout,
@@ -2463,9 +2501,15 @@ def fetch_tapology_fighter_enrichment(
     print(f"Fetched {profile_count} Tapology fighter profiles.")
     upsert_tapology_fighter_cache(
         event=event,
-        enrichment=enrichment,
+        enrichment=live_event_matches,
         timeout=timeout,
-        source="live_profile" if profile_count else "live_event_page",
+        source="live_event_page",
+    )
+    upsert_tapology_fighter_cache(
+        event=event,
+        enrichment=refreshed_profiles,
+        timeout=timeout,
+        source="live_profile",
     )
     return merge_cached_tapology_fighter_enrichment(event, enrichment), {
         "TapologyEventImageURL": str(event_details.get("event_image_url", "")).strip(),

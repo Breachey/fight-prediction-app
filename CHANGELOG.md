@@ -2,6 +2,79 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.0 - 2026-08-05
+
+### Added
+
+- Added scheduled fight-card automation that targets incomplete events on fight day or the day before.
+- Added incremental Tapology enrichment with per-run profile limits, manual event overrides, dry runs, and GitHub Actions logging.
+
+### Changed
+
+- Automated refreshes preserve populated odds and fighter stats, fill blanks only, and refuse lineup changes or cards that have started.
+
+## 0.4.0 - 2026-07-30
+
+### Added
+
+- Added a durable Tapology scrape log to the fight-card editor with complete, partial, and failed outcomes.
+- Added per-attempt diagnostics for sources, updated and missing fields, fallback errors, and streak-specific failure reasons.
+
+### Fixed
+
+- Preserved streak and style values from partial Tapology responses when Wikipedia is needed to fill missing method totals.
+- Reported when streak is unavailable because Tapology was blocked and the fallback source cannot provide current streak.
+
+## 0.3.1 - 2026-07-29
+
+### Fixed
+
+- Added an admin action that rebuilds the imported fight-card editor from Supabase after a page refresh.
+- Restored full-card saves and individual or bulk Tapology scrape controls in reopened editor sessions.
+
+## 0.3.0 - 2026-07-29
+
+### Added
+
+- Kept the fight-card preview editor open after import so admins can continue editing any fighter field or odds.
+- Added post-import write-through saves for individual fighters and the full card.
+
+### Changed
+
+- Preview Tapology scrapes now update matching imported fight-card rows immediately while continuing to refresh shared fighter data.
+- Imported preview sessions prevent duplicate imports and clearly identify saves that update the stored fight card.
+
+## 0.2.0 - 2026-07-29
+
+### Added
+
+- Added per-fighter Tapology scrape actions to fight-card previews when a valid fighter URL is available.
+- Added a bulk preview action that attempts every valid Tapology fighter URL with progress and partial-failure reporting.
+
+### Changed
+
+- Successful preview scrapes now refresh the active preview and persist fighter profile data to the shared fighters and Tapology cache tables.
+
+## 0.1.0 - 2026-07-28
+
+### Added
+
+- Added a full-card admin editor for previewed and imported fight cards, including odds, Tapology URLs, style, streak, and finish breakdowns.
+- Added All, Missing, and Changed row filters plus per-fighter and save-all actions.
+- Added preview progress saves so manual corrections can be committed incrementally before import.
+
+### Changed
+
+- Kept manual odds edits scoped to the event fight-card row while fighter profile stats continue to update the shared fighters table.
+
+## 0.0.33 - 2026-07-28
+
+### Fixed
+
+- Prevented cached fight-card stats from being written back as fresh fighter data during import.
+- Limited cached streak reuse to result-driven, manually entered streak, or genuinely refreshed fighter-profile sources.
+- Prevented Tapology event-page URL matches from relabeling cached fighter stats as freshly scraped.
+
 ## 0.0.32 - 2026-07-13
 
 ### Security
