@@ -17,6 +17,21 @@ from scrape_full_ufc_event_with_tapology import (
 )
 
 WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+METHOD_FIELDS = [
+    "KO_TKO_Wins",
+    "KO_TKO_Losses",
+    "Submission_Wins",
+    "Submission_Losses",
+    "Decision_Wins",
+    "Decision_Losses",
+]
+PROFILE_FIELDS = ["Streak", "style", *METHOD_FIELDS]
+
+
+class FighterProfileScrapeError(RuntimeError):
+    def __init__(self, message: str, diagnostics: Dict[str, object]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,15 +184,59 @@ def method_total(profile: Dict[str, str], fields) -> Optional[int]:
 
 
 def has_complete_method_breakdown(profile: Dict[str, str]) -> bool:
-    required_fields = [
-        "KO_TKO_Wins",
-        "KO_TKO_Losses",
-        "Submission_Wins",
-        "Submission_Losses",
-        "Decision_Wins",
-        "Decision_Losses",
-    ]
-    return all(re.fullmatch(r"\d+", str(profile.get(field, ""))) for field in required_fields)
+    return all(re.fullmatch(r"\d+", str(profile.get(field, ""))) for field in METHOD_FIELDS)
+
+
+def merge_profiles(primary: Dict[str, str], fallback: Dict[str, str]) -> Dict[str, str]:
+    merged = dict(fallback or {})
+    for field, value in (primary or {}).items():
+        if value not in {None, ""}:
+            merged[field] = value
+    return merged
+
+
+def build_scrape_diagnostics(
+    profile: Dict[str, str],
+    source: str,
+    tapology_fetch_status: str,
+    tapology_error: str = "",
+    fallback_error: str = "",
+    warnings: Optional[List[str]] = None,
+) -> Dict[str, object]:
+    fields_found = [field for field in PROFILE_FIELDS if profile.get(field) not in {None, ""}]
+    fields_missing = [field for field in PROFILE_FIELDS if field not in fields_found]
+    diagnostic_warnings = list(warnings or [])
+
+    if source == "tapology_wikipedia_merged":
+        diagnostic_warnings.append(
+            "Tapology returned partial data; Wikipedia supplied missing method totals."
+        )
+    elif source == "tapology_partial_profile":
+        diagnostic_warnings.append(
+            "Tapology returned partial data and the Wikipedia fallback also failed."
+        )
+
+    if "Streak" in fields_found:
+        streak_detail = f"Parsed streak value {profile['Streak']} from Tapology."
+    elif tapology_fetch_status == "failed":
+        streak_detail = (
+            "Streak is missing because Tapology could not be fetched; "
+            "Wikipedia does not expose current MMA streak."
+        )
+    else:
+        streak_detail = "Tapology did not expose a recognized Current MMA Streak value."
+
+    return {
+        "status": "complete" if not fields_missing else "partial",
+        "source": source,
+        "tapology_fetch_status": tapology_fetch_status,
+        "tapology_error": tapology_error or None,
+        "fallback_error": fallback_error or None,
+        "fields_found": fields_found,
+        "fields_missing": fields_missing,
+        "streak_detail": streak_detail,
+        "warnings": diagnostic_warnings,
+    }
 
 
 def validate_wikipedia_profile(
@@ -247,6 +306,8 @@ def fetch_wikipedia_fallback(args: argparse.Namespace) -> Dict[str, str]:
 def main() -> None:
     args = parse_args()
     tapology_error = ""
+    tapology_profile: Dict[str, str] = {}
+    tapology_fetch_status = "failed"
     try:
         with build_tapology_session() as tapology_session:
             html = fetch_tapology_fighter_html(
@@ -255,32 +316,81 @@ def main() -> None:
                 timeout=args.timeout,
             )
 
-        profile = parse_tapology_fighter_profile(html)
-        if not has_complete_method_breakdown(profile):
-            raise RuntimeError("Tapology profile did not expose a complete method breakdown.")
-
-        print(json.dumps({
-            "source": "tapology_single_profile",
-            "tapology_fighter_url": args.url,
-            "profile": profile,
-        }))
-        return
+        tapology_profile = parse_tapology_fighter_profile(html)
+        tapology_fetch_status = "success"
+        if not has_complete_method_breakdown(tapology_profile):
+            tapology_error = "Tapology profile did not expose a complete method breakdown."
+        else:
+            print(json.dumps({
+                "source": "tapology_single_profile",
+                "tapology_fighter_url": args.url,
+                "profile": tapology_profile,
+                "diagnostics": build_scrape_diagnostics(
+                    tapology_profile,
+                    "tapology_single_profile",
+                    tapology_fetch_status,
+                ),
+            }))
+            return
     except Exception as error:
         tapology_error = str(error)
 
-    fallback = fetch_wikipedia_fallback(args)
-    print(json.dumps({
-        **fallback,
-        "tapology_fighter_url": args.url,
-        "tapology_error": tapology_error,
-    }))
+    try:
+        fallback = fetch_wikipedia_fallback(args)
+        source = "tapology_wikipedia_merged" if tapology_profile else fallback["source"]
+        profile = merge_profiles(tapology_profile, fallback["profile"])
+        print(json.dumps({
+            **fallback,
+            "source": source,
+            "profile": profile,
+            "tapology_fighter_url": args.url,
+            "tapology_error": tapology_error,
+            "diagnostics": build_scrape_diagnostics(
+                profile,
+                source,
+                tapology_fetch_status,
+                tapology_error=tapology_error,
+                warnings=fallback.get("validation_warnings", []),
+            ),
+        }))
+    except Exception as fallback_exception:
+        fallback_error = str(fallback_exception)
+        if tapology_profile:
+            source = "tapology_partial_profile"
+            print(json.dumps({
+                "source": source,
+                "tapology_fighter_url": args.url,
+                "tapology_error": tapology_error,
+                "profile": tapology_profile,
+                "diagnostics": build_scrape_diagnostics(
+                    tapology_profile,
+                    source,
+                    tapology_fetch_status,
+                    tapology_error=tapology_error,
+                    fallback_error=fallback_error,
+                ),
+            }))
+            return
+        diagnostics = build_scrape_diagnostics(
+            {},
+            "none",
+            tapology_fetch_status,
+            tapology_error=tapology_error,
+            fallback_error=fallback_error,
+        )
+        diagnostics["status"] = "failed"
+        raise FighterProfileScrapeError(
+            f"Tapology failed: {tapology_error}; Wikipedia fallback failed: {fallback_error}",
+            diagnostics,
+        ) from fallback_exception
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        print(json.dumps({
-            "error": str(error),
-        }), file=sys.stderr)
+        payload = {"error": str(error)}
+        if isinstance(error, FighterProfileScrapeError):
+            payload["diagnostics"] = error.diagnostics
+        print(json.dumps(payload), file=sys.stderr)
         sys.exit(1)

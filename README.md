@@ -130,6 +130,8 @@ From the repository root:
 - `npm run sync:fighter-style -- --event-id=1302` backfills the `fighter_style` table from imported fight-card rows for one event
 - `npm run sync:tapology-cache -- --event-id=1313` refreshes Supabase Tapology cache rows for one event without importing the fight card
 - `npm run smoke:fight-card-import -- 1302` previews and imports a single event fight card directly against Supabase, then verifies the resulting row and fight counts
+- `npm run automate:fight-cards -- --dry-run` shows which incomplete events are due for automated scraping today or tomorrow
+- `npm run automate:fight-cards -- --event-id=1318` immediately runs the guarded automation for one event table ID
 - `npm run start` starts the server
 
 You can also run the smoke test in preview-only mode:
@@ -157,6 +159,19 @@ This repository includes Vercel configuration for both app layers:
 
 For Node hosts like Render, make sure the server install step runs from `Server/` or otherwise executes `npm --prefix Server install` so the `postinstall` hook installs the scraper's Python dependencies from `Server/scraper/requirements.txt`.
 
+### Scheduled fight-card scraping
+
+The `Automate upcoming fight cards` GitHub Actions workflow runs every six hours, but it only scrapes incomplete events dated today or tomorrow in `America/Denver`. This keeps the normal request volume near fight day instead of continuously scraping.
+
+Configure these repository Actions secrets before enabling the workflow:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. It refuses automated lineup changes and stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
+
+GitHub-hosted Actions are free for public repositories. Private repositories consume the account's included Actions minutes, so configure an Actions budget with paid usage disabled if the account has a payment method and strict zero spend is required.
+
 ## Architecture
 
 A high-level system diagram is available in [`architecture.md`](./architecture.md).
@@ -170,7 +185,7 @@ At a glance:
 ## Current Status
 
 - The app includes production-oriented optimizations like response caching, compression, lazy-loaded frontend routes, and image proxy support.
-- Automated tests are not yet implemented in the server package, so validation is currently driven by local/manual testing.
+- The server package includes Node and Python tests for import, scraper cache, authentication, fight-response, and supporting application behavior.
 
 ## Contact
 
