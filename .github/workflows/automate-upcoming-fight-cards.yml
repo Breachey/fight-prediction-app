@@ -35,6 +35,7 @@ jobs:
       AUTOMATION_MAX_EVENTS: '2'
       AUTOMATION_NEW_CARD_PROFILE_LIMIT: '4'
       AUTOMATION_REFRESH_PROFILE_LIMIT: '2'
+      AUTOMATION_REPORT_PATH: automation-report.json
       TAPOLOGY_DELAY_SECONDS: '2.5'
 
     steps:
@@ -62,4 +63,15 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r Server/scraper/requirements.txt
 
       - name: Scrape and incrementally fill due fight cards
+        id: automation
         run: npm run automate:fight-cards
+
+      - name: Email automation report
+        if: ${{ always() }}
+        env:
+          AUTOMATION_EMAIL_FROM: breachey@gmail.com
+          AUTOMATION_EMAIL_TO: breachey@gmail.com
+          AUTOMATION_GMAIL_APP_PASSWORD: ${{ secrets.AUTOMATION_GMAIL_APP_PASSWORD }}
+          AUTOMATION_WORKFLOW_OUTCOME: ${{ steps.automation.outcome }}
+          AUTOMATION_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python Server/scripts/email_automation_report.py automation-report.json

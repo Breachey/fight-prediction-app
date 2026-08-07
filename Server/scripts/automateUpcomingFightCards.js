@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs/promises');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const {
@@ -75,6 +76,16 @@ function parseArgs(argv) {
 
 function warn(message) {
   console.warn(process.env.GITHUB_ACTIONS ? `::warning::${message}` : message);
+}
+
+async function emitReport(report) {
+  const serialized = JSON.stringify(report, null, 2);
+  console.log(serialized);
+
+  const reportPath = String(process.env.AUTOMATION_REPORT_PATH || '').trim();
+  if (reportPath) {
+    await fs.writeFile(reportPath, `${serialized}\n`, 'utf8');
+  }
 }
 
 async function loadEvents(supabase, eventId) {
@@ -290,12 +301,14 @@ async function main() {
   });
 
   if (dueEvents.length === 0) {
-    console.log(JSON.stringify({
+    await emitReport({
       status: 'no-events-due',
       checkedAt: now.toISOString(),
       timeZone: options.timeZone,
       explicitEventId: options.eventId,
-    }, null, 2));
+      dryRun: options.dryRun,
+      results: [],
+    });
     return;
   }
 
@@ -317,20 +330,32 @@ async function main() {
   const attentionStatuses = new Set(['failed', 'blocked', 'lineup-change-refused']);
   const needsAttention = results.some((result) => attentionStatuses.has(result.status));
 
-  console.log(JSON.stringify({
+  await emitReport({
     status: needsAttention ? 'attention-required' : 'complete',
     checkedAt: now.toISOString(),
     timeZone: options.timeZone,
     dryRun: options.dryRun,
     results,
-  }, null, 2));
+  });
 
   if (needsAttention) {
     process.exitCode = 1;
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('Fight-card automation failed:', error.message || error);
+  try {
+    await emitReport({
+      status: 'failed',
+      checkedAt: new Date().toISOString(),
+      timeZone: process.env.AUTOMATION_TIME_ZONE || 'America/Denver',
+      dryRun: readBoolean(process.env.AUTOMATION_DRY_RUN),
+      results: [],
+      error: error.message || String(error),
+    });
+  } catch (reportError) {
+    console.error('Failed to write automation report:', reportError.message || reportError);
+  }
   process.exit(1);
 });

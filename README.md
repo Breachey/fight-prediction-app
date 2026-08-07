@@ -167,8 +167,11 @@ Configure these repository Actions secrets before enabling the workflow:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `AUTOMATION_GMAIL_APP_PASSWORD`
 
 The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. It refuses automated lineup changes and stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
+
+Every workflow run emails `breachey@gmail.com`, including no-op and failed runs. The email reports processed events, outcomes, filled-value counts, remaining missing fields, warnings, blockers, fatal errors, and a link to the complete GitHub Actions log. To create `AUTOMATION_GMAIL_APP_PASSWORD`, enable Google 2-Step Verification and create a dedicated 16-digit [Google App Password](https://support.google.com/mail/answer/185833). Store only that app password as the GitHub repository secret; never store the normal Gmail password. App-password spaces are accepted and removed by the reporting script.
 
 GitHub-hosted Actions are free for public repositories. Private repositories consume the account's included Actions minutes, so configure an Actions budget with paid usage disabled if the account has a payment method and strict zero spend is required.
 
