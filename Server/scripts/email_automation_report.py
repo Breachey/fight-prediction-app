@@ -12,7 +12,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 
-ATTENTION_STATUSES = {"failed", "blocked", "lineup-change-refused", "attention-required"}
+ATTENTION_STATUSES = {
+    "failed",
+    "blocked",
+    "lineup-change-refused",
+    "lineup-change-review-required",
+    "attention-required",
+}
 
 
 def positive_missing_fields(summary: Dict) -> List[Tuple[str, int]]:
@@ -52,6 +58,46 @@ def build_subject(report: Dict, workflow_outcome: str) -> str:
     return f"[Fight Picks] {prefix}: {event_label}"
 
 
+def format_fighters(fighters: List[Dict]) -> str:
+    return " vs. ".join(fighter.get("name") or str(fighter.get("fighterId")) for fighter in fighters)
+
+
+def lineup_change_lines(result: Dict) -> List[str]:
+    changes = result.get("lineupChanges") or {}
+    if not changes.get("changed"):
+        return []
+
+    added = changes.get("addedFights") or []
+    removed = changes.get("removedFights") or []
+    changed = changes.get("changedFights") or []
+    lines = [
+        "Lineup changes: "
+        f"{len(added)} added, {len(removed)} removed, {len(changed)} changed, "
+        f"{changes.get('unchangedFightCount', 0)} unchanged"
+    ]
+    for fight in added:
+        lines.append(f"Added fight {fight.get('fightId')}: {format_fighters(fight.get('fighters') or [])}")
+    for fight in removed:
+        lines.append(
+            f"Removed fight {fight.get('fightId')}: {format_fighters(fight.get('fighters') or [])}"
+        )
+    for fight in changed:
+        lines.append(
+            f"Changed fight {fight.get('fightId')}: "
+            f"{format_fighters(fight.get('before') or [])} -> "
+            f"{format_fighters(fight.get('after') or [])}"
+        )
+
+    impact = result.get("predictionImpact") or {}
+    if impact:
+        lines.append(
+            "Prediction impact: "
+            f"{impact.get('affectedPredictionCount', 0)} affected, "
+            f"{impact.get('preservedPredictionCount', 0)} preserved"
+        )
+    return lines
+
+
 def result_lines(result: Dict) -> List[str]:
     lines = [
         f"Event: {result.get('eventName') or 'Unknown'} ({result.get('eventId') or 'no ID'})",
@@ -69,6 +115,7 @@ def result_lines(result: Dict) -> List[str]:
         lines.append(f"Tapology profile attempt limit: {result['profileLimit']}")
     if result.get("filledValueCount") is not None:
         lines.append(f"New blank values filled: {result['filledValueCount']}")
+    lines.extend(lineup_change_lines(result))
 
     missing = result.get("remainingMissing") or result.get("existingMissing") or {}
     lines.append(f"Missing data: {format_missing_summary(missing)}")

@@ -70,6 +70,7 @@ Create a `Server/.env` file:
 ```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+USER_SESSION_TTL_HOURS=720
 ADMIN_SESSION_TTL_HOURS=720
 PORT=3001
 ALLOWED_ORIGINS=http://localhost:5173
@@ -87,8 +88,9 @@ VITE_API_URL=http://localhost:3001
 Notes:
 
 - `SUPABASE_SERVICE_ROLE_KEY` must stay on the server only.
-- Admin actions now require a server-issued admin session token. Any user with `users.user_type = 'admin'` receives one on login.
-- `ADMIN_SESSION_TTL_HOURS` controls how long admin sessions stay valid before the admin needs to log in again.
+- Login still uses the app's lightweight phone-number flow, but successful login now issues a hashed, revocable user session token. User-specific reads and writes reject forged user IDs.
+- Admin actions require a separate server-issued admin session token. Any user with `users.user_type = 'admin'` receives one on login.
+- `USER_SESSION_TTL_HOURS` and `ADMIN_SESSION_TTL_HOURS` default to 720 hours (30 days).
 - `ALLOWED_ORIGINS` accepts a comma-separated list of additional allowed origins.
 - `IMAGE_PROXY_ALLOWED_HOSTS` accepts a comma-separated list of approved external image hosts.
 - `DEBUG_SERVER_LOGS=true` enables verbose request/debug logging for local troubleshooting.
@@ -143,6 +145,7 @@ npm run smoke:fight-card-import -- 1302 --preview-only
 ## Database and Backend Notes
 
 - Supabase is the source of truth for users, events, fights, predictions, results, player cards, and highlights-related data.
+- The Express API is the only public data boundary. Anonymous and authenticated Supabase Data API roles have no direct table, sequence, or function privileges.
 - Database changes live in [`supabase/migrations`](./supabase/migrations).
 - The Express API exposes endpoints for authentication, fight data, predictions, leaderboards, highlights, player cards, vote reminders, and admin workflows.
 - Admin actions are audited in `admin_action_audit_log`, including fight-card previews/imports and other protected write operations.
@@ -169,7 +172,7 @@ Configure these repository Actions secrets before enabling the workflow:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `AUTOMATION_GMAIL_APP_PASSWORD`
 
-The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. It refuses automated lineup changes and stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
+The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. Lineup changes are reconciled automatically when removed or changed fights have no predictions; picks on unchanged fight IDs remain intact. If any prediction belongs to a removed or changed fight, automation stops and the report identifies the affected fights and prediction count for admin review. The job also stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
 
 Every workflow run emails `breachey@gmail.com`, including no-op and failed runs. The email reports processed events, outcomes, filled-value counts, remaining missing fields, warnings, blockers, fatal errors, and a link to the complete GitHub Actions log. To create `AUTOMATION_GMAIL_APP_PASSWORD`, enable Google 2-Step Verification and create a dedicated 16-digit [Google App Password](https://support.google.com/mail/answer/185833). Store only that app password as the GitHub repository secret; never store the normal Gmail password. App-password spaces are accepted and removed by the reporting script.
 

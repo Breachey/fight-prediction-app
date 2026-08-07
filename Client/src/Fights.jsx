@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
+import { fetchWithUserSession } from './utils/userSession';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -512,7 +513,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         // Fetch fights
         fetch(`${API_URL}/events/${eventId}/fights`),
         // Fetch user prediction history with fight outcomes
-        fetch(`${API_URL}/predictions/history?user_id=${encodeURIComponent(user_id)}`)
+        fetchWithUserSession(`${API_URL}/predictions/history`)
       ])
         .then(async ([fightsResponse, predictionHistoryResponse]) => {
           if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
@@ -594,7 +595,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       }
 
       try {
-        const response = await fetch(`${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders`);
+        const response = await fetchWithUserSession(`${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders`);
         if (!response.ok) {
           throw new Error('Failed to fetch vote reminders');
         }
@@ -749,14 +750,12 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     }
 
     try {
-      const response = await fetch(`${API_URL}/predict`, {
+      const response = await fetchWithUserSession(`${API_URL}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id,
-          username,
           fightId,
           fighter_id: selectedFighter,
           selected_fighter: selectedFighter,
@@ -820,8 +819,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         const fight = fights.find(f => f.id === fightId);
         if (fight) {
           const [fighter1Response, fighter2Response] = await Promise.all([
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-            fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
           ]);
 
           const [fighter1Votes, fighter2Votes] = await Promise.all([
@@ -879,8 +878,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
         const [fighter1Response, fighter2Response] = await Promise.all([
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-          fetch(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
+          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
+          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
         ]);
 
         if (!fighter1Response.ok) {
@@ -1027,7 +1026,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     }
 
     try {
-      const response = await fetch(
+      const response = await fetchWithUserSession(
         `${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders/${encodeURIComponent(fighterId)}`,
         {
           method: 'PUT',
@@ -1074,7 +1073,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     }
 
     try {
-      const response = await fetch(
+      const response = await fetchWithUserSession(
         `${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders/${encodeURIComponent(fighterId)}`,
         { method: 'DELETE' }
       );

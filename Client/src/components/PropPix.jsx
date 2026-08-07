@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_URL } from '../config';
 import { fetchWithAdminSession, hasActiveAdminSession } from '../utils/adminSession';
+import { fetchWithUserSession } from '../utils/userSession';
 import './PropPix.css';
 
 const WAGER_PRESETS = ['1 Shot', '2 Shots', '3 Shots', 'Drink', 'Dinner'];
@@ -59,7 +60,7 @@ function PropPix({ eventId, userId, userType }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/events/${eventId}/prop-pix?user_id=${encodeURIComponent(userId)}`, { cache: 'no-store' });
+      const response = await fetchWithUserSession(`${API_URL}/events/${eventId}/prop-pix`, { cache: 'no-store' });
       if (!response.ok) await throwResponseError(response, 'Failed to load Prop Pix bets');
       const data = await response.json();
       const nextBets = Array.isArray(data) ? data : [];
@@ -115,11 +116,10 @@ function PropPix({ eventId, userId, userType }) {
     const wagerLabel = draft.wagerLabel === 'custom' ? draft.customWager.trim() : draft.wagerLabel;
 
     try {
-      const response = await fetch(`${API_URL}/events/${eventId}/prop-pix`, {
+      const response = await fetchWithUserSession(`${API_URL}/events/${eventId}/prop-pix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
           question: draft.question,
           response_type: draft.responseType,
           options: draft.responseType === 'options' ? options : [],
@@ -143,11 +143,10 @@ function PropPix({ eventId, userId, userType }) {
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`${API_URL}/prop-pix/${bet.id}/vote`, {
+      const response = await fetchWithUserSession(`${API_URL}/prop-pix/${bet.id}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
           option_id: bet.response_type === 'options' ? voteDraft.optionId : null,
           response_text: bet.response_type === 'manual' ? voteDraft.responseText : null,
         }),
@@ -166,10 +165,10 @@ function PropPix({ eventId, userId, userType }) {
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`${API_URL}/prop-pix/${bet.id}/claim`, {
+      const response = await fetchWithUserSession(`${API_URL}/prop-pix/${bet.id}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, outcome_text: outcome }),
+        body: JSON.stringify({ outcome_text: outcome }),
       });
       if (!response.ok) await throwResponseError(response, 'Failed to submit the claim');
       await response.json();
@@ -186,10 +185,9 @@ function PropPix({ eventId, userId, userType }) {
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`${API_URL}/prop-pix/${bet.id}/claim/${claim.id}/confirm`, {
+      const response = await fetchWithUserSession(`${API_URL}/prop-pix/${bet.id}/claim/${claim.id}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
       });
       if (!response.ok) await throwResponseError(response, 'Failed to confirm the claim');
       await response.json();
@@ -219,10 +217,9 @@ function PropPix({ eventId, userId, userType }) {
   const handleCancel = async (bet) => {
     setError('');
     try {
-      const response = await fetch(`${API_URL}/prop-pix/${bet.id}/cancel`, {
+      const response = await fetchWithUserSession(`${API_URL}/prop-pix/${bet.id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
       });
       if (!response.ok) await throwResponseError(response, 'Failed to cancel the Prop Pix');
       await response.json();

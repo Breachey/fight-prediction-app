@@ -12,6 +12,7 @@ import { API_URL } from './config';
 import { APP_VERSION_LABEL } from './buildInfo';
 import { extractPosterAccents, DEFAULT_EVENT_ACCENTS } from './utils/posterAccentTheme';
 import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken, storeAdminSession } from './utils/adminSession';
+import { clearUserSession, fetchWithUserSession, getUserSessionToken, storeUserSession } from './utils/userSession';
 import './App.css';
 
 // Lazy load heavy components to improve initial load time
@@ -26,8 +27,14 @@ const LOGIN_BACKGROUND_3X = '/izzy_alex_1920.jpg';
 function persistAuthenticatedUser(userData) {
   localStorage.setItem('user_id', userData.user_id);
   localStorage.setItem('username', userData.username);
-  localStorage.setItem('phoneNumber', userData.phoneNumber || userData.phone_number || '');
   localStorage.setItem('user_type', userData.user_type || 'user');
+  localStorage.removeItem('phoneNumber');
+
+  if (userData.user_session_token) {
+    storeUserSession(userData.user_session_token, userData.user_session_expires_at);
+  } else {
+    clearUserSession();
+  }
 
   if (userData.admin_session_token) {
     storeAdminSession(userData.admin_session_token, userData.admin_session_expires_at);
@@ -52,55 +59,48 @@ function App() {
 
   useEffect(() => {
     let isMounted = true;
-    // On mount: check for saved user in localStorage and render immediately
-    const savedUsername = localStorage.getItem('username');
-    const savedPhoneNumber = localStorage.getItem('phoneNumber');
-    const savedUserId = localStorage.getItem('user_id');
-    const savedUserType = localStorage.getItem('user_type');
+    const savedUserSessionToken = getUserSessionToken();
     const savedAdminSessionToken = getAdminSessionToken();
     const savedAdminSessionExpiry = getAdminSessionExpiry();
 
-    if (savedUsername && savedPhoneNumber && savedUserId) {
-      // Render with cached user immediately
-      setUser({ 
-        username: savedUsername, 
-        phoneNumber: savedPhoneNumber, 
-        user_id: savedUserId,
-        user_type: savedUserType || 'user',
-        admin_session_token: savedAdminSessionToken || null,
-        admin_session_expires_at: savedAdminSessionExpiry || null,
-      });
+    (async () => {
+      if (!savedUserSessionToken) {
+        clearAdminSession();
+        if (isMounted) setIsLoading(false);
+        return;
+      }
 
-      // Fetch playercard in the background
-      (async () => {
-        try {
-          const response = await fetch(`${API_URL}/user/by-id/${savedUserId}`);
-          if (!response.ok) return;
-          const userData = await response.json();
-          if (userData.user_type) {
-            localStorage.setItem('user_type', userData.user_type);
-          }
-          if (userData.user_type !== 'admin') {
-            clearAdminSession();
-          }
-          if (isMounted) {
-            setUser({ 
-              username: savedUsername, 
-              phoneNumber: userData.phone_number || savedPhoneNumber, 
-              user_id: savedUserId,
-              user_type: userData.user_type || savedUserType || 'user',
-              admin_session_token: userData.user_type === 'admin' ? (savedAdminSessionToken || null) : null,
-              admin_session_expires_at: userData.user_type === 'admin' ? (savedAdminSessionExpiry || null) : null,
-              playercard: userData.playercards || null
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching user playercard:', error);
+      try {
+        const response = await fetchWithUserSession(`${API_URL}/session`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Session validation failed');
+        const userData = await response.json();
+        localStorage.setItem('user_id', userData.user_id);
+        localStorage.setItem('username', userData.username);
+        localStorage.setItem('user_type', userData.user_type || 'user');
+        localStorage.removeItem('phoneNumber');
+
+        if (userData.user_type !== 'admin') clearAdminSession();
+        if (isMounted) {
+          setUser({
+            ...userData,
+            user_session_token: savedUserSessionToken,
+            admin_session_token: userData.user_type === 'admin' ? (savedAdminSessionToken || null) : null,
+            admin_session_expires_at: userData.user_type === 'admin' ? (savedAdminSessionExpiry || null) : null,
+            playercard: userData.playercards || null,
+          });
         }
-      })();
-    }
-
-    setIsLoading(false);
+      } catch (error) {
+        clearUserSession();
+        clearAdminSession();
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('username');
+        localStorage.removeItem('user_type');
+        localStorage.removeItem('phoneNumber');
+        if (isMounted) setUser(null);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    })();
 
     return () => {
       isMounted = false;
@@ -129,10 +129,19 @@ function App() {
       }
     }
 
+    if (getUserSessionToken()) {
+      try {
+        await fetchWithUserSession(`${API_URL}/session/logout`, { method: 'POST' });
+      } catch (error) {
+        console.warn('Failed to revoke user session during logout:', error);
+      }
+    }
+
     localStorage.removeItem('username');
     localStorage.removeItem('phoneNumber');
     localStorage.removeItem('user_id');
     localStorage.removeItem('user_type');
+    clearUserSession();
     clearAdminSession();
     setUser(null);
     setIsMenuOpen(false);

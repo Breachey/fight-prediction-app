@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.0 - 2026-08-07
+
+### Security
+
+- Added revocable 30-day user sessions and bound predictions, Prop Pix actions, notifications, reminders, and player-card updates to the authenticated user.
+- Added a Supabase lockdown migration that enables RLS across public tables and removes direct anonymous/authenticated table, sequence, and function access.
+- Restricted individual future-pick visibility until the viewer has submitted a pick, revoked pre-hardening admin sessions, and capped future admin sessions at 30 days.
+- Added production browser security headers, removed internal database error details from public responses, and patched Node, Python, build, and lint dependencies.
+
+### Changed
+
+- Login remains phone-number based, but users must log in again once after deployment to receive the new session token.
+
+## 0.5.2 - 2026-08-07
+
+### Changed
+
+- Made automated lineup reconciliation prediction-aware: changes with no affected picks apply automatically, while changes that would invalidate picks require admin review.
+- Expanded automation emails with added, removed, and changed fight details plus affected and preserved prediction counts.
+- Updated official GitHub workflow actions to their Node 24-compatible major versions.
+
+### Fixed
+
+- Reconciled event 1324 with the current 12-fight UFC lineup without invalidating any predictions.
+
 ## 0.5.1 - 2026-08-07
 
 ### Added

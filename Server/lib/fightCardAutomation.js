@@ -70,6 +70,101 @@ function fightCardRowKey(row) {
   return [row?.FightId, row?.FighterId, row?.Corner].join('|');
 }
 
+function fightSummary(row) {
+  const firstName = String(row?.FirstName || '').trim();
+  const lastName = String(row?.LastName || '').trim();
+  return {
+    fighterId: Number(row?.FighterId),
+    name: [firstName, lastName].filter(Boolean).join(' ') || `Fighter ${row?.FighterId}`,
+    corner: row?.Corner || null,
+  };
+}
+
+function buildFightsById(rows) {
+  const fights = new Map();
+  for (const row of rows || []) {
+    const fightId = Number(row?.FightId);
+    if (!Number.isFinite(fightId)) {
+      continue;
+    }
+
+    if (!fights.has(fightId)) {
+      fights.set(fightId, []);
+    }
+    fights.get(fightId).push(fightSummary(row));
+  }
+
+  for (const fighters of fights.values()) {
+    fighters.sort((left, right) => left.fighterId - right.fighterId);
+  }
+  return fights;
+}
+
+function sameFighterSet(left, right) {
+  return left.length === right.length
+    && left.every((fighter, index) => fighter.fighterId === right[index].fighterId);
+}
+
+function summarizeLineupChanges(existingRows, nextRows) {
+  const existingFights = buildFightsById(existingRows);
+  const nextFights = buildFightsById(nextRows);
+  const addedFights = [];
+  const removedFights = [];
+  const changedFights = [];
+  let unchangedFightCount = 0;
+
+  for (const [fightId, fighters] of existingFights.entries()) {
+    const nextFighters = nextFights.get(fightId);
+    if (!nextFighters) {
+      removedFights.push({ fightId, fighters });
+    } else if (!sameFighterSet(fighters, nextFighters)) {
+      changedFights.push({ fightId, before: fighters, after: nextFighters });
+    } else {
+      unchangedFightCount += 1;
+    }
+  }
+
+  for (const [fightId, fighters] of nextFights.entries()) {
+    if (!existingFights.has(fightId)) {
+      addedFights.push({ fightId, fighters });
+    }
+  }
+
+  const affectedExistingFightIds = [
+    ...removedFights.map((fight) => fight.fightId),
+    ...changedFights.map((fight) => fight.fightId),
+  ];
+
+  return {
+    changed: addedFights.length > 0 || removedFights.length > 0 || changedFights.length > 0,
+    unchangedFightCount,
+    addedFights,
+    removedFights,
+    changedFights,
+    affectedExistingFightIds,
+  };
+}
+
+function assessLineupChange({ existingRows, nextRows, predictions }) {
+  const lineupChanges = summarizeLineupChanges(existingRows, nextRows);
+  const affectedFightIds = new Set(lineupChanges.affectedExistingFightIds);
+  const existingPredictions = predictions || [];
+  const affectedPredictionCount = existingPredictions.reduce(
+    (count, prediction) => count + (affectedFightIds.has(Number(prediction?.fight_id)) ? 1 : 0),
+    0
+  );
+
+  return {
+    lineupChanges,
+    predictionImpact: {
+      totalPredictionCount: existingPredictions.length,
+      affectedPredictionCount,
+      preservedPredictionCount: existingPredictions.length - affectedPredictionCount,
+    },
+    canAutoApply: lineupChanges.changed && affectedPredictionCount === 0,
+  };
+}
+
 function mergeScrapedRowsWithStoredValues(scrapedRows, existingRows) {
   const existingByKey = new Map(
     (existingRows || []).map((row) => [fightCardRowKey(row), row])
@@ -137,6 +232,7 @@ function hasEventStarted(rows, now = new Date()) {
 
 module.exports = {
   AUTOMATION_FILL_FIELDS,
+  assessLineupChange,
   countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,

@@ -48,6 +48,40 @@ class AutomationEmailReportTests(unittest.TestCase):
         report = {"status": "complete", "results": []}
         self.assertIn("ACTION REQUIRED", build_subject(report, "failure"))
 
+    def test_report_explains_lineup_changes_and_prediction_impact(self):
+        report = {
+            "status": "complete",
+            "results": [{
+                "eventId": 1324,
+                "eventName": "UFC Fight Night: Test",
+                "status": "lineup-updated",
+                "lineupChanges": {
+                    "changed": True,
+                    "unchangedFightCount": 10,
+                    "addedFights": [{
+                        "fightId": 12,
+                        "fighters": [{"name": "Added Red"}, {"name": "Added Blue"}],
+                    }],
+                    "removedFights": [{
+                        "fightId": 11,
+                        "fighters": [{"name": "Old Red"}, {"name": "Old Blue"}],
+                    }],
+                    "changedFights": [],
+                },
+                "predictionImpact": {
+                    "affectedPredictionCount": 0,
+                    "preservedPredictionCount": 3,
+                },
+            }],
+        }
+
+        body = build_text_report(report, "success", "")
+
+        self.assertIn("1 added, 1 removed", body)
+        self.assertIn("Added fight 12: Added Red vs. Added Blue", body)
+        self.assertIn("Removed fight 11: Old Red vs. Old Blue", body)
+        self.assertIn("0 affected, 3 preserved", body)
+
     def test_missing_report_file_builds_a_fallback_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             report = load_report(Path(directory) / "missing.json")
