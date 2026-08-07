@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL } from '../config';
+import { fetchWithUserSession } from '../utils/userSession';
 import './NotificationCenter.css';
 
 function formatNotificationTime(value) {
@@ -20,7 +21,7 @@ function NotificationCenter({ userId }) {
     if (!userId) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/user/${encodeURIComponent(userId)}/notifications?limit=40`, { cache: 'no-store' });
+      const response = await fetchWithUserSession(`${API_URL}/user/${encodeURIComponent(userId)}/notifications?limit=40`, { cache: 'no-store' });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to load notifications');
@@ -53,7 +54,7 @@ function NotificationCenter({ userId }) {
   const markRead = async (notification) => {
     if (notification.read_at) return;
     try {
-      const response = await fetch(`${API_URL}/user/${encodeURIComponent(userId)}/notifications/${notification.id}/read`, { method: 'PATCH' });
+      const response = await fetchWithUserSession(`${API_URL}/user/${encodeURIComponent(userId)}/notifications/${notification.id}/read`, { method: 'PATCH' });
       if (!response.ok) throw new Error('Failed to mark notification read');
       setNotifications((previous) => previous.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
       setUnreadCount((previous) => Math.max(previous - 1, 0));
@@ -65,7 +66,7 @@ function NotificationCenter({ userId }) {
   const markAllRead = async () => {
     if (!unreadCount) return;
     try {
-      const response = await fetch(`${API_URL}/user/${encodeURIComponent(userId)}/notifications/read-all`, { method: 'POST' });
+      const response = await fetchWithUserSession(`${API_URL}/user/${encodeURIComponent(userId)}/notifications/read-all`, { method: 'POST' });
       if (!response.ok) throw new Error('Failed to mark notifications read');
       const timestamp = new Date().toISOString();
       setNotifications((previous) => previous.map((notification) => ({ ...notification, read_at: notification.read_at || timestamp })));

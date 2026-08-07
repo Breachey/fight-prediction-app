@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const {
+  assessLineupChange,
   countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
@@ -119,22 +120,38 @@ async function loadEventContext(supabase, event) {
     new Set((existingRows || []).map((row) => row.FightId).filter((value) => value != null))
   );
   let existingResults = [];
+  let existingPredictions = [];
 
   if (fightIds.length > 0) {
-    const { data, error } = await supabase
-      .from('fight_results')
-      .select('fight_id,fighter_id,is_completed')
-      .in('fight_id', fightIds);
+    const [resultResponse, predictionResponse] = await Promise.all([
+      supabase
+        .from('fight_results')
+        .select('fight_id,fighter_id,is_completed')
+        .in('fight_id', fightIds),
+      supabase
+        .from('predictions')
+        .select('fight_id,fighter_id')
+        .in('fight_id', fightIds),
+    ]);
 
-    if (error) {
-      throw new Error(`Failed to load event ${event.id} fight results: ${error.message}`);
+    if (resultResponse.error) {
+      throw new Error(
+        `Failed to load event ${event.id} fight results: ${resultResponse.error.message}`
+      );
     }
-    existingResults = data || [];
+    if (predictionResponse.error) {
+      throw new Error(
+        `Failed to load event ${event.id} predictions: ${predictionResponse.error.message}`
+      );
+    }
+    existingResults = resultResponse.data || [];
+    existingPredictions = predictionResponse.data || [];
   }
 
   return {
     existingRows: existingRows || [],
     existingResults,
+    existingPredictions,
   };
 }
 
@@ -230,19 +247,35 @@ async function processEvent({ supabase, event, options, now }) {
       };
     }
 
+    let lineupAssessment = null;
     if (context.existingRows.length > 0 && preview.changedFightCard) {
-      warn(`Event ${event.id} lineup changed; automatic replacement was refused.`);
-      return {
-        eventId: event.id,
-        eventName: event.name,
-        status: 'lineup-change-refused',
-        profileLimit,
-        warnings: preview.warnings,
-      };
+      lineupAssessment = assessLineupChange({
+        existingRows: context.existingRows,
+        nextRows: preview.rows,
+        predictions: context.existingPredictions,
+      });
+
+      if (!lineupAssessment.canAutoApply) {
+        const affectedCount = lineupAssessment.predictionImpact.affectedPredictionCount;
+        warn(
+          `Event ${event.id} lineup change needs review because ${affectedCount} prediction(s) `
+          + 'belong to removed or changed fights.'
+        );
+        return {
+          eventId: event.id,
+          eventName: event.name,
+          status: 'lineup-change-review-required',
+          reason: `${affectedCount} prediction(s) would be invalidated by this lineup change.`,
+          profileLimit,
+          lineupChanges: lineupAssessment.lineupChanges,
+          predictionImpact: lineupAssessment.predictionImpact,
+          warnings: preview.warnings,
+        };
+      }
     }
 
     const filledValueCount = countFilledFightCardValues(context.existingRows, preview.rows);
-    if (context.existingRows.length > 0 && filledValueCount === 0) {
+    if (context.existingRows.length > 0 && filledValueCount === 0 && !lineupAssessment) {
       const eventImageUpdate = await backfillEventImageIfMissing({
         supabase,
         eventId: event.id,
@@ -264,12 +297,16 @@ async function processEvent({ supabase, event, options, now }) {
     return {
       eventId: event.id,
       eventName: event.name,
-      status: context.existingRows.length > 0 ? 'filled-missing-values' : 'imported-new-card',
+      status: lineupAssessment
+        ? 'lineup-updated'
+        : (context.existingRows.length > 0 ? 'filled-missing-values' : 'imported-new-card'),
       profileLimit,
       filledValueCount,
       rowCount: preview.rowCount,
       fightCount: preview.fightCount,
       remainingMissing: summarizeMissingFightCardData(preview.rows),
+      lineupChanges: lineupAssessment?.lineupChanges || null,
+      predictionImpact: lineupAssessment?.predictionImpact || null,
       warnings: preview.warnings,
       ...persisted,
     };
@@ -327,7 +364,12 @@ async function main() {
     }
   }
 
-  const attentionStatuses = new Set(['failed', 'blocked', 'lineup-change-refused']);
+  const attentionStatuses = new Set([
+    'failed',
+    'blocked',
+    'lineup-change-refused',
+    'lineup-change-review-required',
+  ]);
   const needsAttention = results.some((result) => attentionStatuses.has(result.status));
 
   await emitReport({

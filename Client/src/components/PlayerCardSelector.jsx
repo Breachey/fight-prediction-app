@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import PlayerCard from './PlayerCard';
 import { API_URL } from '../config';
 import { cachedFetchJson, invalidateCache } from '../utils/apiCache';
+import { fetchWithUserSession } from '../utils/userSession';
 import './PlayerCardSelector.css';
 
 function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
@@ -51,7 +52,7 @@ function PlayerCardSelector({ currentPlayercardId, userId, onChange }) {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/user/${userId}/playercard`, {
+      const res = await fetchWithUserSession(`${API_URL}/user/${userId}/playercard`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playercard_id: id })

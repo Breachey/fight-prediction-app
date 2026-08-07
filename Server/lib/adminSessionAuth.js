@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
 const AUTHORIZATION_HEADER = 'authorization';
-const DEFAULT_ADMIN_SESSION_TTL_HOURS = 24 * 365 * 10;
+const DEFAULT_ADMIN_SESSION_TTL_HOURS = 24 * 30;
 
 function getAdminSessionTtlHours() {
   const parsed = Number.parseInt(process.env.ADMIN_SESSION_TTL_HOURS || '', 10);

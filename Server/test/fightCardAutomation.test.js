@@ -1,12 +1,20 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  assessLineupChange,
   countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   selectDueEvents,
   summarizeMissingFightCardData,
 } = require('../lib/fightCardAutomation');
+
+function fightRows(fightId, redId, redName, blueId, blueName) {
+  return [
+    { FightId: fightId, FighterId: redId, FirstName: redName, LastName: 'Red', Corner: 'Red' },
+    { FightId: fightId, FighterId: blueId, FirstName: blueName, LastName: 'Blue', Corner: 'Blue' },
+  ];
+}
 
 test('selectDueEvents selects incomplete events due today or tomorrow', () => {
   const events = [
@@ -92,4 +100,51 @@ test('hasEventStarted uses the earliest stored start time', () => {
 
   assert.equal(hasEventStarted(rows, new Date('2026-08-06T20:59:00Z')), false);
   assert.equal(hasEventStarted(rows, new Date('2026-08-06T21:01:00Z')), true);
+});
+
+test('assessLineupChange allows added and removed fights when affected fights have no picks', () => {
+  const existingRows = [
+    ...fightRows(10, 100, 'Kept', 101, 'Matchup'),
+    ...fightRows(11, 102, 'Removed', 103, 'Fight'),
+  ];
+  const nextRows = [
+    ...fightRows(10, 100, 'Kept', 101, 'Matchup'),
+    ...fightRows(12, 104, 'Added', 105, 'Fight'),
+  ];
+  const assessment = assessLineupChange({
+    existingRows,
+    nextRows,
+    predictions: [{ fight_id: 10, fighter_id: 100 }],
+  });
+
+  assert.equal(assessment.canAutoApply, true);
+  assert.equal(assessment.lineupChanges.unchangedFightCount, 1);
+  assert.deepEqual(assessment.lineupChanges.affectedExistingFightIds, [11]);
+  assert.equal(assessment.lineupChanges.addedFights[0].fightId, 12);
+  assert.equal(assessment.predictionImpact.preservedPredictionCount, 1);
+  assert.equal(assessment.predictionImpact.affectedPredictionCount, 0);
+});
+
+test('assessLineupChange blocks removal or opponent changes with affected picks', () => {
+  const existingRows = [
+    ...fightRows(20, 200, 'Original', 201, 'Opponent'),
+    ...fightRows(21, 202, 'Removed', 203, 'Fight'),
+  ];
+  const nextRows = [
+    ...fightRows(20, 200, 'Original', 204, 'Replacement'),
+  ];
+  const assessment = assessLineupChange({
+    existingRows,
+    nextRows,
+    predictions: [
+      { fight_id: 20, fighter_id: 200 },
+      { fight_id: 21, fighter_id: 203 },
+    ],
+  });
+
+  assert.equal(assessment.canAutoApply, false);
+  assert.equal(assessment.lineupChanges.changedFights.length, 1);
+  assert.equal(assessment.lineupChanges.removedFights.length, 1);
+  assert.equal(assessment.predictionImpact.affectedPredictionCount, 2);
+  assert.equal(assessment.predictionImpact.preservedPredictionCount, 0);
 });

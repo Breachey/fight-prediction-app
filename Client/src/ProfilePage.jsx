@@ -159,7 +159,6 @@ function ProfilePage({ user: loggedInUser }) {
         setProfileUser({
           username: userEntry.username, // display username
           user_id: userEntry.user_id,   // keep user_id if needed for backend
-          phoneNumber: routeUserId ? undefined : loggedInUser.phoneNumber,
           playercard: userEntry.playercard
         });
         

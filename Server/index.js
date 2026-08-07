@@ -10,6 +10,13 @@ const {
   revokeAdminSessionsForUser,
 } = require('./lib/adminSessionAuth');
 const {
+  createRequireUserSession,
+  issueUserSession,
+  readBearerToken: readUserBearerToken,
+  requireOwnUserParam,
+  revokeUserSession,
+} = require('./lib/userSessionAuth');
+const {
   writeAdminAuditLog,
 } = require('./lib/adminAuditLog');
 const {
@@ -65,6 +72,8 @@ const supabase = createClient(
   supabaseServiceRoleKey
 );
 const requireAdminSession = createRequireAdminSession(supabase);
+const requireUserSession = createRequireUserSession(supabase);
+const requireOwnUserId = requireOwnUserParam('user_id');
 
 const express = require('express');
 const cors = require('cors');
@@ -1666,12 +1675,19 @@ async function buildAuthenticatedUserResponse(user) {
   const baseResponse = {
     user_id: user.user_id,
     username: user.username,
-    phoneNumber: user.phone_number,
     user_type: user.user_type || 'user',
   };
 
+  const userSession = await issueUserSession({
+    supabase,
+    user,
+  });
+
   if (baseResponse.user_type !== 'admin') {
-    return baseResponse;
+    return {
+      ...baseResponse,
+      ...userSession,
+    };
   }
 
   const adminSession = await issueAdminSession({
@@ -1685,6 +1701,7 @@ async function buildAuthenticatedUserResponse(user) {
 
   return {
     ...baseResponse,
+    ...userSession,
     ...adminSession,
   };
 }
@@ -1879,6 +1896,39 @@ app.post('/admin/session/logout', adminActionRateLimit, requireAdminSession, asy
   }
 });
 
+app.get('/session', requireUserSession, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const profile = await fetchSingleUserProfile('user_id', req.authenticatedUser.user_id);
+    if (!profile) {
+      return res.status(401).json({ error: 'User session is invalid' });
+    }
+    return res.json({
+      user_id: req.authenticatedUser.user_id,
+      ...profile,
+      user_session_expires_at: req.userSession.expires_at,
+    });
+  } catch (error) {
+    console.error('Session profile error:', error);
+    return res.status(500).json({ error: 'Failed to load user session' });
+  }
+});
+
+app.post('/session/logout', requireUserSession, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    await revokeUserSession({
+      supabase,
+      token: readUserBearerToken(req),
+      reason: 'logout',
+    });
+    return res.json({ message: 'User session ended' });
+  } catch (error) {
+    console.error('User session logout error:', error);
+    return res.status(500).json({ error: 'Failed to end user session' });
+  }
+});
+
 // Helper function to get weightclass mapping
 async function getWeightclassMapping() {
   try {
@@ -1980,9 +2030,11 @@ app.get('/fights', async (req, res) => {
   }
 });
 
-app.post('/predict', async (req, res) => {
-  const { fightId, fighter_id, username, user_id } = req.body;
-  if (!fightId || !fighter_id || (!username && !user_id)) {
+app.post('/predict', requireUserSession, async (req, res) => {
+  const { fightId, fighter_id } = req.body;
+  const user_id = req.authenticatedUser.user_id;
+  const username = req.authenticatedUser.username;
+  if (!fightId || !fighter_id) {
     return res.status(400).json({ error: "Missing required data" });
   }
   try {
@@ -2016,12 +2068,11 @@ app.post('/predict', async (req, res) => {
     }
 
     // Check if prediction already exists
-    let checkQuery = supabase.from('predictions').select('fight_id').eq('fight_id', fightId);
-    if (user_id) {
-      checkQuery = checkQuery.eq('user_id', user_id);
-    } else if (username) {
-      checkQuery = checkQuery.eq('username', username);
-    }
+    const checkQuery = supabase
+      .from('predictions')
+      .select('fight_id')
+      .eq('fight_id', fightId)
+      .eq('user_id', user_id);
     const { data: existingPrediction, error: checkError } = await checkQuery.single();
 
     if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
@@ -2030,19 +2081,16 @@ app.post('/predict', async (req, res) => {
     }
 
     // Insert or update prediction
-    let insertData = {
+    const insertData = {
       fight_id: fightId,
       fighter_id,
       betting_odds,
+      user_id,
+      username,
     };
-    if (user_id) {
-      insertData.user_id = user_id;
-    }
-    if (username) {
-      insertData.username = username;
-    }
-    let upsertQuery = supabase.from('predictions').upsert([insertData], { onConflict: ['fight_id', user_id ? 'user_id' : 'username'] });
-    const { data: upserted, error: upsertError } = await upsertQuery;
+    const { data: upserted, error: upsertError } = await supabase
+      .from('predictions')
+      .upsert([insertData], { onConflict: 'fight_id,user_id' });
 
     if (upsertError) {
       console.error('Error inserting/updating prediction:', upsertError);
@@ -2057,18 +2105,12 @@ app.post('/predict', async (req, res) => {
   }
 });
 
-app.get('/predictions', async (req, res) => {
+app.get('/predictions', requireUserSession, async (req, res) => {
   try {
-    const { username, user_id } = req.query;
-    if (!username && !user_id) {
-      return res.status(400).json({ error: 'Username or user_id is required' });
-    }
-    let query = supabase.from('predictions').select('fight_id, fighter_id, username, user_id');
-    if (user_id) {
-      query = query.eq('user_id', user_id);
-    } else if (username) {
-      query = query.eq('username', username);
-    }
+    const query = supabase
+      .from('predictions')
+      .select('fight_id, fighter_id, username, user_id')
+      .eq('user_id', req.authenticatedUser.user_id);
     const { data, error } = await query;
     if (error) {
       console.error('Error fetching predictions:', error);
@@ -2081,21 +2123,12 @@ app.get('/predictions', async (req, res) => {
   }
 });
 
-app.get('/predictions/history', async (req, res) => {
+app.get('/predictions/history', requireUserSession, async (req, res) => {
   try {
-    const { username, user_id } = req.query;
-    if (!username && !user_id) {
-      return res.status(400).json({ error: 'Username or user_id is required' });
-    }
-
-    let predictionsQuery = supabase
+    const predictionsQuery = supabase
       .from('predictions')
-      .select('fight_id, fighter_id, username, user_id');
-    if (user_id) {
-      predictionsQuery = predictionsQuery.eq('user_id', user_id);
-    } else if (username) {
-      predictionsQuery = predictionsQuery.eq('username', username);
-    }
+      .select('fight_id, fighter_id, username, user_id')
+      .eq('user_id', req.authenticatedUser.user_id);
 
     const predictions = await fetchAllFromSupabase(predictionsQuery);
     if (!predictions || predictions.length === 0) {
@@ -2200,7 +2233,7 @@ app.get('/predictions/history', async (req, res) => {
   }
 });
 
-app.get('/predictions/filter', async (req, res) => {
+app.get('/predictions/filter', requireUserSession, async (req, res) => {
   const { fight_id, fighter_id } = req.query;
 
   if (!fight_id || !fighter_id) {
@@ -2208,6 +2241,34 @@ app.get('/predictions/filter', async (req, res) => {
   }
 
   try {
+    const { data: viewerPrediction, error: viewerPredictionError } = await supabase
+      .from('predictions')
+      .select('fight_id')
+      .eq('fight_id', fight_id)
+      .eq('user_id', req.authenticatedUser.user_id)
+      .maybeSingle();
+
+    if (viewerPredictionError) {
+      console.error('Error checking viewer prediction:', viewerPredictionError);
+      return res.status(500).json({ error: 'Error checking prediction access' });
+    }
+    if (!viewerPrediction) {
+      const { data: completedFight, error: completedFightError } = await supabase
+        .from('fight_results')
+        .select('fight_id')
+        .eq('fight_id', fight_id)
+        .eq('is_completed', true)
+        .maybeSingle();
+
+      if (completedFightError) {
+        console.error('Error checking completed fight access:', completedFightError);
+        return res.status(500).json({ error: 'Error checking prediction access' });
+      }
+      if (!completedFight) {
+        return res.status(403).json({ error: 'Submit your pick before viewing individual votes' });
+      }
+    }
+
     // Get predictions
     const { data: predictions, error: predictionsError } = await supabase
       .from('predictions')
@@ -3258,10 +3319,7 @@ app.get('/leaderboard', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
-    res.status(500).json({ 
-      error: 'Failed to process leaderboard',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to process leaderboard' });
   }
 });
 
@@ -3382,10 +3440,7 @@ app.get('/leaderboard/2025', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing 2025 leaderboard:', error);
-    res.status(500).json({ 
-      error: 'Failed to process 2025 leaderboard',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to process 2025 leaderboard' });
   }
 });
 
@@ -3469,10 +3524,7 @@ app.get('/leaderboard/season', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing season leaderboard:', error);
-    res.status(500).json({ 
-      error: 'Failed to process season leaderboard',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to process season leaderboard' });
   }
 });
 
@@ -3571,10 +3623,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing monthly leaderboard:', error);
-    res.status(500).json({ 
-      error: 'Failed to process monthly leaderboard',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to process monthly leaderboard' });
   }
 });
 
@@ -3591,7 +3640,7 @@ app.get('/events', async (req, res) => {
 
     if (eventsError) {
       console.error('Error fetching events:', eventsError);
-      return res.status(500).json({ error: 'Failed to fetch events', details: eventsError.message });
+      return res.status(500).json({ error: 'Failed to fetch events' });
     }
 
     if (!eventsData || eventsData.length === 0) {
@@ -3734,7 +3783,7 @@ app.get('/events/:id/start-time', async (req, res) => {
 
     if (error) {
       console.error('Error fetching event start time:', error);
-      return res.status(500).json({ error: 'Failed to fetch event start time', details: error.message });
+      return res.status(500).json({ error: 'Failed to fetch event start time' });
     }
 
     const earliestStartTime = (data || []).reduce((earliest, row) => {
@@ -5323,10 +5372,10 @@ async function notifyPropPixResults({ propPixId, bet, claimId, actorUserId, clos
 }
 
 // Prop Pix is deliberately separate from fight predictions and has no scoring path.
-app.get('/events/:id/prop-pix', async (req, res) => {
+app.get('/events/:id/prop-pix', requireUserSession, async (req, res) => {
   try {
     const eventId = normalizeUserId(req.params.id);
-    const currentUserId = normalizeUserId(req.query.user_id);
+    const currentUserId = req.authenticatedUser.user_id;
     if (!eventId) return res.status(400).json({ error: 'Event ID must be a valid integer' });
 
     res.set('Cache-Control', 'no-store');
@@ -5337,10 +5386,10 @@ app.get('/events/:id/prop-pix', async (req, res) => {
   }
 });
 
-app.post('/events/:id/prop-pix', async (req, res) => {
+app.post('/events/:id/prop-pix', requireUserSession, async (req, res) => {
   try {
     const eventId = normalizeUserId(req.params.id);
-    const creatorUserId = normalizeUserId(req.body?.user_id || req.body?.creator_user_id);
+    const creatorUserId = req.authenticatedUser.user_id;
     if (!eventId || !creatorUserId) return res.status(400).json({ error: 'Event ID and user ID are required' });
 
     const user = await getPropPixUser(creatorUserId);
@@ -5393,10 +5442,10 @@ app.post('/events/:id/prop-pix', async (req, res) => {
   }
 });
 
-app.post('/prop-pix/:id/vote', async (req, res) => {
+app.post('/prop-pix/:id/vote', requireUserSession, async (req, res) => {
   try {
     const propPixId = normalizeUserId(req.params.id);
-    const userId = normalizeUserId(req.body?.user_id);
+    const userId = req.authenticatedUser.user_id;
     if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
 
     const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
@@ -5450,10 +5499,10 @@ app.post('/prop-pix/:id/vote', async (req, res) => {
   }
 });
 
-app.post('/prop-pix/:id/claim', async (req, res) => {
+app.post('/prop-pix/:id/claim', requireUserSession, async (req, res) => {
   try {
     const propPixId = normalizeUserId(req.params.id);
-    const userId = normalizeUserId(req.body?.user_id);
+    const userId = req.authenticatedUser.user_id;
     if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
 
     const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
@@ -5528,11 +5577,11 @@ app.post('/prop-pix/:id/claim', async (req, res) => {
   }
 });
 
-app.post('/prop-pix/:id/claim/:claimId/confirm', async (req, res) => {
+app.post('/prop-pix/:id/claim/:claimId/confirm', requireUserSession, async (req, res) => {
   try {
     const propPixId = normalizeUserId(req.params.id);
     const claimId = normalizeUserId(req.params.claimId);
-    const confirmingUserId = normalizeUserId(req.body?.user_id);
+    const confirmingUserId = req.authenticatedUser.user_id;
     if (!propPixId || !claimId || !confirmingUserId) {
       return res.status(400).json({ error: 'Prop Pix ID, claim ID, and user ID are required' });
     }
@@ -5615,10 +5664,10 @@ app.post('/admin/prop-pix/:id/claim/:claimId/close', requireAdminSession, async 
   }
 });
 
-app.post('/prop-pix/:id/cancel', async (req, res) => {
+app.post('/prop-pix/:id/cancel', requireUserSession, async (req, res) => {
   try {
     const propPixId = normalizeUserId(req.params.id);
-    const userId = normalizeUserId(req.body?.user_id);
+    const userId = req.authenticatedUser.user_id;
     if (!propPixId || !userId) return res.status(400).json({ error: 'Prop Pix ID and user ID are required' });
 
     const [bet, user] = await Promise.all([getPropPixBetById(propPixId), getPropPixUser(userId)]);
@@ -5649,7 +5698,7 @@ app.post('/prop-pix/:id/cancel', async (req, res) => {
   }
 });
 
-app.get('/user/:user_id/notifications', async (req, res) => {
+app.get('/user/:user_id/notifications', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const userId = normalizeUserId(req.params.user_id);
     if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
@@ -5701,7 +5750,7 @@ app.get('/user/:user_id/notifications', async (req, res) => {
   }
 });
 
-app.patch('/user/:user_id/notifications/:notification_id/read', async (req, res) => {
+app.patch('/user/:user_id/notifications/:notification_id/read', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const userId = normalizeUserId(req.params.user_id);
     const notificationId = normalizeUserId(req.params.notification_id);
@@ -5723,7 +5772,7 @@ app.patch('/user/:user_id/notifications/:notification_id/read', async (req, res)
   }
 });
 
-app.post('/user/:user_id/notifications/read-all', async (req, res) => {
+app.post('/user/:user_id/notifications/read-all', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const userId = normalizeUserId(req.params.user_id);
     if (!userId) return res.status(400).json({ error: 'User ID must be a valid integer' });
@@ -6290,7 +6339,7 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
       results = await fetchAllFromSupabase(resultsQuery);
     } catch (error) {
       console.error('Error fetching prediction_results for event stats:', error);
-      return res.status(500).json({ error: 'Failed to fetch prediction results', details: error.message });
+      return res.status(500).json({ error: 'Failed to fetch prediction results' });
     }
 
     if (!results || results.length === 0) {
@@ -6333,7 +6382,7 @@ app.get('/user/:user_id/event-stats', async (req, res) => {
       events = await fetchAllFromSupabase(eventsQuery);
     } catch (error) {
       console.error('Error fetching events for event stats:', error);
-      return res.status(500).json({ error: 'Failed to fetch events for stats', details: error.message });
+      return res.status(500).json({ error: 'Failed to fetch events for stats' });
     }
     const eventMap = new Map((events || []).map(event => [Number(event.id), event]));
 
@@ -6378,7 +6427,7 @@ const isMissingReminderTypeColumnError = (error) => {
   );
 };
 
-app.get('/user/:user_id/vote-reminders', async (req, res) => {
+app.get('/user/:user_id/vote-reminders', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
     if (!Number.isFinite(normalizedUserId)) {
@@ -6422,7 +6471,7 @@ app.get('/user/:user_id/vote-reminders', async (req, res) => {
   }
 });
 
-app.put('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
+app.put('/user/:user_id/vote-reminders/:fighter_id', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
     const normalizedFighterId = Number.parseInt(String(req.params.fighter_id), 10);
@@ -6489,7 +6538,7 @@ app.put('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
   }
 });
 
-app.delete('/user/:user_id/vote-reminders/:fighter_id', async (req, res) => {
+app.delete('/user/:user_id/vote-reminders/:fighter_id', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const normalizedUserId = Number.parseInt(String(req.params.user_id), 10);
     const normalizedFighterId = Number.parseInt(String(req.params.fighter_id), 10);
@@ -7765,10 +7814,7 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching user highlights:', error);
-    return res.status(500).json({
-      error: 'Failed to fetch user highlights',
-      details: error.message
-    });
+    return res.status(500).json({ error: 'Failed to fetch user highlights' });
   }
 });
 
@@ -7908,7 +7954,7 @@ app.get('/playercards', async (req, res) => {
 });
 
 // Update user's selected playercard
-app.patch('/user/:user_id/playercard', async (req, res) => {
+app.patch('/user/:user_id/playercard', requireUserSession, requireOwnUserId, async (req, res) => {
   try {
     const { user_id } = req.params;
     const { playercard_id } = req.body;

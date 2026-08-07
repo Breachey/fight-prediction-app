@@ -22,7 +22,7 @@ test('getAdminSessionTtlHours falls back for invalid ADMIN_SESSION_TTL_HOURS val
   process.env.ADMIN_SESSION_TTL_HOURS = '0';
 
   try {
-    assert.equal(getAdminSessionTtlHours(), 24 * 365 * 10);
+    assert.equal(getAdminSessionTtlHours(), 24 * 30);
   } finally {
     if (originalValue === undefined) {
       delete process.env.ADMIN_SESSION_TTL_HOURS;
