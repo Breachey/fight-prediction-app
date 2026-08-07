@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.1 - 2026-08-07
+
+### Added
+
+- Added Gmail reports for every scheduled or manually triggered fight-card automation run.
+- Added structured summaries for processed events, filled values, remaining missing data, warnings, blockers, failures, and GitHub run links.
+
 ## 0.5.0 - 2026-08-05
 
 ### Added
