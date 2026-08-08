@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.1 - 2026-08-08
+
+### Fixed
+
+- Allowed the configured Google stylesheet and font origins in the client Content Security Policy so the Permanent Marker display font loads in production.
+
 ## 0.7.0 - 2026-08-07
 
 ### Added
