@@ -23,6 +23,13 @@ const {
   syncFighterStyleFromFightCardRows,
 } = require('./lib/fighterStyleSync');
 const {
+  buildStreakAnchorPayload,
+  isVerifiedStreakProfile,
+  replayStreakFromAnchor,
+  streakRecordMatches,
+  toDateOnly,
+} = require('./lib/fighterStreaks');
+const {
   buildFightResponse,
   buildWeightclassMap,
   normalizeWeightclass,
@@ -657,59 +664,219 @@ function normalizeFiniteInteger(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-const CURRENT_FIGHTER_STREAK_SOURCES = new Set([
-  'cached_profile_url',
-  'fight_result',
-  'live_profile',
-  'manual_streak',
-  'tapology_partial_profile',
-  'tapology_single_profile',
-  'tapology_wikipedia_merged',
-  'wikipedia_record_breakdown',
-]);
+const FIGHTER_STREAK_PROFILE_SELECT = [
+  'fighter_id',
+  'streak',
+  'streak_source',
+  'streak_anchor_source',
+  'streak_verified_at',
+  'streak_anchor_value',
+  'streak_anchor_record_wins',
+  'streak_anchor_record_losses',
+  'streak_anchor_event_id',
+  'streak_anchor_through_date',
+  'streak_record_wins',
+  'streak_record_losses',
+  'streak_verified_through_date',
+  'streak_needs_review',
+].join(',');
 
-function currentFighterProfileStreak(profile) {
-  const source = String(profile?.stats_source || '').trim().toLowerCase();
-  if (!CURRENT_FIGHTER_STREAK_SOURCES.has(source)) {
-    return null;
-  }
-  return normalizeFiniteInteger(profile?.streak);
+function buildStreakVerificationSummary(profile, row = null) {
+  const recordMatches = row
+    ? streakRecordMatches(profile, row.Record_Wins, row.Record_Losses)
+    : null;
+  const verified = isVerifiedStreakProfile(profile) && recordMatches !== false;
+
+  return {
+    verified,
+    needsReview: Boolean(profile?.streak_needs_review) || recordMatches === false,
+    source: profile?.streak_source || null,
+    anchorSource: profile?.streak_anchor_source || null,
+    verifiedAt: profile?.streak_verified_at || null,
+    verifiedThroughDate: profile?.streak_verified_through_date || null,
+    recordMatches,
+  };
 }
 
-function nextFighterStreak(currentStreak, won) {
-  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
-  if (won) {
-    return baseline > 0 ? baseline + 1 : 1;
+async function loadStreakVerificationByFighterId(rows) {
+  const fighterIds = Array.from(new Set(
+    (rows || [])
+      .map((row) => Number(row?.FighterId ?? row?.fighterId))
+      .filter(Number.isFinite)
+  ));
+  if (fighterIds.length === 0) {
+    return {};
   }
-  return baseline < 0 ? baseline - 1 : -1;
+
+  const fightIds = Array.from(new Set(
+    (rows || []).map((row) => Number(row?.FightId ?? row?.fightId)).filter(Number.isFinite)
+  ));
+  const [profileResponse, resultResponse] = await Promise.all([
+    supabase
+      .from('fighters')
+      .select(FIGHTER_STREAK_PROFILE_SELECT)
+      .in('fighter_id', fighterIds),
+    fightIds.length > 0
+      ? supabase
+          .from('fight_results')
+          .select('fight_id,fighter_id,is_completed')
+          .in('fight_id', fightIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const { data, error } = profileResponse;
+  if (error) {
+    throw new Error(`Failed to load fighter streak verification: ${error.message}`);
+  }
+  if (resultResponse.error) {
+    throw new Error(`Failed to load fight results for streak verification: ${resultResponse.error.message}`);
+  }
+
+  const profilesById = new Map((data || []).map((profile) => [Number(profile.fighter_id), profile]));
+  const resultsByFightId = new Map(
+    (resultResponse.data || []).map((result) => [Number(result.fight_id), result])
+  );
+  return Object.fromEntries(fighterIds.map((fighterId) => {
+    const row = (rows || []).find(
+      (candidate) => Number(candidate?.FighterId ?? candidate?.fighterId) === fighterId
+    );
+    const result = resultsByFightId.get(Number(row?.FightId ?? row?.fightId));
+    let comparisonRow = row;
+    if (result?.is_completed === true && row) {
+      const won = Number(result.fighter_id) === fighterId;
+      const wins = normalizeFiniteInteger(row.Record_Wins);
+      const losses = normalizeFiniteInteger(row.Record_Losses);
+      comparisonRow = {
+        ...row,
+        Record_Wins: Number.isFinite(wins) ? wins + (won ? 1 : 0) : row.Record_Wins,
+        Record_Losses: Number.isFinite(losses) ? losses + (won ? 0 : 1) : row.Record_Losses,
+      };
+    }
+    return [fighterId, buildStreakVerificationSummary(profilesById.get(fighterId), comparisonRow)];
+  }));
 }
 
-function undoFighterStreakResult(currentStreak, won) {
-  const baseline = Number.isFinite(currentStreak) ? currentStreak : 0;
-  if (won) {
-    return baseline > 1 ? baseline - 1 : 0;
-  }
-  return baseline < -1 ? baseline + 1 : 0;
+async function decorateRowsWithStreakVerification(rows) {
+  const verificationByFighterId = await loadStreakVerificationByFighterId(rows);
+  return (rows || []).map((row) => ({
+    ...row,
+    StreakVerification: verificationByFighterId[Number(row.FighterId)] || {
+      verified: false,
+      needsReview: true,
+      source: null,
+      anchorSource: null,
+      verifiedAt: null,
+      verifiedThroughDate: null,
+      recordMatches: null,
+    },
+  }));
 }
 
-async function updateFighterStreaksForCompletedFight({
+async function persistVerifiedStreakAnchor({ row, eventId, streak, source }) {
+  const fighterId = Number(row?.FighterId);
+  if (!Number.isFinite(fighterId)) {
+    throw new Error('A fighter id is required to verify streak');
+  }
+
+  const fightId = Number(row?.FightId);
+  let fightCompleted = false;
+  let anchorRow = row;
+  if (Number.isFinite(fightId)) {
+    const { data: result, error: resultError } = await supabase
+      .from('fight_results')
+      .select('fighter_id,is_completed')
+      .eq('fight_id', fightId)
+      .maybeSingle();
+    if (resultError) {
+      throw new Error(`Failed to check the fight result before verifying streak: ${resultError.message}`);
+    }
+    fightCompleted = result?.is_completed === true;
+    if (fightCompleted) {
+      const won = Number(result.fighter_id) === fighterId;
+      const recordWins = normalizeFiniteInteger(row?.Record_Wins);
+      const recordLosses = normalizeFiniteInteger(row?.Record_Losses);
+      anchorRow = {
+        ...row,
+        Record_Wins: Number.isFinite(recordWins) ? recordWins + (won ? 1 : 0) : row?.Record_Wins,
+        Record_Losses: Number.isFinite(recordLosses) ? recordLosses + (won ? 0 : 1) : row?.Record_Losses,
+      };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const anchor = buildStreakAnchorPayload({
+    row: anchorRow,
+    streak,
+    source,
+    eventId,
+    eventDate: row?.StartTime,
+    fightCompleted,
+    verifiedAt: nowIso,
+  });
+  const payload = compactNonNullPayload({
+    fighter_id: fighterId,
+    mma_id: row.MMAId ?? null,
+    first_name: row.FirstName ?? null,
+    last_name: row.LastName ?? null,
+    normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
+    ...anchor,
+    stats_source: source === 'manual' ? 'manual_streak' : 'tapology_live',
+    stats_confidence: source === 'manual' ? 'manual_streak' : 'live-profile-streak',
+    stats_as_of_event_id: Number.isFinite(Number(eventId)) ? Number(eventId) : null,
+    stats_as_of_event_date: toDateOnly(row?.StartTime),
+    last_success_at: nowIso,
+  });
+
+  const { error } = await supabase
+    .from('fighters')
+    .upsert([payload], { onConflict: 'fighter_id' });
+  if (error) {
+    throw new Error(`Failed to save verified fighter streak: ${error.message}`);
+  }
+
+  return buildStreakVerificationSummary(payload, anchorRow);
+}
+
+async function persistManualStreakAnchors({ eventId, preview, manualRowUpdates }) {
+  const rowsByKey = new Map(
+    (preview?.rows || []).map((row) => [buildFightCardPreviewRowKey(row), row])
+  );
+  const verified = {};
+
+  for (const [rowKey, values] of Object.entries(manualRowUpdates || {})) {
+    if (!values || !Object.prototype.hasOwnProperty.call(values, 'Streak')) {
+      continue;
+    }
+    const row = rowsByKey.get(rowKey);
+    if (!row || values.Streak === null || values.Streak === '') {
+      continue;
+    }
+    verified[Number(row.FighterId)] = await persistVerifiedStreakAnchor({
+      row: { ...row, Streak: values.Streak },
+      eventId,
+      streak: values.Streak,
+      source: 'manual',
+    });
+  }
+
+  return verified;
+}
+
+async function updateFighterStreaksForFightResult({
   fightId,
   winnerId,
-  previousWinnerId = null,
 }) {
   const normalizedFightId = Number(fightId);
-  const normalizedWinnerId = Number(winnerId);
-  const normalizedPreviousWinnerId = previousWinnerId === null || previousWinnerId === undefined
+  const normalizedWinnerId = winnerId === null || winnerId === undefined
     ? null
-    : Number(previousWinnerId);
+    : Number(winnerId);
 
-  if (!Number.isFinite(normalizedFightId) || !Number.isFinite(normalizedWinnerId)) {
+  if (!Number.isFinite(normalizedFightId) || (normalizedWinnerId !== null && !Number.isFinite(normalizedWinnerId))) {
     return { skipped: true, reason: 'Invalid fight or winner id', updates: [] };
   }
 
   const { data: fightRows, error: fightRowsError } = await supabase
     .from('ufc_full_fight_card')
-    .select('id,FightId,EventId,StartTime,Corner,FighterId,MMAId,FirstName,LastName,Streak')
+    .select('id,FightId,EventId,StartTime,Corner,FighterId,MMAId,FirstName,LastName,Record_Wins,Record_Losses,Streak')
     .eq('FightId', normalizedFightId);
 
   if (fightRowsError) {
@@ -722,17 +889,47 @@ async function updateFighterStreaksForCompletedFight({
   }
 
   const fighterIds = eligibleRows.map((row) => Number(row.FighterId));
+  const eventDate = toDateOnly(eligibleRows[0]?.StartTime);
+  const eventId = Number(eligibleRows[0]?.EventId);
+  if (!eventDate || !Number.isFinite(eventId)) {
+    return { skipped: true, reason: 'Fight-card event date is unavailable', updates: [] };
+  }
+
+  if (normalizedWinnerId === null) {
+    const { error: deleteLedgerError } = await supabase
+      .from('fighter_streak_results')
+      .delete()
+      .eq('fight_id', normalizedFightId);
+    if (deleteLedgerError) {
+      throw new Error(`Failed to remove fighter streak result ledger rows: ${deleteLedgerError.message}`);
+    }
+  } else {
+    const ledgerRows = eligibleRows.map((row) => ({
+      fighter_id: Number(row.FighterId),
+      fight_id: normalizedFightId,
+      event_id: eventId,
+      event_date: eventDate,
+      outcome: Number(row.FighterId) === normalizedWinnerId ? 'win' : 'loss',
+    }));
+    const { error: ledgerError } = await supabase
+      .from('fighter_streak_results')
+      .upsert(ledgerRows, { onConflict: 'fighter_id,fight_id' });
+    if (ledgerError) {
+      throw new Error(`Failed to save fighter streak result ledger rows: ${ledgerError.message}`);
+    }
+  }
+
   const { data: fighterProfiles, error: fighterProfilesError } = await supabase
     .from('fighters')
-    .select('fighter_id,streak,stats_source')
+    .select(FIGHTER_STREAK_PROFILE_SELECT)
     .in('fighter_id', fighterIds);
 
   if (fighterProfilesError) {
     throw new Error(`Failed to load fighter profiles for streak update: ${fighterProfilesError.message}`);
   }
 
-  const currentStreakByFighterId = new Map(
-    (fighterProfiles || []).map((row) => [Number(row.fighter_id), currentFighterProfileStreak(row)])
+  const fighterProfileById = new Map(
+    (fighterProfiles || []).map((row) => [Number(row.fighter_id), row])
   );
   const nowIso = new Date().toISOString();
   const fighterProfilePayloads = [];
@@ -740,28 +937,68 @@ async function updateFighterStreaksForCompletedFight({
 
   for (const row of eligibleRows) {
     const fighterId = Number(row.FighterId);
-    const rowStreak = normalizeFiniteInteger(row.Streak);
-    const currentStreak = currentStreakByFighterId.get(fighterId);
-    let baselineStreak = currentStreak;
-
-    if (baselineStreak === null || baselineStreak === undefined) {
-      baselineStreak = rowStreak;
-    }
-    if (!Number.isFinite(baselineStreak)) {
-      baselineStreak = 0;
-    }
-
-    let adjustedBaseline = baselineStreak;
-    if (Number.isFinite(normalizedPreviousWinnerId)) {
-      adjustedBaseline = undoFighterStreakResult(
-        adjustedBaseline,
-        fighterId === normalizedPreviousWinnerId
-      );
+    const profile = fighterProfileById.get(fighterId);
+    if (!isVerifiedStreakProfile(profile)) {
+      updates.push({
+        fighterId,
+        skipped: true,
+        reason: 'Fighter does not have a verified streak anchor',
+      });
+      continue;
     }
 
-    const won = fighterId === normalizedWinnerId;
-    const nextStreak = nextFighterStreak(adjustedBaseline, won);
-    const eventId = Number(row.EventId);
+    const { data: resultRows, error: resultRowsError } = await supabase
+      .from('fighter_streak_results')
+      .select('fighter_id,fight_id,event_id,event_date,outcome')
+      .eq('fighter_id', fighterId)
+      .order('event_date', { ascending: true })
+      .order('event_id', { ascending: true })
+      .order('fight_id', { ascending: true });
+    if (resultRowsError) {
+      throw new Error(`Failed to replay fighter streak results: ${resultRowsError.message}`);
+    }
+
+    const rowsBeforeFight = (resultRows || []).filter((resultRow) => (
+      String(resultRow.event_date).localeCompare(eventDate) < 0
+      || (
+        String(resultRow.event_date) === eventDate
+        && (
+          Number(resultRow.event_id) < eventId
+          || (
+            Number(resultRow.event_id) === eventId
+            && Number(resultRow.fight_id) < normalizedFightId
+          )
+        )
+      )
+    ));
+    const preFightReplay = replayStreakFromAnchor(profile, rowsBeforeFight);
+    const preFightRecordMatches = preFightReplay.ok
+      ? streakRecordMatches({
+          streak_record_wins: preFightReplay.recordWins,
+          streak_record_losses: preFightReplay.recordLosses,
+        }, row.Record_Wins, row.Record_Losses)
+      : null;
+    if (preFightRecordMatches === false) {
+      const { error: reviewError } = await supabase
+        .from('fighters')
+        .update({ streak_needs_review: true })
+        .eq('fighter_id', fighterId);
+      if (reviewError) {
+        throw new Error(`Failed to flag fighter streak for review: ${reviewError.message}`);
+      }
+      updates.push({
+        fighterId,
+        skipped: true,
+        reason: 'Fight-card record does not match the verified streak record',
+      });
+      continue;
+    }
+
+    const replay = replayStreakFromAnchor(profile, resultRows || []);
+    if (!replay.ok) {
+      updates.push({ fighterId, skipped: true, reason: replay.reason });
+      continue;
+    }
 
     fighterProfilePayloads.push(compactNonNullPayload({
       fighter_id: fighterId,
@@ -769,7 +1006,12 @@ async function updateFighterStreaksForCompletedFight({
       first_name: row.FirstName ?? null,
       last_name: row.LastName ?? null,
       normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
-      streak: nextStreak,
+      streak: replay.streak,
+      streak_source: 'fight_results',
+      streak_record_wins: replay.recordWins,
+      streak_record_losses: replay.recordLosses,
+      streak_verified_through_date: replay.verifiedThroughDate,
+      streak_needs_review: false,
       stats_source: 'fight_result',
       stats_confidence: 'fight_result',
       stats_as_of_event_id: Number.isFinite(eventId) ? eventId : null,
@@ -780,12 +1022,11 @@ async function updateFighterStreaksForCompletedFight({
     }));
 
     updates.push({
-      rowId: row.id,
       fighterId,
-      previousStreak: baselineStreak,
-      adjustedBaseline,
-      nextStreak,
-      won,
+      skipped: false,
+      previousStreak: normalizeFiniteInteger(profile.streak),
+      nextStreak: replay.streak,
+      appliedResultCount: replay.appliedResultCount,
     });
   }
 
@@ -954,6 +1195,7 @@ async function persistScrapedTapologyFighterProfile({
   profile,
   statsSource,
   statsConfidence,
+  verifyLiveStreak = false,
 }) {
   const fighterId = Number(row?.FighterId);
   if (!Number.isFinite(fighterId)) {
@@ -961,6 +1203,7 @@ async function persistScrapedTapologyFighterProfile({
   }
 
   const nowIso = new Date().toISOString();
+  const scrapedStreak = parseOptionalInteger(profile.Streak);
   const baseProfilePayload = {
     fighter_id: fighterId,
     mma_id: row.MMAId ?? null,
@@ -969,7 +1212,6 @@ async function persistScrapedTapologyFighterProfile({
     normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
     tapology_fighter_url: tapologyFighterUrl,
     rank: parseOptionalInteger(profile.Rank),
-    streak: parseOptionalInteger(profile.Streak),
     style: normalizeAdminStatValue('style', profile.style).value,
     ko_tko_wins: normalizeAdminStatValue('KO_TKO_Wins', profile.KO_TKO_Wins).value,
     ko_tko_losses: normalizeAdminStatValue('KO_TKO_Losses', profile.KO_TKO_Losses).value,
@@ -981,17 +1223,7 @@ async function persistScrapedTapologyFighterProfile({
     last_failure_at: null,
     last_error: null,
   };
-  const fightersPayload = compactNonNullPayload({
-    ...baseProfilePayload,
-    ...(baseProfilePayload.streak !== null ? {
-      stats_source: statsSource,
-      stats_confidence: statsConfidence,
-      stats_as_of_event_id: eventId,
-      stats_as_of_event_date: typeof row.StartTime === 'string'
-        ? row.StartTime.split('T')[0]
-        : null,
-    } : {}),
-  });
+  const fightersPayload = compactNonNullPayload(baseProfilePayload);
 
   const { error: fightersError } = await supabase
     .from('fighters')
@@ -1003,6 +1235,7 @@ async function persistScrapedTapologyFighterProfile({
 
   const tapologyCachePayload = compactNonNullPayload({
     ...baseProfilePayload,
+    streak: scrapedStreak,
     source: statsSource,
     match_confidence: statsConfidence,
   });
@@ -1014,9 +1247,19 @@ async function persistScrapedTapologyFighterProfile({
     console.error('Tapology fighter cache update skipped:', tapologyCacheError);
   }
 
+  const streakVerification = verifyLiveStreak && scrapedStreak !== null
+    ? await persistVerifiedStreakAnchor({
+        row: { ...row, Streak: scrapedStreak },
+        eventId,
+        streak: scrapedStreak,
+        source: 'tapology_live',
+      })
+    : null;
+
   return {
     updatedFighters: 1,
     updatedTapologyCacheRows: tapologyCacheError ? 0 : 1,
+    streakVerification,
   };
 }
 
@@ -1080,7 +1323,6 @@ async function persistImportedFightCardPreviewUpdates({
 
   let updatedFightCardRows = 0;
   const fighterProfilePayloadById = new Map();
-  const nowIso = new Date().toISOString();
 
   for (const { importedRow, patch } of normalizedUpdates) {
     const { error: updateError } = await supabase
@@ -1105,7 +1347,7 @@ async function persistImportedFightCardPreviewUpdates({
 
     const fighterProfileEntries = Object.entries(patch)
       .map(([field, value]) => [toFighterProfileColumn(field), field, value])
-      .filter(([profileColumn]) => Boolean(profileColumn));
+      .filter(([profileColumn, field]) => Boolean(profileColumn) && field !== 'Streak');
     if (fighterProfileEntries.length === 0) {
       continue;
     }
@@ -1118,17 +1360,8 @@ async function persistImportedFightCardPreviewUpdates({
       normalized_name: normalizeFighterNameForLookup(importedRow.FirstName, importedRow.LastName) || null,
     };
 
-    for (const [profileColumn, field, value] of fighterProfileEntries) {
+    for (const [profileColumn, , value] of fighterProfileEntries) {
       payload[profileColumn] = value;
-      if (field === 'Streak') {
-        payload.stats_source = 'manual_streak';
-        payload.stats_confidence = 'manual_streak';
-        payload.stats_as_of_event_id = eventId;
-        payload.stats_as_of_event_date = typeof importedRow.StartTime === 'string'
-          ? importedRow.StartTime.split('T')[0]
-          : null;
-        payload.last_success_at = nowIso;
-      }
     }
 
     fighterProfilePayloadById.set(fighterId, payload);
@@ -2640,33 +2873,24 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
 
     let fighterStreakSync = {
       skipped: true,
-      reason: 'Fight result is not completed',
+      reason: 'Fight result did not change',
       updates: [],
     };
     const previousWinnerId = existingResult?.is_completed && existingResult?.fighter_id !== null
       ? Number(existingResult.fighter_id)
       : null;
-    const sameCompletedWinner = winner_id !== null
-      && Number.isFinite(previousWinnerId)
-      && previousWinnerId === winner_id;
+    const resultChanged = previousWinnerId !== winner_id;
 
-    if (winner_id !== null && !sameCompletedWinner) {
+    if (resultChanged) {
       try {
-        fighterStreakSync = await updateFighterStreaksForCompletedFight({
+        fighterStreakSync = await updateFighterStreaksForFightResult({
           fightId: id,
           winnerId: winner_id,
-          previousWinnerId,
         });
       } catch (fighterStreakError) {
         console.error('Error updating fighter streaks from fight result:', fighterStreakError);
         return res.status(500).json({ error: 'Failed to update fighter streaks' });
       }
-    } else if (sameCompletedWinner) {
-      fighterStreakSync = {
-        skipped: true,
-        reason: 'Fight result winner was already recorded',
-        updates: [],
-      };
     }
 
     try {
@@ -3913,6 +4137,7 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
       existingFightResults,
       scraperOutput,
     });
+    preview.streakVerificationByFighterId = await loadStreakVerificationByFighterId(preview.rows);
 
     const { rows, ...previewSummary } = preview;
 
@@ -4015,6 +4240,15 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/progress', requireA
       preview: result.preview,
       manualRowUpdates: req.body?.manualRowUpdates,
     });
+    const verifiedStreaks = await persistManualStreakAnchors({
+      eventId,
+      preview: result.preview,
+      manualRowUpdates: req.body?.manualRowUpdates,
+    });
+    result.preview.streakVerificationByFighterId = {
+      ...(result.preview.streakVerificationByFighterId || {}),
+      ...verifiedStreaks,
+    };
 
     const { rows, scratchDir, ...previewSummary } = result.preview;
     await logAdminAction(req, {
@@ -4027,18 +4261,100 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/progress', requireA
         applied_manual_update_count: result.appliedManualUpdateCount,
         updated_fight_card_rows: persistence.updatedFightCardRows,
         updated_fighters: persistence.updatedFighters,
+        verified_streaks: Object.keys(verifiedStreaks).length,
       },
     });
 
     return res.json({
       ...previewSummary,
       appliedManualUpdateCount: result.appliedManualUpdateCount,
+      verifiedStreakCount: Object.keys(verifiedStreaks).length,
       ...persistence,
     });
   } catch (error) {
     console.error('Error saving fight-card preview progress:', error);
     return res.status(500).json({
       error: 'Failed to save fight-card preview progress',
+      details: error.message,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/preview/:previewToken/verify-streak', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    const previewToken = String(req.params.previewToken || '').trim();
+    const rowKey = String(req.body?.rowKey || '').trim();
+    const normalizedStreak = normalizeAdminStatValue('Streak', req.body?.streak);
+    if (Number.isNaN(eventId) || !previewToken || !rowKey) {
+      return res.status(400).json({ error: 'Invalid event id, preview token, or fighter row' });
+    }
+    if (!normalizedStreak.ok || normalizedStreak.value === null) {
+      return res.status(400).json({ error: normalizedStreak.error || 'Enter a streak before verifying it' });
+    }
+
+    await cleanupExpiredFightCardPreviews();
+    const preview = getFightCardPreview(previewToken, eventId);
+    if (!preview) {
+      return res.status(404).json({ error: 'Preview token was not found or has expired' });
+    }
+    const row = (preview.rows || []).find(
+      (candidate) => buildFightCardPreviewRowKey(candidate) === rowKey
+    );
+    if (!row) {
+      return res.status(404).json({ error: 'Fighter row was not found in this preview' });
+    }
+
+    const progress = saveFightCardPreviewProgress(previewToken, eventId, {
+      [rowKey]: { Streak: normalizedStreak.value },
+    });
+    if (!progress) {
+      return res.status(404).json({ error: 'Preview token was not found or has expired' });
+    }
+    const persistence = await persistImportedFightCardPreviewUpdates({
+      eventId,
+      preview: progress.preview,
+      manualRowUpdates: { [rowKey]: { Streak: normalizedStreak.value } },
+      updateFighterProfiles: false,
+    });
+    const streakVerification = await persistVerifiedStreakAnchor({
+      row: { ...row, Streak: normalizedStreak.value },
+      eventId,
+      streak: normalizedStreak.value,
+      source: 'manual',
+    });
+    progress.preview.streakVerificationByFighterId = {
+      ...(progress.preview.streakVerificationByFighterId || {}),
+      [Number(row.FighterId)]: streakVerification,
+    };
+
+    const { rows, scratchDir, ...previewSummary } = progress.preview;
+    await logAdminAction(req, {
+      action: 'fight_card.preview.verify_streak',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowKey,
+        fighterId: row.FighterId,
+        streak: normalizedStreak.value,
+      },
+    });
+
+    return res.json({
+      ...previewSummary,
+      rowKey,
+      fighterId: row.FighterId,
+      streakVerification,
+      ...persistence,
+    });
+  } catch (error) {
+    console.error('Error verifying preview fighter streak:', error);
+    return res.status(500).json({
+      error: 'Failed to verify fighter streak',
       details: error.message,
     });
   }
@@ -4105,6 +4421,7 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
       profile,
       statsSource,
       statsConfidence,
+      verifyLiveStreak: scrapeResult?.diagnostics?.tapology_fetch_status === 'success',
     });
     const progress = saveFightCardPreviewProgress(previewToken, eventId, {
       [rowKey]: patch,
@@ -4118,6 +4435,12 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
       manualRowUpdates: { [rowKey]: patch },
       updateFighterProfiles: false,
     });
+    if (profilePersistence.streakVerification) {
+      progress.preview.streakVerificationByFighterId = {
+        ...(progress.preview.streakVerificationByFighterId || {}),
+        [Number(row.FighterId)]: profilePersistence.streakVerification,
+      };
+    }
     const { rows, scratchDir, ...previewSummary } = progress.preview;
     const updatedFields = Object.keys(patch).filter((field) => field !== 'TapologyFighterURL');
     const scrapeDiagnostics = buildTapologyScrapeDiagnostics(
@@ -4341,6 +4664,7 @@ app.post('/admin/events/:id/fight-card/editor', requireAdminSession, async (req,
       eventRecord: eventResponse.data,
       rows: rowsResponse.data,
     });
+    preview.streakVerificationByFighterId = await loadStreakVerificationByFighterId(preview.rows);
     const storedPreview = await replaceFightCardPreview(preview);
     const importedPreview = markFightCardPreviewImported(
       storedPreview.previewToken,
@@ -4395,9 +4719,10 @@ app.get('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, r
       return res.status(500).json({ error: 'Failed to load fight-card stat rows' });
     }
 
+    const decoratedRows = await decorateRowsWithStreakVerification(rows || []);
     return res.json({
       eventId,
-      rows: rows || [],
+      rows: decoratedRows,
       editableFields: ADMIN_FIGHTER_STAT_FIELDS,
     });
   } catch (error) {
@@ -4484,13 +4809,14 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       }
     }
 
-    await persistScrapedTapologyFighterProfile({
+    const profilePersistence = await persistScrapedTapologyFighterProfile({
       row: { ...row, ...fightCardPatch },
       eventId,
       tapologyFighterUrl,
       profile,
       statsSource,
       statsConfidence,
+      verifyLiveStreak: scrapeResult?.diagnostics?.tapology_fetch_status === 'success',
     });
     const updatedFields = Object.keys(patch);
     const scrapeDiagnostics = buildTapologyScrapeDiagnostics(
@@ -4527,6 +4853,7 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       updatedFields,
       scrapeDiagnostics,
       profile,
+      streakVerification: profilePersistence.streakVerification,
     });
   } catch (error) {
     console.error('Error scraping Tapology fighter stats:', error);
@@ -4547,6 +4874,79 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       error: 'Failed to scrape Tapology fighter stats',
       details: error.message,
       scrapeDiagnostics,
+    });
+  }
+});
+
+app.post('/admin/events/:id/fight-card/stats/:rowId/verify-streak', requireAdminSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const eventId = Number(req.params.id);
+    const rowId = Number(req.params.rowId);
+    const normalizedStreak = normalizeAdminStatValue('Streak', req.body?.streak);
+    if (Number.isNaN(eventId) || Number.isNaN(rowId)) {
+      return res.status(400).json({ error: 'Invalid event id or row id' });
+    }
+    if (!normalizedStreak.ok || normalizedStreak.value === null) {
+      return res.status(400).json({ error: normalizedStreak.error || 'Enter a streak before verifying it' });
+    }
+
+    const { data: row, error: rowError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_STAT_SELECT)
+      .eq('EventId', eventId)
+      .eq('id', rowId)
+      .maybeSingle();
+    if (rowError) {
+      throw new Error(`Failed to load fight-card row: ${rowError.message}`);
+    }
+    if (!row) {
+      return res.status(404).json({ error: `Fight-card row ${rowId} was not found for event ${eventId}` });
+    }
+
+    if (normalizeFiniteInteger(row.Streak) !== normalizedStreak.value) {
+      const { error: updateError } = await supabase
+        .from('ufc_full_fight_card')
+        .update({ Streak: normalizedStreak.value })
+        .eq('EventId', eventId)
+        .eq('id', rowId);
+      if (updateError) {
+        throw new Error(`Failed to update fight-card streak: ${updateError.message}`);
+      }
+    }
+
+    const streakVerification = await persistVerifiedStreakAnchor({
+      row: { ...row, Streak: normalizedStreak.value },
+      eventId,
+      streak: normalizedStreak.value,
+      source: 'manual',
+    });
+    await logAdminAction(req, {
+      action: 'fight_card.verify_streak',
+      status: 'success',
+      targetType: 'event',
+      targetId: eventId,
+      eventId,
+      metadata: {
+        rowId,
+        fighterId: row.FighterId,
+        streak: normalizedStreak.value,
+      },
+    });
+
+    return res.json({
+      eventId,
+      rowId,
+      fighterId: row.FighterId,
+      streak: normalizedStreak.value,
+      streakVerification,
+    });
+  } catch (error) {
+    console.error('Error verifying fighter streak:', error);
+    return res.status(500).json({
+      error: 'Failed to verify fighter streak',
+      details: error.message,
     });
   }
 });
@@ -4619,8 +5019,8 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
     }
 
     let updatedFightCardRows = 0;
+    let verifiedStreakCount = 0;
     const fighterProfilePayloadById = new Map();
-    const nowIso = new Date().toISOString();
 
     for (const update of normalizedUpdates) {
       const { error: updateError } = await supabase
@@ -4635,6 +5035,16 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
 
       updatedFightCardRows += 1;
 
+      if (Object.prototype.hasOwnProperty.call(update.patch, 'Streak') && update.patch.Streak !== null) {
+        await persistVerifiedStreakAnchor({
+          row: { ...update.existingRow, Streak: update.patch.Streak },
+          eventId,
+          streak: update.patch.Streak,
+          source: 'manual',
+        });
+        verifiedStreakCount += 1;
+      }
+
       const fighterId = Number(update.existingRow.FighterId);
       if (!Number.isFinite(fighterId)) {
         continue;
@@ -4642,7 +5052,7 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
 
       const fighterProfileEntries = Object.entries(update.patch)
         .map(([field, value]) => [toFighterProfileColumn(field), field, value])
-        .filter(([profileColumn]) => Boolean(profileColumn));
+        .filter(([profileColumn, field]) => Boolean(profileColumn) && field !== 'Streak');
       if (fighterProfileEntries.length === 0) {
         continue;
       }
@@ -4660,17 +5070,8 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
           .replace(/\s+/g, ' ') || null,
       };
 
-      for (const [profileColumn, field, value] of fighterProfileEntries) {
+      for (const [profileColumn, , value] of fighterProfileEntries) {
         payload[profileColumn] = value;
-        if (field === 'Streak') {
-          payload.stats_source = 'manual_streak';
-          payload.stats_confidence = 'manual_streak';
-          payload.stats_as_of_event_id = eventId;
-          payload.stats_as_of_event_date = typeof update.existingRow.StartTime === 'string'
-            ? update.existingRow.StartTime.split('T')[0]
-            : null;
-          payload.last_success_at = nowIso;
-        }
       }
 
       fighterProfilePayloadById.set(fighterId, payload);
@@ -4698,6 +5099,7 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
         updatedFightCardRows,
         updatedFighters: fighterProfilePayloads.length,
         requestedUpdates: updates.length,
+        verifiedStreakCount,
       },
     });
 
@@ -4705,6 +5107,7 @@ app.post('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, 
       eventId,
       updatedFightCardRows,
       updatedFighters: fighterProfilePayloads.length,
+      verifiedStreakCount,
     });
   } catch (error) {
     console.error('Error updating fight-card stats:', error);
@@ -4803,6 +5206,15 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       supabase,
       fightCardRows: preview.rows,
     });
+    const verifiedStreaks = await persistManualStreakAnchors({
+      eventId,
+      preview,
+      manualRowUpdates,
+    });
+    preview.streakVerificationByFighterId = {
+      ...(preview.streakVerificationByFighterId || {}),
+      ...verifiedStreaks,
+    };
 
     const importedPreview = markFightCardPreviewImported(previewToken, eventId, preview);
     if (!importedPreview) {
@@ -4826,6 +5238,7 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
         warnings: preview.warnings,
         fighter_style_sync: fighterStyleSync,
         applied_manual_update_count: appliedManualUpdateCount,
+        verified_streak_count: Object.keys(verifiedStreaks).length,
         editor_retained: true,
       },
     });
@@ -4839,6 +5252,7 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       eventImageUpdate,
       fighterStyleSync,
       appliedManualUpdateCount,
+      verifiedStreakCount: Object.keys(verifiedStreaks).length,
       fightCardPreview,
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, Save } from 'lucide-react';
+import { RefreshCw, Save, ShieldCheck } from 'lucide-react';
 import './EventSelector.css';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
@@ -222,14 +222,31 @@ const countManualPreviewValues = (editableRows, edits) => (
 
 const countMissingEditablePreviewValues = (editableRows) => (
   (editableRows || []).reduce((count, row) => count + FIGHT_CARD_EDITOR_FIELDS.reduce(
-    (fieldCount, [field]) => fieldCount + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
+    (fieldCount, [field]) => fieldCount + (
+      normalizeStatEditorValue(row[field]).trim()
+      && (field !== 'Streak' || row?.StreakVerification?.verified)
+        ? 0
+        : 1
+    ),
     0
   ), 0)
 );
 
 const rowHasMissingEditorValues = (row) => FIGHT_CARD_EDITOR_FIELDS.some(
   ([field]) => !normalizeStatEditorValue(row?.[field]).trim()
+    || (field === 'Streak' && !row?.StreakVerification?.verified)
 );
+
+const STREAK_SOURCE_LABELS = {
+  manual: 'Manual',
+  tapology_live: 'Live Tapology',
+  fight_results: 'Fight results',
+};
+
+const getStreakVerificationLabel = (verification) => {
+  if (!verification?.verified) return 'Streak needs verification';
+  return `Streak verified · ${STREAK_SOURCE_LABELS[verification.source] || 'Verified source'}`;
+};
 
 const getEditorValue = (edits, rowId, row, field) => (
   Object.prototype.hasOwnProperty.call(edits?.[rowId] || {}, field)
@@ -633,6 +650,16 @@ function EventSelector({
       return [];
     }
 
+    const streakTotal = Number(summary.streak?.total) || 0;
+    const streakVerified = Object.values(fightCardPreview?.streakVerificationByFighterId || {})
+      .filter((verification) => verification?.verified).length;
+    const verifiedStreakMetric = {
+      field: 'Streak',
+      populated: streakVerified,
+      missing: Math.max(streakTotal - streakVerified, 0),
+      total: streakTotal,
+    };
+
     return [
       {
         key: 'odds',
@@ -646,8 +673,8 @@ function EventSelector({
       },
       {
         key: 'streak',
-        label: formatCompletenessLabel('Streak', summary.streak),
-        tone: getCompletenessTone(summary.streak),
+        label: formatCompletenessLabel('Verified Streak', verifiedStreakMetric),
+        tone: getCompletenessTone(verifiedStreakMetric),
       },
       {
         key: 'finish',
@@ -662,7 +689,12 @@ function EventSelector({
     ];
   }, [fightCardPreview]);
   const editablePreviewRows = useMemo(
-    () => fightCardPreview?.editableRows || [],
+    () => (fightCardPreview?.editableRows || []).map((row) => ({
+      ...row,
+      StreakVerification: fightCardPreview?.streakVerificationByFighterId?.[row.fighterId]
+        || fightCardPreview?.streakVerificationByFighterId?.[String(row.fighterId)]
+        || null,
+    })),
     [fightCardPreview]
   );
   const manualPreviewUpdates = useMemo(
@@ -1198,6 +1230,57 @@ function EventSelector({
     }
   };
 
+  const handleVerifyFightStatsStreak = async (event, row) => {
+    if (!event?.id || !row?.id) return;
+    const streak = normalizeStatEditorValue(
+      getEditorValue(fightStatsEdits, row.id, row, 'Streak')
+    ).trim();
+    if (!streak || !isValidStatEditorValue('signed-number', streak)) return;
+
+    setFightCardFeedback(null);
+    setSavingFightStatsEventId(event.id);
+    setSavingFightStatsRowId(row.id);
+    try {
+      const response = await fetchWithAdminSession(
+        `${API_URL}/admin/events/${event.id}/fight-card/stats/${row.id}/verify-streak`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streak }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(buildApiErrorMessage(payload, 'Failed to verify fighter streak'));
+      }
+
+      const reloadResponse = await fetchWithAdminSession(
+        `${API_URL}/admin/events/${event.id}/fight-card/stats`,
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+      );
+      const reloadPayload = await reloadResponse.json().catch(() => ({}));
+      if (!reloadResponse.ok) {
+        throw new Error(buildApiErrorMessage(reloadPayload, 'Verified streak, but failed to reload rows'));
+      }
+      setFightStatsRows(reloadPayload.rows || []);
+      setFightStatsEdits((current) => omitEditFields(current, { [row.id]: ['Streak'] }));
+      invalidateEventCaches(event.id);
+      onFightCardImportComplete?.(event.id);
+      setFightCardFeedback({
+        type: 'success',
+        message: `Verified ${[row.FirstName, row.LastName].filter(Boolean).join(' ') || 'fighter'} at ${streak > 0 ? `+${streak}` : streak}.`,
+      });
+    } catch (err) {
+      setFightCardFeedback({
+        type: 'error',
+        message: err.message || 'Failed to verify fighter streak',
+      });
+    } finally {
+      setSavingFightStatsEventId(null);
+      setSavingFightStatsRowId(null);
+    }
+  };
+
   const handleScrapeTapologyFighterStats = async (event, row) => {
     if (!event?.id || !row?.id) return;
 
@@ -1453,6 +1536,46 @@ function EventSelector({
       setFightCardFeedback({
         type: 'error',
         message: err.message || 'Failed to save preview progress'
+      });
+    } finally {
+      setSavingPreviewProgressRowKey(null);
+    }
+  };
+
+  const handleVerifyPreviewStreak = async (event, row) => {
+    if (!event?.id || !row?.rowKey || !fightCardPreview?.previewToken) return;
+    const streak = normalizeStatEditorValue(
+      getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'Streak')
+    ).trim();
+    if (!streak || !isValidStatEditorValue('signed-number', streak)) return;
+
+    setFightCardFeedback(null);
+    setSavingPreviewProgressRowKey(row.rowKey);
+    try {
+      const response = await fetchWithAdminSession(
+        `${API_URL}/admin/events/${event.id}/fight-card/preview/${fightCardPreview.previewToken}/verify-streak`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowKey: row.rowKey, streak }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(buildApiErrorMessage(payload, 'Failed to verify fighter streak'));
+      }
+      setFightCardPreview(payload);
+      setFightCardPreviewEdits((current) => omitEditFields(current, {
+        [row.rowKey]: ['Streak'],
+      }));
+      setFightCardFeedback({
+        type: 'success',
+        message: `Verified ${getEditablePreviewFighterName(row)} at ${streak > 0 ? `+${streak}` : streak}.${payload.isImported ? ' The fight card was updated.' : ''}`,
+      });
+    } catch (err) {
+      setFightCardFeedback({
+        type: 'error',
+        message: err.message || 'Failed to verify fighter streak',
       });
     } finally {
       setSavingPreviewProgressRowKey(null);
@@ -1826,8 +1949,19 @@ function EventSelector({
                       <div className="event-admin-import-preview__edit-list">
                         {visibleFightStatsRows.map((row) => {
                           const rowUpdate = fightStatsUpdates.find((update) => String(update.id) === String(row.id));
+                          const streakVerification = row.StreakVerification;
+                          const editedStreak = normalizeStatEditorValue(
+                            getEditorValue(fightStatsEdits, row.id, row, 'Streak')
+                          ).trim();
+                          const canVerifyStreak = Boolean(editedStreak)
+                            && isValidStatEditorValue('signed-number', editedStreak);
                           const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                            (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
+                            (count, [field]) => count + (
+                              normalizeStatEditorValue(row[field]).trim()
+                              && (field !== 'Streak' || streakVerification?.verified)
+                                ? 0
+                                : 1
+                            ),
                             0
                           );
                           return (
@@ -1843,6 +1977,11 @@ function EventSelector({
                                 <div className="event-admin-stats-editor__row-status">
                                   {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
                                   {rowUpdate && <span>{Object.keys(rowUpdate.values).length} changed</span>}
+                                  <span className={streakVerification?.verified
+                                    ? 'event-admin-stats-editor__streak-status--verified'
+                                    : 'event-admin-stats-editor__streak-status--review'}>
+                                    {getStreakVerificationLabel(streakVerification)}
+                                  </span>
                                 </div>
                                 <div className="event-admin-stats-editor__row-actions">
                                   <button
@@ -1855,6 +1994,18 @@ function EventSelector({
                                     <RefreshCw size={14} aria-hidden="true" />
                                     {scrapingTapologyRowId === row.id ? 'Scraping...' : 'Scrape'}
                                   </button>
+                                  {!streakVerification?.verified && (
+                                    <button
+                                      type="button"
+                                      className="event-admin-stats-editor__row-save"
+                                      onClick={() => handleVerifyFightStatsStreak(selectedEvent, row)}
+                                      disabled={isFightCardActionBusy || !canVerifyStreak}
+                                      title="Confirm this streak as the trusted starting value"
+                                    >
+                                      <ShieldCheck size={14} aria-hidden="true" />
+                                      Verify Streak
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     className="event-admin-stats-editor__row-save"
@@ -2007,6 +2158,12 @@ function EventSelector({
                         <div className="event-admin-import-preview__edit-list">
                           {visiblePreviewRows.map((row) => {
                             const rowPatch = manualPreviewUpdates[row.rowKey];
+                            const streakVerification = row.StreakVerification;
+                            const editedStreak = normalizeStatEditorValue(
+                              getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'Streak')
+                            ).trim();
+                            const canVerifyStreak = Boolean(editedStreak)
+                              && isValidStatEditorValue('signed-number', editedStreak);
                             const rowTapologyUrl = normalizeStatEditorValue(
                               getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'TapologyFighterURL')
                             ).trim();
@@ -2014,7 +2171,12 @@ function EventSelector({
                               && isValidStatEditorValue('url', rowTapologyUrl);
                             const isScrapingTapologyRow = scrapingPreviewTapologyRowKeys.includes(row.rowKey);
                             const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                              (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
+                              (count, [field]) => count + (
+                                normalizeStatEditorValue(row[field]).trim()
+                                && (field !== 'Streak' || streakVerification?.verified)
+                                  ? 0
+                                  : 1
+                              ),
                               0
                             );
                             return (
@@ -2025,6 +2187,11 @@ function EventSelector({
                                   <div className="event-admin-stats-editor__row-status">
                                     {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
                                     {rowPatch && <span>{Object.keys(rowPatch).length} changed</span>}
+                                    <span className={streakVerification?.verified
+                                      ? 'event-admin-stats-editor__streak-status--verified'
+                                      : 'event-admin-stats-editor__streak-status--review'}>
+                                      {getStreakVerificationLabel(streakVerification)}
+                                    </span>
                                   </div>
                                   <div className="event-admin-stats-editor__row-actions">
                                     <button
@@ -2039,6 +2206,18 @@ function EventSelector({
                                       <RefreshCw size={14} aria-hidden="true" />
                                       {isScrapingTapologyRow ? 'Scraping...' : 'Scrape'}
                                     </button>
+                                    {!streakVerification?.verified && (
+                                      <button
+                                        type="button"
+                                        className="event-admin-stats-editor__row-save"
+                                        onClick={() => handleVerifyPreviewStreak(selectedEvent, row)}
+                                        disabled={isFightCardActionBusy || !canVerifyStreak}
+                                        title="Confirm this streak as the trusted starting value"
+                                      >
+                                        <ShieldCheck size={14} aria-hidden="true" />
+                                        Verify Streak
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       className="event-admin-stats-editor__row-save"

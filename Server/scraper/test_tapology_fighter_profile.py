@@ -38,9 +38,19 @@ class TapologyFighterProfileTests(unittest.TestCase):
         self.assertEqual(extract_tapology_streak("Current MMA Streak: 3 Wins"), "3")
         self.assertEqual(extract_tapology_streak("Current MMA Streak: 1 Loss"), "-1")
 
-    def test_merged_tapology_streak_is_reusable_on_future_previews(self):
-        self.assertTrue(cached_streak_is_current({"stats_source": "tapology_wikipedia_merged"}))
-        self.assertTrue(cached_streak_is_current({"source": "tapology_partial_profile"}))
+    def test_only_explicitly_verified_streaks_are_reusable_on_future_previews(self):
+        self.assertFalse(cached_streak_is_current({"stats_source": "tapology_wikipedia_merged"}))
+        self.assertFalse(cached_streak_is_current({"source": "tapology_partial_profile"}))
+        self.assertTrue(cached_streak_is_current({
+            "streak_source": "tapology_live",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": False,
+        }))
+        self.assertFalse(cached_streak_is_current({
+            "streak_source": "tapology_live",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": True,
+        }))
 
 
 if __name__ == "__main__":
