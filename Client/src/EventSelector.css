@@ -1150,6 +1150,18 @@
   font-weight: 700;
 }
 
+.event-admin-stats-editor__row-status .event-admin-stats-editor__streak-status--verified {
+  border-color: rgba(252, 251, 253, 0.3);
+  background: rgba(252, 251, 253, 0.12);
+  color: #FCFBFD;
+}
+
+.event-admin-stats-editor__row-status .event-admin-stats-editor__streak-status--review {
+  border-color: rgba(233, 23, 13, 0.42);
+  background: rgba(233, 23, 13, 0.12);
+  color: #F99EAD;
+}
+
 .event-admin-stats-editor__scrape-button,
 .event-admin-stats-editor__row-save {
   align-self: flex-start;

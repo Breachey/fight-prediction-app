@@ -14,24 +14,48 @@ class TapologyCacheTests(unittest.TestCase):
             "ko_tko_wins": 8,
             "source": "historical_import",
         })
-        current = scraper.normalize_tapology_cache_fighter({
+        verified = scraper.normalize_tapology_cache_fighter({
             "streak": -2,
-            "stats_source": "fight_result",
+            "streak_source": "fight_results",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": False,
         })
         ambiguous_manual = scraper.normalize_tapology_cache_fighter({
             "streak": 3,
-            "stats_source": "manual_admin",
+            "streak_source": "manual",
         })
         manual_streak = scraper.normalize_tapology_cache_fighter({
             "streak": 3,
-            "stats_source": "manual_streak",
+            "streak_source": "manual",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": False,
         })
 
         self.assertEqual(historical["Streak"], "")
         self.assertEqual(historical["KO_TKO_Wins"], "8")
-        self.assertEqual(current["Streak"], "-2")
+        self.assertEqual(verified["Streak"], "-2")
         self.assertEqual(ambiguous_manual["Streak"], "")
         self.assertEqual(manual_streak["Streak"], "3")
+
+    def test_verified_cached_streak_must_match_the_current_record(self):
+        lookup = scraper.empty_tapology_cache_lookup()
+        lookup["fighters_by_fighter_id"]["10"] = {
+            "fighter_id": 10,
+            "streak": 4,
+            "streak_source": "tapology_live",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": False,
+            "streak_record_wins": 12,
+            "streak_record_losses": 2,
+        }
+        fighter = {
+            "FighterId": 10,
+            "Record": {"Wins": 13, "Losses": 2},
+            "Name": {"FirstName": "Test", "LastName": "Fighter"},
+        }
+
+        cached = scraper.tapology_cache_fighter_for_fighter(fighter, lookup)
+        self.assertEqual(cached["Streak"], "")
 
     def test_resolve_style_prefers_fighter_style_over_tapology_cache(self):
         fighter = {
@@ -152,6 +176,46 @@ class TapologyCacheTests(unittest.TestCase):
         self.assertNotIn("stats_source", fighter_payload)
         self.assertNotIn("stats_as_of_event_id", fighter_payload)
         self.assertNotIn("last_success_at", fighter_payload)
+
+    @mock.patch.object(scraper, "upsert_supabase_rows")
+    def test_live_profile_streak_creates_a_verified_upcoming_anchor(self, upsert_rows):
+        upsert_rows.return_value = 1
+        event = {
+            "EventId": 2000,
+            "StartTime": "2099-08-15T22:00:00Z",
+            "FightCard": [{
+                "Fighters": [{
+                    "FighterId": 10,
+                    "MMAId": 20,
+                    "Name": {"FirstName": "Test", "LastName": "Fighter"},
+                    "Record": {"Wins": 12, "Losses": 3},
+                }],
+            }],
+        }
+
+        scraper.upsert_tapology_fighter_cache(
+            event=event,
+            enrichment={
+                "test fighter": {
+                    "TapologyFighterURL": "https://example.com/fighter",
+                    "Streak": "-2",
+                },
+            },
+            timeout=5,
+            source="live_profile",
+        )
+
+        fighters_call = next(
+            call for call in upsert_rows.call_args_list
+            if call.args[0] == "fighters"
+        )
+        fighter_payload = fighters_call.args[1][0]
+        self.assertEqual(fighter_payload["streak"], -2)
+        self.assertEqual(fighter_payload["streak_source"], "tapology_live")
+        self.assertEqual(fighter_payload["streak_anchor_record_wins"], 12)
+        self.assertEqual(fighter_payload["streak_anchor_record_losses"], 3)
+        self.assertEqual(fighter_payload["streak_anchor_through_date"], "2099-08-14")
+        self.assertFalse(fighter_payload["streak_needs_review"])
 
 
 if __name__ == "__main__":

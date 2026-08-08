@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.0 - 2026-08-07
+
+### Added
+
+- Added verified per-fighter streak anchors with manual and live Tapology provenance, record checks, and admin verification controls.
+- Added a server-only fight-result ledger that recomputes current streaks chronologically and safely handles result corrections.
+
+### Changed
+
+- Existing cached streaks are now treated as unverified until an admin confirms them or a live Tapology profile returns a current MMA streak.
+- Fight-card previews only reuse verified streaks whose expected record matches the current UFC record; historical fight-card snapshots remain unchanged.
+
 ## 0.6.0 - 2026-08-07
 
 ### Security

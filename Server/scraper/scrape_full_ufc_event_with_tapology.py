@@ -44,7 +44,8 @@ SUPABASE_FIGHTER_PROFILE_SELECT = (
     "fighter_id,mma_id,first_name,last_name,normalized_name,tapology_fighter_url,"
     "rank,streak,style,ko_tko_wins,ko_tko_losses,submission_wins,"
     "submission_losses,decision_wins,decision_losses,stats_confidence,"
-    "stats_source,last_success_at,last_failure_at,last_error"
+    "stats_source,streak_source,streak_verified_at,streak_needs_review,"
+    "streak_record_wins,streak_record_losses,last_success_at,last_failure_at,last_error"
 )
 SUPABASE_TAPOLOGY_EVENT_SELECT = (
     "event_id,event_name,event_date,tapology_event_url,event_image_url,"
@@ -64,16 +65,7 @@ DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
 DEFAULT_TAPOLOGY_CACHE_DIR = os.path.join(SCRIPT_DIR, "tapology_cache")
 DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
 DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT = 4
-CURRENT_STREAK_SOURCES = {
-    "cached_profile_url",
-    "fight_result",
-    "live_profile",
-    "manual_streak",
-    "tapology_partial_profile",
-    "tapology_single_profile",
-    "tapology_wikipedia_merged",
-    "wikipedia_record_breakdown",
-}
+CURRENT_STREAK_SOURCES = {"manual", "tapology_live", "fight_results"}
 TAPOLOGY_ENRICHMENT_FIELDS = [
     "TapologyFighterURL",
     "TapologyMatchConfidence",
@@ -445,8 +437,10 @@ def cache_confidence(value: object, prefix: str = "cache") -> str:
 
 
 def cached_streak_is_current(row: Dict[str, object]) -> bool:
-    source = cache_value_to_csv(row.get("stats_source") or row.get("source")).lower()
-    return source in CURRENT_STREAK_SOURCES
+    source = cache_value_to_csv(row.get("streak_source")).lower()
+    verified_at = cache_value_to_csv(row.get("streak_verified_at"))
+    needs_review = row.get("streak_needs_review") is True
+    return source in CURRENT_STREAK_SOURCES and bool(verified_at) and not needs_review
 
 
 def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
@@ -608,7 +602,27 @@ def tapology_cache_fighter_for_fighter(
     if cache_row is None and fighter_name:
         cache_row = tapology_cache_lookup.get("fighters_by_name", {}).get(fighter_name)
 
-    return normalize_tapology_cache_fighter(cache_row) if cache_row else {}
+    if not cache_row:
+        return {}
+
+    normalized = normalize_tapology_cache_fighter(cache_row)
+    if normalized.get("Streak"):
+        record = fighter.get("Record", {}) or {}
+        actual_wins = parse_optional_int(record.get("Wins"))
+        actual_losses = parse_optional_int(record.get("Losses"))
+        expected_wins = parse_optional_int(cache_row.get("streak_record_wins"))
+        expected_losses = parse_optional_int(cache_row.get("streak_record_losses"))
+        if (
+            actual_wins is None
+            or actual_losses is None
+            or expected_wins is None
+            or expected_losses is None
+            or actual_wins != expected_wins
+            or actual_losses != expected_losses
+        ):
+            normalized["Streak"] = ""
+
+    return normalized
 
 
 def load_tapology_cache_fighter_enrichment(
@@ -787,9 +801,34 @@ def upsert_tapology_fighter_cache(
         print(f"Tapology fighter cache upsert skipped: {err}")
 
     event_date = str(event.get("StartTime", "")).split("T")[0] or None
+    event_start = parse_start_time(event.get("StartTime"))
+    if event_start and event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=datetime.timezone.utc)
+    event_is_upcoming = bool(
+        event_start
+        and event_start > datetime.datetime.now(datetime.timezone.utc)
+    )
+    anchor_through_date = None
+    if event_date and event_is_upcoming:
+        anchor_through_date = (
+            datetime.date.fromisoformat(event_date) - datetime.timedelta(days=1)
+        ).isoformat()
     fighter_profile_payloads = []
+    fighters_by_id = {
+        parse_optional_int(fighter.get("FighterId")): fighter
+        for fight in event.get("FightCard", [])
+        for fighter in fight.get("Fighters", [])
+    }
     for payload in payloads:
-        has_current_streak = payload.get("streak") is not None
+        fighter = fighters_by_id.get(payload.get("fighter_id"), {})
+        record = fighter.get("Record", {}) or {}
+        record_wins = parse_optional_int(record.get("Wins"))
+        record_losses = parse_optional_int(record.get("Losses"))
+        has_current_streak = (
+            payload.get("streak") is not None
+            and event_is_upcoming
+            and source in {"cached_profile_url", "live_profile"}
+        )
         fighter_profile_payload = {
             "fighter_id": payload.get("fighter_id"),
             "mma_id": payload.get("mma_id"),
@@ -798,7 +837,6 @@ def upsert_tapology_fighter_cache(
             "normalized_name": payload.get("normalized_name"),
             "tapology_fighter_url": payload.get("tapology_fighter_url"),
             "rank": payload.get("rank"),
-            "streak": payload.get("streak"),
             "style": payload.get("style"),
             "ko_tko_wins": payload.get("ko_tko_wins"),
             "ko_tko_losses": payload.get("ko_tko_losses"),
@@ -811,6 +849,19 @@ def upsert_tapology_fighter_cache(
         }
         if has_current_streak:
             fighter_profile_payload.update({
+                "streak": payload.get("streak"),
+                "streak_source": "tapology_live",
+                "streak_anchor_source": "tapology_live",
+                "streak_verified_at": payload.get("last_success_at"),
+                "streak_anchor_value": payload.get("streak"),
+                "streak_anchor_record_wins": record_wins,
+                "streak_anchor_record_losses": record_losses,
+                "streak_anchor_event_id": parse_optional_int(event.get("EventId")),
+                "streak_anchor_through_date": anchor_through_date,
+                "streak_record_wins": record_wins,
+                "streak_record_losses": record_losses,
+                "streak_verified_through_date": anchor_through_date,
+                "streak_needs_review": False,
                 "stats_source": source,
                 "stats_confidence": payload.get("match_confidence"),
                 "stats_as_of_event_id": parse_optional_int(event.get("EventId")),
