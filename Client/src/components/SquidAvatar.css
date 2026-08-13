@@ -5,8 +5,9 @@
   overflow: visible;
 }
 
-.squid-avatar__silhouette {
-  filter: drop-shadow(0 2px 1.5px rgba(5, 0, 0, 0.28));
+.squid-avatar__sticker-shadow {
+  fill: rgba(5, 0, 0, 0.48);
+  transform: translate(0, 3px);
 }
 
 .squid-avatar__streak {
@@ -55,63 +56,102 @@
   transform-origin: center bottom;
 }
 
-.squid-avatar--animated .squid-avatar__motion {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+) .squid-avatar__motion {
   animation: squid-avatar-float var(--squid-motion-duration) ease-in-out var(--squid-phase) infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.squid-avatar--animated .squid-avatar__eye-look {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+) .squid-avatar__eye-look {
   animation: squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.squid-avatar--animated .squid-avatar__eye-blink {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+) .squid-avatar__eye-blink {
   animation: squid-avatar-blink 5.8s ease-in-out calc(var(--squid-phase) - 0.6s) infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.squid-avatar--animated.squid-avatar--hot .squid-avatar__flame--outer {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--hot .squid-avatar__flame--outer {
   animation: squid-avatar-flame 1.25s ease-in-out var(--squid-phase) infinite alternate;
 }
 
-.squid-avatar--animated.squid-avatar--hot .squid-avatar__flame--inner {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--hot .squid-avatar__flame--inner {
   animation: squid-avatar-flame 0.92s ease-in-out calc(var(--squid-phase) - 0.4s) infinite alternate-reverse;
 }
 
-.squid-avatar--animated.squid-avatar--hot .squid-avatar__ember {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--hot .squid-avatar__ember {
   animation: squid-avatar-ember 1.8s ease-out var(--squid-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--cold .squid-avatar__ice-shards {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--cold .squid-avatar__ice-shards {
   animation: squid-avatar-ice-shimmer 2.8s ease-in-out var(--squid-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--cold .squid-avatar__snow {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--cold .squid-avatar__snow {
   animation: squid-avatar-snow 3.2s ease-in-out var(--squid-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--reaction-twin .squid-avatar__reaction--twin {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--reaction-twin .squid-avatar__reaction--twin {
   animation: squid-avatar-twin-reaction 15s ease-in-out var(--squid-reaction-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__reaction--nemesis {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--reaction-nemesis .squid-avatar__reaction--nemesis {
   animation: squid-avatar-nemesis-reaction 17s ease-in-out var(--squid-reaction-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__rude-hand {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--reaction-nemesis .squid-avatar__rude-hand {
   animation: squid-avatar-rude-hand 17s ease-in-out var(--squid-reaction-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--reaction-twin .squid-avatar__eye-look {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--reaction-twin .squid-avatar__eye-look {
   animation:
     squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite,
     squid-avatar-hide-eyes-twin 15s linear var(--squid-reaction-phase) infinite;
 }
 
-.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__eye-look {
+:is(
+  .squid-avatar--animated:not(.squid-avatar--motion-gated),
+  .squid-avatar--animated.squid-avatar--motion-active
+).squid-avatar--reaction-nemesis .squid-avatar__eye-look {
   animation:
     squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite,
     squid-avatar-hide-eyes-nemesis 17s linear var(--squid-reaction-phase) infinite;

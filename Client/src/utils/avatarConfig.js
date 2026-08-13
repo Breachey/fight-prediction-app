@@ -13,9 +13,9 @@ export const AVATAR_CHARACTERS = [
   { id: 'squid', label: 'Squid' },
   { id: 'kirby', label: 'Kirby' },
   { id: 'cloudee', label: 'Cloudee' },
-  { id: 'red-panda', label: 'Red panda' },
+  { id: 'red-panda', label: 'Bear' },
   { id: 'ogre', label: 'Shrek' },
-  { id: 'golden-retriever', label: 'Golden retriever' },
+  { id: 'golden-retriever', label: 'Mouse-dog' },
 ];
 
 export const AVATAR_EYES = [
@@ -44,6 +44,7 @@ export const DEFAULT_AVATAR_CONFIG = Object.freeze({
   color: '#2B31B2',
   eyeColor: '#050000',
   patternColor: '#050000',
+  accentColor: '#050000',
   pattern: 'solid',
   eyes: 'oval',
   width: 100,
@@ -122,6 +123,11 @@ export function normalizeAvatarConfig(config) {
     color: normalizedColor,
     eyeColor: isAvatarColor(candidate.eyeColor) ? candidate.eyeColor.toUpperCase() : fallbackDetailColor,
     patternColor: isAvatarColor(candidate.patternColor) ? candidate.patternColor.toUpperCase() : fallbackDetailColor,
+    accentColor: isAvatarColor(candidate.accentColor)
+      ? candidate.accentColor.toUpperCase()
+      : isAvatarColor(candidate.patternColor)
+        ? candidate.patternColor.toUpperCase()
+        : fallbackDetailColor,
     pattern: OPTION_IDS.pattern.has(candidate.pattern) ? candidate.pattern : DEFAULT_AVATAR_CONFIG.pattern,
     eyes: OPTION_IDS.eyes.has(candidate.eyes) ? candidate.eyes : DEFAULT_AVATAR_CONFIG.eyes,
     ...Object.fromEntries(
@@ -144,11 +150,13 @@ export function randomAvatarConfig() {
   const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const color = RANDOM_COLORS[Math.floor(Math.random() * RANDOM_COLORS.length)];
   const detailColor = getAvatarContrastColor(color);
+  const accentChoices = RANDOM_COLORS.filter((candidate) => candidate !== detailColor);
   return {
     character: pick(AVATAR_CHARACTERS),
     color,
     eyeColor: detailColor,
     patternColor: detailColor,
+    accentColor: accentChoices[Math.floor(Math.random() * accentChoices.length)],
     pattern: pick(AVATAR_PATTERNS),
     eyes: pick(AVATAR_EYES),
     ...Object.fromEntries(
@@ -177,6 +185,7 @@ export function cursedAvatarConfig() {
     color,
     eyeColor: detailColor,
     patternColor: color === '#2B31B2' ? '#F99EAD' : '#2B31B2',
+    accentColor: color === '#E9170D' ? '#FCFBFD' : '#E9170D',
     pattern: pick(cursedPatterns),
     eyes: pick(cursedEyes),
     width: 118 + Math.floor(Math.random() * 13),

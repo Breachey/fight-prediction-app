@@ -24,6 +24,7 @@ const DEFAULT_AVATAR_CONFIG = Object.freeze({
   color: '#2B31B2',
   eyeColor: '#050000',
   patternColor: '#050000',
+  accentColor: '#050000',
   pattern: 'solid',
   eyes: 'oval',
   width: 100,
@@ -65,6 +66,7 @@ function randomAvatarConfig() {
     color,
     eyeColor: detailColor,
     patternColor: detailColor,
+    accentColor: pickRandom(RANDOM_COLORS.filter((candidate) => candidate !== detailColor)),
     pattern: pickRandom(Array.from(AVATAR_OPTIONS.pattern)),
     eyes: pickRandom(Array.from(AVATAR_OPTIONS.eyes)),
     ...Object.fromEntries(
@@ -87,7 +89,7 @@ function validateAvatarConfig(value) {
     return { valid: false, error: 'Avatar configuration contains unsupported fields' };
   }
 
-  for (const colorKey of ['color', 'eyeColor', 'patternColor']) {
+  for (const colorKey of ['color', 'eyeColor', 'patternColor', 'accentColor']) {
     if (typeof value[colorKey] !== 'string' || !/^#[0-9a-f]{6}$/i.test(value[colorKey])) {
       return { valid: false, error: `Avatar ${colorKey} must be a six-digit hex color` };
     }
@@ -112,6 +114,7 @@ function validateAvatarConfig(value) {
       color: value.color.toUpperCase(),
       eyeColor: value.eyeColor.toUpperCase(),
       patternColor: value.patternColor.toUpperCase(),
+      accentColor: value.accentColor.toUpperCase(),
     },
   };
 }

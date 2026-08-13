@@ -169,7 +169,7 @@ Use semantic heading levels for document structure and shared classes for visual
 
 - The avatar system is a playful identity layer and may use user-selected colors beyond the core chrome palette. The surrounding interface must still use the Fight Picks palette.
 - Supported character silhouettes, patterns, expressions, colors, proportions, and motion come from `avatarConfig.js` and `SquidAvatar.jsx`; do not maintain a second option list in styling code.
-- Keep characters as connected, mouthless silhouettes. Character details and patterns render at their selected colors rather than as washed-out overlays.
+- Keep characters as connected, mouthless silhouettes with a restrained offset shadow. Character accents are independently configurable, render above patterns, and use their selected colors rather than washed-out overlays.
 - Do not place avatars on generic backing plates in lists. Player-card artwork may still provide its intended background.
 - Motion must stay lightweight: slow drift, occasional blink, and brief contextual reactions. Dense lists should render less motion than prominent profile/player-card views.
 - Fire and frost streak treatments belong on the avatar. Pick-twin and nemesis reactions should be occasional, contextual, and non-blocking.

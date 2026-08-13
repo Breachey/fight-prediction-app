@@ -9,6 +9,8 @@ import SquidAvatar from './components/SquidAvatar';
 import './Leaderboard.css';
 
 const LEADERBOARD_REFRESH_INTERVAL_MS = 15000;
+const AVATAR_SCROLL_IDLE_MS = 160;
+const AVATAR_VISIBILITY_MARGIN = '160px 0px';
 function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, isEventComplete = false, showAIUsers = false }) {
   // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
@@ -29,6 +31,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
   const lastAppliedRefreshTokenRef = useRef(refreshToken);
   const lastFocusRefreshRef = useRef(0);
+  const containerRef = useRef(null);
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
@@ -192,6 +195,75 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       cancelled = true;
     };
   }, [currentUserId]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    const avatarHosts = [...container.querySelectorAll('.leaderboard-squid-avatar')];
+    const setAvatarMotion = (host, active) => {
+      const avatar = host.querySelector('.squid-avatar--motion-gated');
+      avatar?.classList.toggle('squid-avatar--motion-active', active);
+    };
+
+    if (typeof IntersectionObserver !== 'function') {
+      avatarHosts.forEach((host) => setAvatarMotion(host, true));
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => setAvatarMotion(entry.target, entry.isIntersecting));
+    }, {
+      rootMargin: AVATAR_VISIBILITY_MARGIN,
+      threshold: 0.01,
+    });
+
+    avatarHosts.forEach((host) => observer.observe(host));
+    return () => observer.disconnect();
+  }, [eventLeaderboard, overallLeaderboard, season2025Leaderboard, seasonLeaderboard, selectedLeaderboard, showBots]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    let scrollIdleTimer;
+    let animationFrame;
+    let isScrolling = false;
+
+    const syncMotionState = () => {
+      animationFrame = undefined;
+      const shouldPause = isScrolling || document.visibilityState !== 'visible';
+      container.toggleAttribute('data-avatar-motion-paused', shouldPause);
+    };
+
+    const scheduleMotionSync = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(syncMotionState);
+    };
+
+    const handleScroll = () => {
+      isScrolling = true;
+      scheduleMotionSync();
+      window.clearTimeout(scrollIdleTimer);
+      scrollIdleTimer = window.setTimeout(() => {
+        isScrolling = false;
+        scheduleMotionSync();
+      }, AVATAR_SCROLL_IDLE_MS);
+    };
+
+    const handleVisibility = () => scheduleMotionSync();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibility);
+    syncMotionState();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearTimeout(scrollIdleTimer);
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      container.removeAttribute('data-avatar-motion-paused');
+    };
+  }, [isLoading, error]);
 
   // --- Styling objects ---
   // These objects define the inline styles for the leaderboard UI
@@ -422,6 +494,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
     };
     return (
       <div
+        className="leaderboard-card"
         style={{
           position: 'relative',
           background: bgUrl ? `url('${bgUrl}') center/cover no-repeat` : fallbackBg,
@@ -497,6 +570,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
             <span className="leaderboard-squid-avatar">
               <SquidAvatar
                 config={entry.avatar_config}
+                className="squid-avatar--dense squid-avatar--motion-gated"
                 title={`${entry.username} avatar`}
                 animated
                 streakType={winStreakCount >= 3 ? 'hot' : lossStreakCount >= 2 ? 'cold' : null}
@@ -722,7 +796,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
 
   // Main leaderboard UI
   return (
-    <div style={containerStyle} className="leaderboard-container">
+    <div ref={containerRef} style={containerStyle} className="leaderboard-container">
       <h1 className="app-page-heading leaderboard-page-heading">Leaderboard</h1>
       {/* Leaderboard selection toggle */}
       <div style={filterToggleStyle} className="leaderboard-toggle-group">

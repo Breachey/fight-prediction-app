@@ -33,6 +33,7 @@ test('accepts arbitrary six-digit colors and clamps slider values', () => {
     color: '#12ab34',
     eyeColor: '#abcdef',
     patternColor: '#fedcba',
+    accentColor: '#13579b',
     width: 500,
     motion: -10,
   });
@@ -40,6 +41,7 @@ test('accepts arbitrary six-digit colors and clamps slider values', () => {
   assert.equal(normalized.color, '#12AB34');
   assert.equal(normalized.eyeColor, '#ABCDEF');
   assert.equal(normalized.patternColor, '#FEDCBA');
+  assert.equal(normalized.accentColor, '#13579B');
   assert.equal(normalized.width, AVATAR_SLIDERS.width.max);
   assert.equal(normalized.motion, AVATAR_SLIDERS.motion.min);
   assert.equal(isAvatarColor('#12AB34'), true);
@@ -55,6 +57,8 @@ test('random avatars stay within every configured slider range', () => {
     assert.equal(isAvatarColor(config.color), true);
     assert.equal(isAvatarColor(config.eyeColor), true);
     assert.equal(isAvatarColor(config.patternColor), true);
+    assert.equal(isAvatarColor(config.accentColor), true);
+    assert.notEqual(config.accentColor, config.patternColor);
     assert.equal(characters.has(config.character), true);
     assert.equal(expressions.has(config.eyes), true);
     assert.equal(patterns.has(config.pattern), true);
@@ -64,14 +68,23 @@ test('random avatars stay within every configured slider range', () => {
   }
 });
 
-test('backfills contrasting eye and pattern colors for saved legacy avatars', () => {
-  const lightAvatar = normalizeAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, color: '#FCFBFD', eyeColor: undefined, patternColor: undefined });
-  const darkAvatar = normalizeAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, color: '#050000', eyeColor: undefined, patternColor: undefined });
+test('uses friendly display names without changing saved character ids', () => {
+  assert.equal(AVATAR_CHARACTERS.find((option) => option.id === 'red-panda')?.label, 'Bear');
+  assert.equal(AVATAR_CHARACTERS.find((option) => option.id === 'golden-retriever')?.label, 'Mouse-dog');
+});
+
+test('backfills detail colors for saved legacy avatars', () => {
+  const lightAvatar = normalizeAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, color: '#FCFBFD', eyeColor: undefined, patternColor: undefined, accentColor: undefined });
+  const darkAvatar = normalizeAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, color: '#050000', eyeColor: undefined, patternColor: undefined, accentColor: undefined });
+  const patternedAvatar = normalizeAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, patternColor: '#E9170D', accentColor: undefined });
 
   assert.equal(lightAvatar.eyeColor, '#050000');
   assert.equal(lightAvatar.patternColor, '#050000');
+  assert.equal(lightAvatar.accentColor, '#050000');
   assert.equal(darkAvatar.eyeColor, '#FCFBFD');
   assert.equal(darkAvatar.patternColor, '#FCFBFD');
+  assert.equal(darkAvatar.accentColor, '#FCFBFD');
+  assert.equal(patternedAvatar.accentColor, '#E9170D');
 });
 
 test('preserves supported character types and expressions', () => {
