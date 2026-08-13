@@ -4,8 +4,8 @@
   --fights-neutral-border-rgb: 126, 141, 164;
   --fights-neutral-surface-rgb: 18, 24, 38;
   /* Keep fights area on standard palette, not per-event poster accents. */
-  --event-accent-1-rgb: 239, 68, 68;
-  --event-accent-2-rgb: 37, 99, 235;
+  --event-accent-1-rgb: 233, 23, 13;
+  --event-accent-2-rgb: 43, 49, 178;
   --event-surface-rgb: 18, 24, 38;
   --event-background-rgb: 5, 7, 13;
   --event-ink-rgb: 245, 247, 250;
@@ -24,6 +24,30 @@
   flex-direction: column;
   box-sizing: border-box;
   width: 100%;
+}
+
+/* Lightweight picks workspace overrides */
+.fights-container {
+  --event-accent-1-rgb: 233, 23, 13;
+  --event-accent-2-rgb: 43, 49, 178;
+  --event-surface-rgb: 23, 21, 24;
+  --event-background-rgb: 5, 0, 0;
+  --event-ink-rgb: 252, 251, 253;
+  max-width: 960px;
+  min-height: 0;
+  padding: 0;
+}
+.fights-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; text-align: left; }
+.fights-title { margin: 0; background: none; color: rgba(252,251,253,.72); font-family: var(--font-family); font-size: var(--heading-section-size); font-weight: 750; line-height: 1.2; letter-spacing: .1em; text-transform: uppercase; -webkit-text-fill-color: currentColor; }
+.fight-card { padding: 14px; margin-bottom: 10px; border: 1px solid rgba(252,251,253,.13); border-radius: var(--radius-sm); background: #111012; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; transition: border-color 150ms ease, background-color 150ms ease; }
+.fight-card:hover { transform: none; box-shadow: none; }
+.fight-card.title-fight { border-color: rgba(249,158,173,.5); box-shadow: none; animation: none; }
+.fighter-card, .fighter-card.red-corner, .fighter-card.blue-corner { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.floating-vote-progress { top: 108px; right: 12px; border-radius: var(--radius-sm); background: #1b191c; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 8px 20px rgba(0,0,0,.28); }
+.winner-glow, .fighter-card.winner { animation: none; }
+
+@media (min-width: 900px) {
+  .floating-vote-progress { top: 76px; right: max(24px, calc((100vw - 1120px) / 2)); }
 }
 
 .fights-header {
@@ -93,7 +117,7 @@
 }
 
 .fight-card {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), 
+  background: linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%),
               rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -116,7 +140,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
     inset 0 0 0 1px rgba(246, 198, 92, 0.28),
     0 0 12px rgba(224, 168, 57, 0.12);
-  animation: titleFightBorderPulse 2.8s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes titleFightBorderPulse {
@@ -181,39 +205,39 @@
 }
 
 .fighter-card:first-child {
-  border: 2px solid rgba(239, 68, 68, 0.4);
-  box-shadow: 0 2px 10px 0 rgba(239, 68, 68, 0.2);
-  background: rgba(239, 68, 68, 0.15);
+  border: 2px solid rgba(233, 23, 13, 0.4);
+  box-shadow: 0 2px 10px 0 rgba(233, 23, 13, 0.2);
+  background: rgba(233, 23, 13, 0.15);
   backdrop-filter: blur(15px) saturate(180%);
   -webkit-backdrop-filter: blur(15px) saturate(180%);
 }
 
 .fighter-card:last-child {
-  border: 2px solid rgba(59, 130, 246, 0.4);
-  box-shadow: 0 2px 10px 0 rgba(59, 130, 246, 0.2);
-  background: rgba(59, 130, 246, 0.15);
+  border: 2px solid rgba(43, 49, 178, 0.4);
+  box-shadow: 0 2px 10px 0 rgba(43, 49, 178, 0.2);
+  background: rgba(43, 49, 178, 0.15);
   backdrop-filter: blur(15px) saturate(180%);
   -webkit-backdrop-filter: blur(15px) saturate(180%);
 }
 
 .fighter-card:hover:not(.completed):not(.unselected):first-child {
   transform: translateY(-3px) scale(1.03);
-  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 4px 20px rgba(233, 23, 13, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border-color: rgba(233, 23, 13, 0.6);
+  background: rgba(233, 23, 13, 0.25);
 }
 
 .fighter-card:hover:not(.completed):not(.unselected):last-child {
   transform: translateY(-3px) scale(1.03);
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 4px 20px rgba(43, 49, 178, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border-color: rgba(43, 49, 178, 0.6);
+  background: rgba(43, 49, 178, 0.25);
 }
 
 .fighter-card.selected:first-child {
-  border: 2.5px solid rgba(239, 68, 68, 0.8);
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  background: rgba(239, 68, 68, 0.25);
+  border: 2.5px solid rgba(233, 23, 13, 0.8);
+  box-shadow: 0 0 20px rgba(233, 23, 13, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: rgba(233, 23, 13, 0.25);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   opacity: 1;
@@ -221,9 +245,9 @@
 }
 
 .fighter-card.selected:last-child {
-  border: 2.5px solid rgba(59, 130, 246, 0.8);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  background: rgba(59, 130, 246, 0.25);
+  border: 2.5px solid rgba(43, 49, 178, 0.8);
+  box-shadow: 0 0 20px rgba(43, 49, 178, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: rgba(43, 49, 178, 0.25);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   opacity: 1;
@@ -255,7 +279,7 @@
   border: 2.5px solid #FFD700;
   box-shadow: 0 0 12px #FFD70044;
   background: none;
-  animation: winnerGlow 2s infinite;
+  animation: none;
 }
 
 .fighter-card.winner::after {
@@ -355,8 +379,8 @@
   background:
     linear-gradient(
       90deg,
-      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.05),
-      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.05)
+      rgba(var(--event-accent-1-rgb, 233, 23, 13), 0.05),
+      rgba(var(--event-accent-2-rgb, 43, 49, 178), 0.05)
     ),
     rgba(var(--event-surface-rgb, 18, 24, 38), 0.46);
   backdrop-filter: blur(10px);
@@ -372,8 +396,8 @@
   background:
     linear-gradient(
       90deg,
-      rgba(var(--event-accent-1-rgb, 239, 68, 68), 0.08),
-      rgba(var(--event-accent-2-rgb, 37, 99, 235), 0.08)
+      rgba(var(--event-accent-1-rgb, 233, 23, 13), 0.08),
+      rgba(var(--event-accent-2-rgb, 43, 49, 178), 0.08)
     ),
     rgba(var(--event-surface-rgb, 18, 24, 38), 0.56);
   border-color: rgba(var(--event-border-rgb, 148, 163, 184), 0.4);
@@ -442,11 +466,11 @@ button.submit-vote-button {
 }
 
 button.submit-vote-button.submit-vote-button--red {
-  --submit-vote-border-rgb: 239, 68, 68;
+  --submit-vote-border-rgb: 233, 23, 13;
 }
 
 button.submit-vote-button.submit-vote-button--blue {
-  --submit-vote-border-rgb: 59, 130, 246;
+  --submit-vote-border-rgb: 43, 49, 178;
 }
 
 button.submit-vote-button:hover {
@@ -675,7 +699,7 @@ button.submit-vote-button:focus-visible {
 .fight-card.completed {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), 
+  background: linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%),
               rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -737,21 +761,69 @@ button.submit-vote-button:focus-visible {
 
 .fighter-reminder-badge {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  right: 6px;
+  bottom: 6px;
   z-index: 10;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(17, 24, 39, 0.72);
-  font-size: 1rem;
+  background: rgba(5, 0, 0, 0.88);
+  font-size: 1.15rem;
   line-height: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(252, 251, 253, 0.32);
   pointer-events: none;
+}
+
+.fighter-reminder-badge.is-liked { border-color: rgba(249, 158, 173, 0.78); }
+.fighter-reminder-badge.is-disliked { border-color: rgba(233, 23, 13, 0.78); }
+
+.fighter-reaction-animation {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: inherit;
+  background: rgba(5, 0, 0, 0.28);
+  pointer-events: none;
+  animation: fighter-reaction-backdrop 650ms ease-out both;
+}
+
+.fighter-reaction-animation span {
+  font-size: clamp(2.8rem, 42%, 4.8rem);
+  filter: drop-shadow(0 5px 12px rgba(0, 0, 0, 0.48));
+  animation: fighter-reaction-pop 650ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.fighter-reaction-animation.is-disliked span {
+  animation-name: fighter-reaction-break;
+}
+
+@keyframes fighter-reaction-backdrop {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes fighter-reaction-pop {
+  0% { opacity: 0; transform: scale(0.45) translateY(10px); }
+  38% { opacity: 1; transform: scale(1.2) translateY(0); }
+  72% { opacity: 1; transform: scale(1) translateY(-4px); }
+  100% { opacity: 0; transform: scale(0.92) translateY(-20px); }
+}
+
+@keyframes fighter-reaction-break {
+  0% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+  34% { opacity: 1; transform: scale(1.16) rotate(-6deg); }
+  56% { opacity: 1; transform: scale(1.02) rotate(5deg); }
+  76% { opacity: 1; transform: scale(1) rotate(-3deg) translateY(2px); }
+  100% { opacity: 0; transform: scale(0.82) rotate(4deg) translateY(20px); }
 }
 
 .vote-badge::before {
@@ -801,9 +873,7 @@ button.submit-vote-button:focus-visible {
     margin-bottom: 16px;
   }
 
-  .fights-title {
-    font-size: 1.5rem;
-  }
+  .fights-title { font-size: var(--heading-section-size); }
 
   .fights-container {
     padding: 10px;
@@ -1419,7 +1489,7 @@ button.expand-stats-button:hover {
 }
 
 .finish-method-fill--loss {
-  background: linear-gradient(90deg, rgba(220, 38, 38, 0.94), rgba(252, 165, 165, 0.9));
+  background: linear-gradient(90deg, rgba(233, 23, 13, 0.94), rgba(252, 165, 165, 0.9));
 }
 
 .finish-method-percent {
@@ -1458,80 +1528,79 @@ button.expand-stats-button:hover {
 .vote-reminder-controls {
   margin-top: 8px;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
-  min-height: 34px;
+  gap: 6px;
+}
+
+.vote-reminder-prompt {
+  color: rgba(var(--fights-neutral-muted-rgb), 0.78);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .vote-reminder-options {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 14px;
+  gap: 6px;
 }
 
 button.vote-reminder-button {
-  width: auto;
-  height: auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
   margin-top: 0;
-  padding: 0;
-  border: none !important;
-  background: transparent !important;
+  padding: 6px;
+  border: 1px solid rgba(var(--fights-neutral-border-rgb), 0.3) !important;
+  border-radius: var(--radius-xs);
+  background: rgba(5, 0, 0, 0.24) !important;
   background-image: none !important;
   color: rgba(var(--fights-neutral-ink-rgb), 0.96);
-  font-size: 1.55rem;
+  font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
-  transition: color 0.2s ease, transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease, opacity 150ms ease;
   box-shadow: none;
-  opacity: 0.72;
+  opacity: 0.76;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
+button.vote-reminder-button > span:first-child { font-size: 1rem; }
+
 button.vote-reminder-button:hover {
-  background: transparent !important;
+  background: rgba(252, 251, 253, 0.07) !important;
   background-image: none !important;
   color: rgba(var(--fights-neutral-ink-rgb), 1);
-  transform: translateY(-1px) scale(1.08);
+  border-color: rgba(var(--fights-neutral-border-rgb), 0.52) !important;
+  transform: none;
   opacity: 1;
 }
 
 button.vote-reminder-button.active {
   opacity: 1;
   color: rgba(var(--fights-neutral-ink-rgb), 0.98);
-  transform: scale(1.08);
-  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.25));
+  transform: none;
+  filter: none;
 }
 
 button.vote-reminder-button.active-broken-heart {
-  color: rgba(254, 226, 226, 0.98);
+  border-color: rgba(233, 23, 13, 0.74) !important;
+  background: rgba(233, 23, 13, 0.16) !important;
+  color: var(--color-white);
 }
 
 button.vote-reminder-button.active-heart-eyes {
-  color: rgba(251, 207, 232, 0.98);
-}
-
-button.vote-reminder-clear-button {
-  width: fit-content;
-  min-width: 0;
-  margin-top: 8px;
-  padding: 4px 2px;
-  border: none;
-  border-bottom: 1px solid rgba(var(--fights-neutral-border-rgb), 0.3);
-  background: transparent !important;
-  background-image: none !important;
-  color: rgba(var(--fights-neutral-ink-rgb), 0.75);
-  font-size: 0.67rem;
-  font-weight: 550;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
-}
-
-button.vote-reminder-clear-button:hover {
-  border-bottom-color: rgba(var(--fights-neutral-border-rgb), 0.5);
-  background: transparent !important;
-  background-image: none !important;
-  color: rgba(var(--fights-neutral-ink-rgb), 0.92);
-  transform: translateY(-1px);
+  border-color: rgba(249, 158, 173, 0.74) !important;
+  background: rgba(249, 158, 173, 0.14) !important;
+  color: var(--color-white);
 }
 
 @media (max-width: 480px) {
@@ -1584,6 +1653,23 @@ button.vote-reminder-clear-button:hover {
   }
 }
 
+/* Final lightweight picks workspace layer */
+.fights-container { --event-accent-1-rgb: 233, 23, 13; --event-accent-2-rgb: 43, 49, 178; --event-surface-rgb: 23, 21, 24; --event-background-rgb: 5, 0, 0; --event-ink-rgb: 252, 251, 253; max-width: 960px; min-height: 0; padding: 0; }
+.fights-container,
+.fights-content,
+.fight-card { width: 100%; min-width: 0; max-width: 100%; }
+.no-fights-message { max-width: 100%; overflow-wrap: anywhere; }
+.fights-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; text-align: left; }
+.fights-title { margin: 0; background: none; color: rgba(252,251,253,.72); font-family: var(--font-family); font-size: var(--heading-section-size); font-weight: 750; line-height: 1.2; letter-spacing: .1em; text-transform: uppercase; -webkit-text-fill-color: currentColor; }
+.fight-card { scroll-margin-top: 76px; }
+.fight-card { padding: 14px; margin-bottom: 10px; border: 1px solid rgba(252,251,253,.13); border-radius: var(--radius-sm); background: #111012; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; transition: border-color 150ms ease, background-color 150ms ease; }
+.fight-card:hover { transform: none; box-shadow: none; }
+.fight-card.title-fight { border-color: rgba(249,158,173,.5); box-shadow: none; animation: none; }
+.fighter-card, .fighter-card.red-corner, .fighter-card.blue-corner { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.floating-vote-progress { top: 108px; right: 12px; border-radius: var(--radius-sm); background: #1b191c; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 8px 20px rgba(0,0,0,.28); }
+.winner-glow, .fighter-card.winner { animation: none; }
+@media (min-width: 900px) { .floating-vote-progress { top: 76px; right: max(24px, calc((100vw - 1120px) / 2)); } }
+
 /* Update existing styles */
 .stat-container {
   position: relative;
@@ -1618,19 +1704,19 @@ button.vote-reminder-clear-button:hover {
 
 .fighter-votes.fighter1-votes {
   background:
-    linear-gradient(145deg, rgba(239, 68, 68, 0.12), rgba(var(--event-surface-rgb, 18, 24, 38), 0.72));
+    linear-gradient(145deg, rgba(233, 23, 13, 0.12), rgba(var(--event-surface-rgb, 18, 24, 38), 0.72));
   backdrop-filter: blur(15px) saturate(180%);
   -webkit-backdrop-filter: blur(15px) saturate(180%);
-  border: 1px solid rgba(239, 68, 68, 0.28);
+  border: 1px solid rgba(233, 23, 13, 0.28);
   box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.9);
 }
 .fighter-votes.fighter2-votes {
   background:
-    linear-gradient(145deg, rgba(59, 130, 246, 0.12), rgba(var(--event-surface-rgb, 18, 24, 38), 0.72));
+    linear-gradient(145deg, rgba(43, 49, 178, 0.12), rgba(var(--event-surface-rgb, 18, 24, 38), 0.72));
   backdrop-filter: blur(15px) saturate(180%);
   -webkit-backdrop-filter: blur(15px) saturate(180%);
-  border: 1px solid rgba(59, 130, 246, 0.28);
+  border: 1px solid rgba(43, 49, 178, 0.28);
   box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.9);
 }
@@ -1985,7 +2071,7 @@ button.admin-cancel-fight-button:hover {
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(220, 38, 38, 0.1);
+  background: rgba(233, 23, 13, 0.1);
   border: 1px solid #dc2626;
   border-radius: 8px;
 }

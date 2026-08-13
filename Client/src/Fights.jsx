@@ -3,31 +3,12 @@ import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
 import { fetchWithUserSession } from './utils/userSession';
+import { getInitialFightTargetId, getNextUnvotedFightId } from './utils/fightNavigation';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
 import PlayerCard from './components/PlayerCard';
 import VoteCard from './components/VoteCard';
-
-const toggleButtonStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '8px 2px',
-  borderRadius: '0',
-  background: 'transparent',
-  border: 'none',
-  borderBottom: '1px solid rgba(255, 255, 255, 0.24)',
-  cursor: 'pointer',
-  fontSize: '0.875rem',
-  fontWeight: 600,
-  letterSpacing: '0.04em',
-  transition: 'color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease',
-  marginBottom: '10px',
-  width: 'auto',
-  margin: '0 auto 18px auto',
-  opacity: 0.74
-};
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
@@ -35,6 +16,36 @@ const REMINDER_EMOJI_MAP = {
   [REMINDER_TYPE_BROKEN_HEART]: '💔',
   [REMINDER_TYPE_HEART_EYES]: '😍'
 };
+
+function FighterReminderOverlay({ fighterName, reminderType, animation }) {
+  if (!reminderType) return null;
+
+  const isLiked = reminderType === REMINDER_TYPE_HEART_EYES;
+  const emoji = REMINDER_EMOJI_MAP[reminderType] || REMINDER_EMOJI_MAP[REMINDER_TYPE_BROKEN_HEART];
+  const stateLabel = isLiked ? `Liked fighter: ${fighterName}` : `Disliked fighter: ${fighterName}`;
+
+  return (
+    <>
+      <div
+        className={`fighter-reminder-badge ${isLiked ? 'is-liked' : 'is-disliked'}`}
+        role="img"
+        aria-label={stateLabel}
+        title={stateLabel}
+      >
+        <span aria-hidden="true">{emoji}</span>
+      </div>
+      {animation && (
+        <div
+          key={animation.nonce}
+          className={`fighter-reaction-animation ${isLiked ? 'is-liked' : 'is-disliked'}`}
+          aria-hidden="true"
+        >
+          <span>{emoji}</span>
+        </div>
+      )}
+    </>
+  );
+}
 
 const BROKEN_HEART_MESSAGES = [
   "We'll remind you to never vote for this fool again.",
@@ -279,7 +290,7 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
   );
 }
 
-function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, refreshToken = 0 }) {
+function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, refreshToken = 0, showAIUsers = false }) {
   const currentSeasonYear = new Date().getFullYear();
   const canManageAdminActions = user_type === 'admin' && hasActiveAdminSession();
   const reminderStorageKey = `voteReminders_${user_id || username || 'guest'}`;
@@ -304,6 +315,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   }, []);
   const [fights, setFights] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadedEventId, setLoadedEventId] = useState(null);
   const [error, setError] = useState('');
   const [openRankTooltipId, setOpenRankTooltipId] = useState(null);
   const [selectedFights, setSelectedFights] = useState(() => {
@@ -317,11 +329,12 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     return saved ? JSON.parse(saved) : {};
   });
   const [voteErrors, setVoteErrors] = useState({});
+  const [pendingVotes, setPendingVotes] = useState({});
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [voteCounts, setVoteCounts] = useState({}); // Store vote counts (total + human) for button ratio
   const [, setFadeOutMessages] = useState({});
-  const [showAIVotes, setShowAIVotes] = useState(false);
+  const showAIVotes = showAIUsers;
   const [expandedFightStats, setExpandedFightStats] = useState({});
   const [expandedAdminControls, setExpandedAdminControls] = useState({});
   const [editingFight, setEditingFight] = useState(null);
@@ -332,7 +345,32 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     const saved = localStorage.getItem(reminderStorageKey);
     return saved ? JSON.parse(saved) : {};
   });
+  const [reminderAnimations, setReminderAnimations] = useState({});
+  const reminderAnimationTimeoutsRef = useRef(new Map());
   const firstFightRef = useRef(null);
+  const fightCardRefs = useRef(new Map());
+  const scheduledFightScrollRef = useRef(null);
+  const initialFightScrollKeyRef = useRef(null);
+
+  const scheduleFightScroll = useCallback((fightId, behavior = 'smooth') => {
+    if (fightId === null || fightId === undefined || typeof window === 'undefined') return;
+
+    if (scheduledFightScrollRef.current !== null) {
+      window.cancelAnimationFrame(scheduledFightScrollRef.current);
+    }
+
+    scheduledFightScrollRef.current = window.requestAnimationFrame(() => {
+      scheduledFightScrollRef.current = null;
+      const fightElement = fightCardRefs.current.get(String(fightId));
+      if (!fightElement) return;
+
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      fightElement.scrollIntoView({
+        block: 'start',
+        behavior: reduceMotion ? 'auto' : behavior,
+      });
+    });
+  }, []);
 
   const invalidateLeaderboardCaches = useCallback((targetEventId) => {
     const cacheKeys = [
@@ -369,6 +407,14 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
+  }, []);
+
+  useEffect(() => () => {
+    reminderAnimationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    reminderAnimationTimeoutsRef.current.clear();
+    if (scheduledFightScrollRef.current !== null) {
+      window.cancelAnimationFrame(scheduledFightScrollRef.current);
+    }
   }, []);
 
   const renderFighterRank = (rank, tooltipId) => {
@@ -506,49 +552,75 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     }
   };
 
-  // Fetch both fights and predictions when component mounts or eventId/user_id changes
+  // Load one event-scoped payload instead of issuing overlapping picks requests.
   useEffect(() => {
-    if (eventId && user_id) {
-      Promise.all([
-        // Fetch fights
-        fetch(`${API_URL}/events/${eventId}/fights`),
-        // Fetch user prediction history with fight outcomes
-        fetchWithUserSession(`${API_URL}/predictions/history`)
-      ])
-        .then(async ([fightsResponse, predictionHistoryResponse]) => {
-          if (!fightsResponse.ok) throw new Error('Failed to fetch fights');
-          if (!predictionHistoryResponse.ok) throw new Error('Failed to fetch prediction history');
+    let cancelled = false;
+    if (!eventId || !user_id) return () => { cancelled = true; };
 
-          const [fightsData, predictionHistoryData] = await Promise.all([
-            fightsResponse.json(),
-            predictionHistoryResponse.json()
-          ]);
-
-          // Create a map of fight ID to selected fighter
-          const submittedVotes = {};
-          predictionHistoryData.forEach(pred => {
-            submittedVotes[pred.fight_id] = String(pred.fighter_id); // Ensure fighter_id is stored as string
-          });
-
-          const fightsWithStringIds = fightsData.map(fight => ({
-            ...fight,
-            fighter1_id: String(fight.fighter1_id), // Ensure fighter IDs are strings
-            fighter2_id: String(fight.fighter2_id)
-          }));
-
-          setFights(fightsWithStringIds);
-          setSubmittedFights(submittedVotes);
-          setPredictionHistory(Array.isArray(predictionHistoryData) ? predictionHistoryData : []);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('Error fetching data:', err);
-          setError('Failed to load fights and predictions');
-          setPredictionHistory([]);
-          setLoading(false);
+    setLoading(true);
+    setLoadedEventId(null);
+    setError('');
+    cachedFetchJson(`${API_URL}/events/${eventId}/picks-context`, {
+      ttlMs: 30000,
+      cacheKey: `picks-context:${user_id}:${eventId}`,
+      privateCache: true,
+      staleWhileRevalidate: refreshToken === 0,
+      force: refreshToken > 0,
+      fetcher: fetchWithUserSession,
+      fetchOptions: { cache: 'no-store' },
+    })
+      .then((context) => {
+        if (cancelled) return;
+        const fightsData = Array.isArray(context?.fights) ? context.fights : [];
+        setFights(fightsData.map((fight) => ({
+          ...fight,
+          fighter1_id: String(fight.fighter1_id),
+          fighter2_id: String(fight.fighter2_id),
+        })));
+        setSubmittedFights(context?.submitted_picks || {});
+        setPredictionHistory(context?.prior_pick_outcomes || []);
+        const mappedCounts = {};
+        fightsData.forEach((fight) => {
+          const fighterMap = context?.vote_counts?.[String(fight.id)] || {};
+          mappedCounts[String(fight.id)] = {
+            fighter1: fighterMap[String(fight.fighter1_id)] || { total: 0, human: 0 },
+            fighter2: fighterMap[String(fight.fighter2_id)] || { total: 0, human: 0 },
+          };
         });
+        setVoteCounts(mappedCounts);
+        const normalizedReminders = normalizeReminderMap(context?.reminders || []);
+        setVoteReminders(normalizedReminders);
+        localStorage.setItem(reminderStorageKey, JSON.stringify(normalizedReminders));
+        setLoadedEventId(String(eventId));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Error fetching picks context:', err);
+        setError('Failed to load picks for this event');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [eventId, user_id, refreshToken, normalizeReminderMap, reminderStorageKey]);
+
+  useEffect(() => {
+    const scrollKey = `${eventId}:${user_id}`;
+    if (
+      loading ||
+      loadedEventId !== String(eventId) ||
+      initialFightScrollKeyRef.current === scrollKey
+    ) {
+      return;
     }
-  }, [eventId, user_id, refreshToken]);
+
+    initialFightScrollKeyRef.current = scrollKey;
+    const targetFightId = getInitialFightTargetId(fights, submittedFights);
+    if (targetFightId !== null) {
+      scheduleFightScroll(targetFightId, 'auto');
+    }
+  }, [eventId, fights, loadedEventId, loading, scheduleFightScroll, submittedFights, user_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -582,43 +654,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       cancelled = true;
     };
   }, [user_id, currentSeasonYear]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const saved = localStorage.getItem(reminderStorageKey);
-    const localReminders = saved ? JSON.parse(saved) : {};
-    setVoteReminders(localReminders);
-
-    const loadReminderState = async () => {
-      if (!user_id) {
-        return;
-      }
-
-      try {
-        const response = await fetchWithUserSession(`${API_URL}/user/${encodeURIComponent(user_id)}/vote-reminders`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch vote reminders');
-        }
-
-        const reminderRows = await response.json();
-        if (cancelled) {
-          return;
-        }
-
-        const normalizedReminders = normalizeReminderMap(reminderRows);
-        setVoteReminders(normalizedReminders);
-        localStorage.setItem(reminderStorageKey, JSON.stringify(normalizedReminders));
-      } catch (err) {
-        console.error('Error loading vote reminders:', err);
-      }
-    };
-
-    loadReminderState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizeReminderMap, reminderStorageKey, user_id]);
 
   // Save selectedFights to localStorage whenever it changes
   useEffect(() => {
@@ -662,40 +697,12 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     };
   }, [fights, eventId]);
 
-  // Clear both selected and submitted fights when username or eventId changes
+  // Restore unsent selections for the active event; server context owns submitted picks.
   useEffect(() => {
-    setSelectedFights({});
-    setSubmittedFights({});
-    localStorage.removeItem(`selectedFights_${eventId}_${username}`);
-    localStorage.removeItem(`submittedFights_${eventId}_${username}`);
+    const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
+    setSelectedFights(saved ? JSON.parse(saved) : {});
+    setPendingVotes({});
   }, [username, eventId]);
-
-  const fetchEventVoteCounts = useCallback(async () => {
-    if (!eventId) return;
-    try {
-      const data = await cachedFetchJson(`${API_URL}/events/${eventId}/vote-counts`, { ttlMs: 30000 });
-      const mappedCounts = {};
-      fights.forEach(fight => {
-        const fightKey = String(fight.id);
-        const fighterMap = data[fightKey] || {};
-        const fighter1Counts = fighterMap[String(fight.fighter1_id)] || { total: 0, human: 0 };
-        const fighter2Counts = fighterMap[String(fight.fighter2_id)] || { total: 0, human: 0 };
-        mappedCounts[fightKey] = {
-          fighter1: fighter1Counts,
-          fighter2: fighter2Counts
-        };
-      });
-      setVoteCounts(mappedCounts);
-    } catch (err) {
-      console.error('Error fetching event vote counts:', err);
-    }
-  }, [eventId, fights]);
-
-  useEffect(() => {
-    if (eventId && fights.length > 0) {
-      fetchEventVoteCounts();
-    }
-  }, [eventId, fights, fetchEventVoteCounts]);
 
   // Function to handle selection (but not submission) of a fighter
   const handleSelection = (fightId, fighterId, fighterName) => {
@@ -749,6 +756,10 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       return;
     }
 
+    const fightKey = String(fightId);
+    const previousSubmitted = submittedFights[fightId];
+    setPendingVotes((current) => ({ ...current, [fightId]: true }));
+    setSubmittedFights((current) => ({ ...current, [fightId]: selectedFighter }));
     try {
       const response = await fetchWithUserSession(`${API_URL}/predict`, {
         method: 'POST',
@@ -766,7 +777,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         const errorData = await response.json().catch(() => ({ error: 'Unknown server error' }));
         console.error('Server error on vote submission:', errorData);
         setVoteErrors(prev => ({ ...prev, [fightId]: `Server error: ${errorData.error || 'Failed to submit vote'}` }));
-        return;
+        throw new Error(errorData.error || 'Failed to submit vote');
       }
 
       // Mark this fight's vote as submitted
@@ -785,8 +796,15 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         return newState;
       });
 
+      const nextFightId = getNextUnvotedFightId(fights, {
+        ...submittedFights,
+        [fightId]: selectedFighter,
+      });
+      if (nextFightId !== null) {
+        scheduleFightScroll(nextFightId);
+      }
+
       // Optimistically update vote counts immediately for instant UI feedback
-      const fightKey = String(fightId);
       const fight = fights.find(f => String(f.id) === fightKey);
       if (fight) {
         setVoteCounts(prev => {
@@ -809,10 +827,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         });
       }
 
-      // Refresh event counts after a short delay to ensure API has processed the vote
-      setTimeout(() => {
-        fetchEventVoteCounts();
-      }, 500);
+      invalidateCache(`picks-context:${user_id}:${eventId}`);
 
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
@@ -850,7 +865,15 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       }
     } catch (err) {
       console.error('Error submitting prediction:', err);
+      setSubmittedFights((current) => {
+        const next = { ...current };
+        if (previousSubmitted) next[fightId] = previousSubmitted;
+        else delete next[fightId];
+        return next;
+      });
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
+    } finally {
+      setPendingVotes((current) => ({ ...current, [fightId]: false }));
     }
   };
 
@@ -925,10 +948,15 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     if (e) {
       e.stopPropagation();
     }
+    const isCollapsing = Boolean(expandedFightStats[fightId]);
     setExpandedFightStats(prev => ({
       ...prev,
       [fightId]: !prev[fightId]
     }));
+
+    if (isCollapsing) {
+      scheduleFightScroll(fightId);
+    }
   };
 
   const toggleAdminControls = (fightId, e) => {
@@ -940,14 +968,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       [fightId]: !prev[fightId]
     }));
   };
-
-  // Dynamic toggle button style based on showAIVotes state
-  const dynamicToggleStyle = useMemo(() => ({
-    ...toggleButtonStyle,
-    color: showAIVotes ? 'rgba(147, 197, 253, 0.92)' : 'rgba(255, 255, 255, 0.68)',
-    borderBottom: `1px solid ${showAIVotes ? 'rgba(147, 197, 253, 0.58)' : 'rgba(255, 255, 255, 0.28)'}`,
-    opacity: showAIVotes ? 0.95 : 0.74
-  }), [showAIVotes]);
 
   const completedHistoryByFighter = useMemo(() => {
     const historyMap = new Map();
@@ -1006,6 +1026,29 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     return null;
   }, [completedHistoryByFighter]);
 
+  const triggerReminderAnimation = useCallback((fighterId, reminderType) => {
+    const fighterKey = String(fighterId);
+    const nonce = Date.now();
+    const currentTimeout = reminderAnimationTimeoutsRef.current.get(fighterKey);
+    if (currentTimeout) clearTimeout(currentTimeout);
+
+    setReminderAnimations(prev => ({
+      ...prev,
+      [fighterKey]: { reminderType, nonce }
+    }));
+
+    const timeoutId = setTimeout(() => {
+      setReminderAnimations(prev => {
+        if (prev[fighterKey]?.nonce !== nonce) return prev;
+        const next = { ...prev };
+        delete next[fighterKey];
+        return next;
+      });
+      reminderAnimationTimeoutsRef.current.delete(fighterKey);
+    }, 650);
+    reminderAnimationTimeoutsRef.current.set(fighterKey, timeoutId);
+  }, []);
+
   const setVoteReminderType = useCallback(async (fighterId, fighterName, reminderType) => {
     const fighterKey = String(fighterId);
     const previousReminders = voteReminders;
@@ -1020,6 +1063,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     };
 
     setVoteReminders(nextReminders);
+    triggerReminderAnimation(fighterId, reminderType);
 
     if (!user_id) {
       return;
@@ -1059,7 +1103,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
       setVoteReminders(previousReminders);
       setError(err.message || 'Failed to update vote reminder');
     }
-  }, [user_id, voteReminders]);
+  }, [triggerReminderAnimation, user_id, voteReminders]);
 
   const clearVoteReminder = useCallback(async (fighterId) => {
     const fighterKey = String(fighterId);
@@ -1067,6 +1111,15 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     const nextReminders = { ...previousReminders };
     delete nextReminders[fighterKey];
     setVoteReminders(nextReminders);
+    const activeAnimationTimeout = reminderAnimationTimeoutsRef.current.get(fighterKey);
+    if (activeAnimationTimeout) clearTimeout(activeAnimationTimeout);
+    reminderAnimationTimeoutsRef.current.delete(fighterKey);
+    setReminderAnimations(prev => {
+      if (!prev[fighterKey]) return prev;
+      const next = { ...prev };
+      delete next[fighterKey];
+      return next;
+    });
 
     if (!user_id) {
       return;
@@ -1100,11 +1153,12 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     return reminder ? (reminder.reminderType || REMINDER_TYPE_BROKEN_HEART) : null;
   }, [getReminder]);
 
-  const getReminderEmoji = useCallback((fighterId) => {
-    const reminderType = getReminderType(fighterId);
-    if (!reminderType) return null;
-    return REMINDER_EMOJI_MAP[reminderType] || REMINDER_EMOJI_MAP[REMINDER_TYPE_BROKEN_HEART];
-  }, [getReminderType]);
+  const toggleVoteReminderType = useCallback((fighterId, fighterName, reminderType) => {
+    if (getReminderType(fighterId) === reminderType) {
+      return clearVoteReminder(fighterId);
+    }
+    return setVoteReminderType(fighterId, fighterName, reminderType);
+  }, [clearVoteReminder, getReminderType, setVoteReminderType]);
 
   const getReminderStatusMessage = useCallback((fighterId) => {
     const fighterKey = String(fighterId);
@@ -1167,14 +1221,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   return (
     <div className="fights-container">
       <div className="fights-header">
-        <h2 className="fights-title">Upcoming Fights</h2>
-        <button 
-          className="ai-votes-toggle"
-          style={dynamicToggleStyle}
-          onClick={() => setShowAIVotes(!showAIVotes)}
-        >
-          {showAIVotes ? '● Show AI Users' : '○ Show AI Users'}
-        </button>
+        <h2 className="app-section-heading fights-title">Upcoming Fights</h2>
       </div>
 
       <div className="fights-content">
@@ -1199,7 +1246,13 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
         <div
           key={fight.id}
           className={fightCardClassName}
-          ref={fight === fights[0] ? firstFightRef : null}
+          data-fight-id={fight.id}
+          ref={(node) => {
+            const fightKey = String(fight.id);
+            if (node) fightCardRefs.current.set(fightKey, node);
+            else fightCardRefs.current.delete(fightKey);
+            if (fight === fights[0]) firstFightRef.current = node;
+          }}
         >
           {hasFightMeta && (
             <div className="fight-meta">
@@ -1279,16 +1332,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                   }}
                 />
               </div>
-              {hasVoteReminder(fight.fighter1_id) && (
-                <div
-                  className="fighter-reminder-badge"
-                  role="img"
-                  aria-label="Reminder active"
-                  title="Reminder active"
-                >
-                  {getReminderEmoji(fight.fighter1_id)}
-                </div>
-              )}
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter1_image}
@@ -1296,6 +1339,11 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                   className="fighter-image"
                   loading="lazy"
                   decoding="async"
+                />
+                <FighterReminderOverlay
+                  fighterName={fight.fighter1_name}
+                  reminderType={getReminderType(fight.fighter1_id)}
+                  animation={reminderAnimations[String(fight.fighter1_id)] || null}
                 />
               </div>
               <h3 className="fighter-name">
@@ -1367,45 +1415,38 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                     </div>
                   )}
                   <div className="vote-reminder-controls">
+                    <span className="vote-reminder-prompt">Your take</span>
                     <div className="vote-reminder-options">
                       <button
                         type="button"
                         className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_BROKEN_HEART);
+                          toggleVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_BROKEN_HEART);
                         }}
-                        aria-label="Set broken heart reminder"
-                        title="Broken heart reminder"
+                        aria-label={`Dislike ${fight.fighter1_name}`}
+                        aria-pressed={getReminderType(fight.fighter1_id) === REMINDER_TYPE_BROKEN_HEART}
+                        title="Dislike fighter"
                       >
-                        💔
+                        <span aria-hidden="true">💔</span>
+                        <span>Dislike</span>
                       </button>
                       <button
                         type="button"
                         className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_HEART_EYES);
+                          toggleVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_HEART_EYES);
                         }}
-                        aria-label="Set heart eyes reminder"
-                        title="Heart eyes reminder"
+                        aria-label={`Like ${fight.fighter1_name}`}
+                        aria-pressed={getReminderType(fight.fighter1_id) === REMINDER_TYPE_HEART_EYES}
+                        title="Like fighter"
                       >
-                        😍
+                        <span aria-hidden="true">😍</span>
+                        <span>Like</span>
                       </button>
                     </div>
                   </div>
-                  {hasVoteReminder(fight.fighter1_id) && (
-                    <button
-                      type="button"
-                      className="vote-reminder-clear-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        clearVoteReminder(fight.fighter1_id);
-                      }}
-                    >
-                      Clear Reminder
-                    </button>
-                  )}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
@@ -1447,16 +1488,6 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                   }}
                 />
               </div>
-              {hasVoteReminder(fight.fighter2_id) && (
-                <div
-                  className="fighter-reminder-badge"
-                  role="img"
-                  aria-label="Reminder active"
-                  title="Reminder active"
-                >
-                  {getReminderEmoji(fight.fighter2_id)}
-                </div>
-              )}
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter2_image}
@@ -1464,6 +1495,11 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                   className="fighter-image"
                   loading="lazy"
                   decoding="async"
+                />
+                <FighterReminderOverlay
+                  fighterName={fight.fighter2_name}
+                  reminderType={getReminderType(fight.fighter2_id)}
+                  animation={reminderAnimations[String(fight.fighter2_id)] || null}
                 />
               </div>
               <h3 className="fighter-name">
@@ -1535,45 +1571,38 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                     </div>
                   )}
                   <div className="vote-reminder-controls">
+                    <span className="vote-reminder-prompt">Your take</span>
                     <div className="vote-reminder-options">
                       <button
                         type="button"
                         className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_BROKEN_HEART);
+                          toggleVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_BROKEN_HEART);
                         }}
-                        aria-label="Set broken heart reminder"
-                        title="Broken heart reminder"
+                        aria-label={`Dislike ${fight.fighter2_name}`}
+                        aria-pressed={getReminderType(fight.fighter2_id) === REMINDER_TYPE_BROKEN_HEART}
+                        title="Dislike fighter"
                       >
-                        💔
+                        <span aria-hidden="true">💔</span>
+                        <span>Dislike</span>
                       </button>
                       <button
                         type="button"
                         className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_HEART_EYES);
+                          toggleVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_HEART_EYES);
                         }}
-                        aria-label="Set heart eyes reminder"
-                        title="Heart eyes reminder"
+                        aria-label={`Like ${fight.fighter2_name}`}
+                        aria-pressed={getReminderType(fight.fighter2_id) === REMINDER_TYPE_HEART_EYES}
+                        title="Like fighter"
                       >
-                        😍
+                        <span aria-hidden="true">😍</span>
+                        <span>Like</span>
                       </button>
                     </div>
                   </div>
-                  {hasVoteReminder(fight.fighter2_id) && (
-                    <button
-                      type="button"
-                      className="vote-reminder-clear-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        clearVoteReminder(fight.fighter2_id);
-                      }}
-                    >
-                      Clear Reminder
-                    </button>
-                  )}
                 </div>
               )}
               {String(submittedFights[fight.id]) === String(fight.fighter2_id) && (
@@ -1586,6 +1615,8 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
           <button 
             className="expand-stats-button"
             onClick={(e) => toggleFightStats(fight.id, e)}
+            aria-expanded={Boolean(expandedFightStats[fight.id])}
+            aria-label={`${expandedFightStats[fight.id] ? 'Collapse' : 'Expand'} stats for ${fight.fighter1_name} versus ${fight.fighter2_name}`}
           >
             {expandedFightStats[fight.id] ? '▲' : '▼'}
           </button>
@@ -1604,16 +1635,18 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                     : 'submit-vote-button--blue'
                 }`}
                 onClick={() => handleSubmitVote(fight.id)}
+                disabled={Boolean(pendingVotes[fight.id])}
               >
-                Submit Vote for{' '}
+                {pendingVotes[fight.id] ? 'Saving pick…' : 'Submit Vote for '}
+                {!pendingVotes[fight.id] && (
                 <span style={{
-                  fontFamily: '"Permanent Marker", cursive, sans-serif',
                   color: '#ffffff'
                 }}>
                   {String(selectedFights[fight.id]) === String(fight.fighter1_id) 
                     ? fight.fighter1_name 
                     : fight.fighter2_name}
                 </span>
+                )}
               </button>
             </div>
           )}
@@ -1669,7 +1702,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
                       style={{
                         width: '100%',
                         height: '100%',
-                        background: `linear-gradient(90deg, rgba(239, 68, 68, 0.8) ${split}%, rgba(59, 130, 246, 0.8) ${split}%)`,
+                        background: `linear-gradient(90deg, rgba(233, 23, 13, 0.8) ${split}%, rgba(43, 49, 178, 0.8) ${split}%)`,
                         borderRadius: 'inherit',
                         transition: 'background 0.3s',
                         position: 'absolute',

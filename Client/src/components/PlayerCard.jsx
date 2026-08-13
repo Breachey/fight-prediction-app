@@ -1,4 +1,5 @@
 import React from 'react';
+import SquidAvatar from './SquidAvatar';
 import './PlayerCard.css';
 
 /**
@@ -9,7 +10,7 @@ import './PlayerCard.css';
  * @param {boolean} isCurrentUser - Highlight if this is the current user
  * @param {React.ReactNode} children - Optional children (badges, etc.)
  */
-function PlayerCard({ username, playercard, size = 'medium', isCurrentUser = false, children }) {
+function PlayerCard({ username, playercard, avatarConfig, size = 'medium', isCurrentUser = false, reaction = null, children }) {
   const bgUrl = playercard?.image_url || '';
   const cardName = playercard?.name || 'Default';
   const cardCategory = playercard?.category || 'basic';
@@ -25,6 +26,11 @@ function PlayerCard({ username, playercard, size = 'medium', isCurrentUser = fal
       }}
       title={cardName}
     >
+      {avatarConfig !== undefined && (
+        <span className="playercard-avatar">
+          <SquidAvatar config={avatarConfig} title={`${username || 'Player'} avatar`} animated reaction={reaction} />
+        </span>
+      )}
       <span className="playercard-username">{username}</span>
       {children && <span className="playercard-badges">{children}</span>}
     </div>

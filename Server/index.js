@@ -44,6 +44,12 @@ const {
   normalizePropPixVote,
 } = require('./lib/propPix');
 const { createNotifications } = require('./lib/notifications');
+const { buildPicksContextPayload } = require('./lib/picksContext');
+const { randomAvatarConfig, validateAvatarConfig } = require('./lib/avatarConfig');
+const {
+  addFightToFightRankChanges,
+  findLatestCompletedFightId,
+} = require('./lib/eventLeaderboardDeltas');
 const {
   runUfcEventDiscovery,
 } = require('./lib/ufcEventDiscovery');
@@ -1649,9 +1655,11 @@ async function recalculatePredictionResultsForEvent(eventId) {
 const USERS_IDENTITY_SELECT = 'user_id, username, phone_number, user_type';
 const DEFAULT_SELECTED_PLAYERCARD_ID = 16;
 const USERS_PROFILE_SELECT = `
+  user_id,
   username,
   user_type,
   created_at,
+  avatar_config,
   selected_playercard_id,
   playercards!selected_playercard_id (
     id,
@@ -2000,6 +2008,7 @@ app.post('/register', authRateLimit, async (req, res) => {
           phone_number: phoneNumber,
           username: username,
           user_type: 'user',
+          avatar_config: randomAvatarConfig(),
           selected_playercard_id: DEFAULT_SELECTED_PLAYERCARD_ID
         }
       ])
@@ -2519,6 +2528,7 @@ app.get('/predictions/filter', requireUserSession, async (req, res) => {
       user_id, 
       username, 
       is_bot, 
+      avatar_config,
       selected_playercard_id,
       playercards!selected_playercard_id (
         id,
@@ -2594,6 +2604,7 @@ app.get('/predictions/filter', requireUserSession, async (req, res) => {
         username: predictionUser?.username || prediction.username || 'Unknown',
         is_bot: Boolean(predictionUser?.is_bot),
         playercard: predictionUser?.playercards || null,
+        avatar_config: predictionUser?.avatar_config || null,
         rank: predictionUserId ? (rankMap.get(predictionUserId) || null) : null
       };
     });
@@ -3078,7 +3089,7 @@ function buildPointChangeMap(results, referenceEventId) {
 }
 
 function buildLeaderboardFromResults(results, userCache) {
-  const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+  const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
   const userStats = {};
 
   (results || []).forEach(result => {
@@ -3089,6 +3100,7 @@ function buildLeaderboardFromResults(results, userCache) {
         username: userIdToUsername.get(userIdStr) || 'Unknown',
         is_bot: userIdToIsBot.get(userIdStr) || false,
         playercard: userIdToPlayercard.get(userIdStr) || null,
+        avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
         total_predictions: 0,
         correct_predictions: 0,
         total_points: 0,
@@ -3165,6 +3177,7 @@ async function fetchUsersWithPlayercards() {
     user_id,
     username,
     is_bot,
+    avatar_config,
     selected_playercard_id,
     playercards!selected_playercard_id (
       id,
@@ -3179,7 +3192,8 @@ async function fetchUsersWithPlayercards() {
     users: safeUsers,
     userIdToUsername: new Map(safeUsers.map(user => [String(user.user_id), user.username])),
     userIdToIsBot: new Map(safeUsers.map(user => [String(user.user_id), user.is_bot])),
-    userIdToPlayercard: new Map(safeUsers.map(user => [String(user.user_id), user.playercards]))
+    userIdToPlayercard: new Map(safeUsers.map(user => [String(user.user_id), user.playercards])),
+    userIdToAvatarConfig: new Map(safeUsers.map(user => [String(user.user_id), user.avatar_config || null]))
   };
 }
 
@@ -3210,19 +3224,32 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     return { leaderboard: [], winners: [] };
   }
 
-  const eventResultsQuery = supabase
-    .from('prediction_results')
-    .select('event_id, user_id, predicted_correctly, points')
-    .eq('event_id', eventIdFilter)
-    .in('user_id', userIds);
-  const eventResults = await fetchAllFromSupabase(eventResultsQuery);
-
-  const effectiveAllTimeResults = allTimeResults || await fetchAllFromSupabase(
+  const eventResultsPromise = fetchAllFromSupabase(
     supabase
       .from('prediction_results')
-      .select('user_id, predicted_correctly, created_at')
+      .select('fight_id, event_id, user_id, predicted_correctly, points')
+      .eq('event_id', eventIdFilter)
       .in('user_id', userIds)
   );
+  const allTimeResultsPromise = allTimeResults
+    ? Promise.resolve(allTimeResults)
+    : fetchAllFromSupabase(
+        supabase
+          .from('prediction_results')
+          .select('user_id, event_id, predicted_correctly, points, created_at')
+          .in('user_id', userIds)
+      );
+  const eventFightRowsPromise = fetchAllFromSupabase(
+    supabase
+      .from('ufc_full_fight_card')
+      .select('FightId, FightOrder')
+      .eq('EventId', eventIdFilter)
+  );
+  const [eventResults, effectiveAllTimeResults, eventFightRows] = await Promise.all([
+    eventResultsPromise,
+    allTimeResultsPromise,
+    eventFightRowsPromise,
+  ]);
   // Group all-time results by user for streak calculation
   const allTimeUserResultsMap = {};
   (effectiveAllTimeResults || []).forEach(result => {
@@ -3239,38 +3266,14 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
   }));
 
-  const eventRecords = await fetchAllFromSupabase(
-    supabase
-      .from('events')
-      .select('id, date')
-      .eq('id', eventIdFilter)
-      .limit(1)
-  );
-  const eventYear = eventRecords?.[0]?.date
-    ? new Date(eventRecords[0].date).getFullYear()
-    : new Date().getFullYear();
-  const seasonStart = `${eventYear}-01-01`;
-  const nextSeasonStart = `${eventYear + 1}-01-01`;
-  const seasonEvents = await fetchAllFromSupabase(
-    supabase
-      .from('events')
-      .select('id, date')
-      .gte('date', seasonStart)
-      .lt('date', nextSeasonStart)
-  );
-  const seasonEventIds = new Set((seasonEvents || []).map(event => String(event.id)));
-  const seasonResults = await fetchAllFromSupabase(
-    supabase
-      .from('prediction_results')
-      .select('user_id, event_id, predicted_correctly, points')
-      .in('user_id', userIds)
-  );
-  const scopedSeasonResults = (seasonResults || []).filter(result => seasonEventIds.has(String(result.event_id)));
-  const baselineLeaderboard = buildLeaderboardFromResults(
-    scopedSeasonResults.filter(result => String(result.event_id) !== String(eventIdFilter)),
-    effectiveUserCache
-  );
-  leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, eventResults, eventIdFilter);
+  const latestCompletedFightId = findLatestCompletedFightId(eventResults, eventFightRows);
+  const baselineLeaderboard = latestCompletedFightId
+    ? buildLeaderboardFromResults(
+        eventResults.filter(result => String(result.fight_id) !== latestCompletedFightId),
+        effectiveUserCache
+      )
+    : [];
+  leaderboard = addFightToFightRankChanges(leaderboard, baselineLeaderboard);
 
   const winners = determineEventWinners(leaderboard);
 
@@ -3353,8 +3356,9 @@ function addEventWinCounts(entries, countsMap, fieldName = 'event_win_count') {
  * Returns a map of user_id -> number of event wins among humans only.
  * @param {Array|undefined} userIds - Optional array of user IDs to filter by
  * @param {number|undefined} year - Optional year to filter event wins by
+ * @param {object|null} userCache - Optional existing user metadata cache
  */
-async function fetchHumanEventWinCounts(userIds, year) {
+async function fetchHumanEventWinCounts(userIds, year, userCache = null) {
   try {
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return {};
@@ -3362,19 +3366,6 @@ async function fetchHumanEventWinCounts(userIds, year) {
 
     const uniqueIds = Array.from(new Set(userIds.map(id => String(id))));
     if (uniqueIds.length === 0) {
-      return {};
-    }
-
-    const usersQuery = supabase
-      .from('users')
-      .select('user_id, is_bot')
-      .in('user_id', uniqueIds);
-    const users = await fetchAllFromSupabase(usersQuery);
-    const humanUserIds = (users || [])
-      .filter(user => !user.is_bot)
-      .map(user => String(user.user_id));
-
-    if (humanUserIds.length === 0) {
       return {};
     }
 
@@ -3389,7 +3380,28 @@ async function fetchHumanEventWinCounts(userIds, year) {
         .lt('date', `${year + 1}-01-01`);
     }
 
-    const events = await fetchAllFromSupabase(eventsQuery);
+    const usersPromise = userCache?.userIdToIsBot
+      ? Promise.resolve(null)
+      : fetchAllFromSupabase(
+          supabase
+            .from('users')
+            .select('user_id, is_bot')
+            .in('user_id', uniqueIds)
+        );
+    const [users, events] = await Promise.all([
+      usersPromise,
+      fetchAllFromSupabase(eventsQuery),
+    ]);
+    const humanUserIds = userCache?.userIdToIsBot
+      ? uniqueIds.filter(userId => !userCache.userIdToIsBot.get(String(userId)))
+      : (users || [])
+          .filter(user => !user.is_bot)
+          .map(user => String(user.user_id));
+
+    if (humanUserIds.length === 0) {
+      return {};
+    }
+
     const eventIds = (events || [])
       .map(event => String(event.id))
       .filter(Boolean);
@@ -3464,7 +3476,7 @@ app.get('/leaderboard', async (req, res) => {
     const results = await fetchAllFromSupabase(resultsQuery);
 
     // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
 
     // Group results by user for streak calculation
     const userResultsMap = {};
@@ -3486,6 +3498,7 @@ app.get('/leaderboard', async (req, res) => {
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
           playercard: userIdToPlayercard.get(userIdStr) || null,
+          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0,
@@ -3588,7 +3601,7 @@ app.get('/leaderboard/2025', async (req, res) => {
     );
 
     // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -3610,6 +3623,7 @@ app.get('/leaderboard/2025', async (req, res) => {
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
           playercard: userIdToPlayercard.get(userIdStr) || null,
+          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0,
@@ -3787,7 +3801,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
     const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
 
     // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard } = userCache;
+    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
 
     // Group all-time results by user for streak calculation
     const allTimeUserResultsMap = {};
@@ -3809,6 +3823,7 @@ app.get('/leaderboard/monthly', async (req, res) => {
           username: userIdToUsername.get(userIdStr) || 'Unknown',
           is_bot: userIdToIsBot.get(userIdStr) || false,
           playercard: userIdToPlayercard.get(userIdStr) || null,
+          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
           total_predictions: 0,
           correct_predictions: 0,
           total_points: 0
@@ -3875,7 +3890,7 @@ app.get('/events', async (req, res) => {
     // Get unique EventIds from ufc_full_fight_card to check which events have fight data
     const { data: fightCardData, error: fightCardError } = await supabase
       .from('ufc_full_fight_card')
-      .select('EventId, StartTime')
+      .select('EventId, StartTime, CardSegment, CardSegmentStartTime')
       .order('EventId', { ascending: false });
 
     if (fightCardError) {
@@ -3886,6 +3901,7 @@ app.get('/events', async (req, res) => {
     // Create a set of EventIds that have fight data
     const eventIdsWithFights = new Set();
     const eventStartTimes = new Map();
+    const eventCardStartTimes = new Map();
     if (fightCardData) {
       fightCardData.forEach(fight => {
         eventIdsWithFights.add(fight.EventId);
@@ -3898,6 +3914,25 @@ app.get('/events', async (req, res) => {
         const existingStartTime = eventStartTimes.get(fight.EventId);
         if (!existingStartTime || Date.parse(startTime) < Date.parse(existingStartTime)) {
           eventStartTimes.set(fight.EventId, startTime);
+        }
+
+        const cardSegment = String(fight.CardSegment || '').trim().toLowerCase();
+        const segmentKey = cardSegment === 'maincard' || cardSegment === 'main card'
+          ? 'main_card'
+          : cardSegment === 'prelims1' || cardSegment === 'prelims'
+          ? 'prelims'
+          : cardSegment === 'prelims2' || cardSegment === 'early prelims'
+          ? 'early_prelims'
+          : null;
+        const segmentStart = typeof fight.CardSegmentStartTime === 'string'
+          ? fight.CardSegmentStartTime.trim()
+          : '';
+        if (segmentKey && segmentStart) {
+          const cardTimes = eventCardStartTimes.get(fight.EventId) || {};
+          if (!cardTimes[segmentKey] || Date.parse(segmentStart) < Date.parse(cardTimes[segmentKey])) {
+            cardTimes[segmentKey] = segmentStart;
+            eventCardStartTimes.set(fight.EventId, cardTimes);
+          }
         }
       });
     }
@@ -3917,6 +3952,11 @@ app.get('/events', async (req, res) => {
       location_state: event.location_state || null,
       location_country: event.location_country || null,
       start_time: eventStartTimes.get(event.id) || null,
+      card_start_times: {
+        early_prelims: eventCardStartTimes.get(event.id)?.early_prelims || null,
+        prelims: eventCardStartTimes.get(event.id)?.prelims || null,
+        main_card: eventCardStartTimes.get(event.id)?.main_card || eventStartTimes.get(event.id) || null,
+      },
       image_url: event.image_url,
       has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
@@ -5494,6 +5534,100 @@ app.get('/events/:id/fights', async (req, res) => {
   }
 });
 
+// One authenticated, event-scoped payload for the primary picks workspace.
+app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    if (!eventId) return res.status(400).json({ error: 'Invalid event id' });
+
+    const { data: eventData, error: eventError } = await supabase
+      .from('events')
+      .select('id, date')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!eventData) return res.status(404).json({ error: 'Event not found' });
+
+    const { data: cardRows, error: cardError } = await supabase
+      .from('ufc_full_fight_card')
+      .select(FIGHT_CARD_FIGHT_SELECT)
+      .eq('EventId', eventId)
+      .order('FightOrder');
+    if (cardError) throw cardError;
+
+    const fightIds = Array.from(new Set((cardRows || []).map((row) => Number(row.FightId)).filter(Number.isFinite)));
+    if (fightIds.length === 0) {
+      return res.json({ fights: [], submitted_picks: {}, vote_counts: {}, reminders: [], prior_pick_outcomes: [] });
+    }
+
+    const [resultsResult, predictions, users, remindersResult, userPredictionRows] = await Promise.all([
+      supabase.from('fight_results').select('fight_id, fighter_id, is_completed').in('fight_id', fightIds),
+      fetchAllFromSupabase(supabase.from('predictions').select('fight_id, fighter_id, user_id, username').in('fight_id', fightIds)),
+      fetchAllUsers('user_id, username, is_bot'),
+      supabase.from('fighter_vote_reminders').select('fighter_id, fighter_name, reminder_type, created_at, updated_at').eq('user_id', req.authenticatedUser.user_id).order('updated_at', { ascending: false }),
+      fetchAllFromSupabase(supabase.from('predictions').select('fight_id, fighter_id, user_id, username').eq('user_id', req.authenticatedUser.user_id)),
+    ]);
+    if (resultsResult.error) throw resultsResult.error;
+
+    const resultMap = new Map((resultsResult.data || []).map((result) => [Number(result.fight_id), result]));
+    const weightclassMap = await getWeightclassMapping();
+    const grouped = new Map();
+    (cardRows || []).forEach((row) => {
+      const group = grouped.get(row.FightId) || { red: null, blue: null };
+      if (String(row.Corner).toLowerCase() === 'red') group.red = row;
+      if (String(row.Corner).toLowerCase() === 'blue') group.blue = row;
+      grouped.set(row.FightId, group);
+    });
+    const fights = Array.from(grouped.entries()).flatMap(([fightId, group]) => {
+      if (!group.red || !group.blue) return [];
+      const result = resultMap.get(Number(fightId));
+      return [buildFightResponse({
+        fightId,
+        eventId,
+        eventDate: eventData.date || null,
+        redFighter: group.red,
+        blueFighter: group.blue,
+        result: result ? { winner: result.fighter_id, is_completed: result.is_completed } : null,
+        weightclassMap,
+      })];
+    });
+
+    let historyFightMeta = [];
+    let historyResults = [];
+    const historyFightIds = Array.from(new Set(userPredictionRows.map((prediction) => Number(prediction.fight_id)).filter(Number.isFinite)));
+    if (historyFightIds.length > 0) {
+      const historyRows = await fetchAllFromSupabase(
+        supabase.from('ufc_full_fight_card').select('FightId, EventId').in('FightId', historyFightIds)
+      );
+      const historyEventIds = Array.from(new Set(historyRows.map((row) => Number(row.EventId)).filter(Number.isFinite)));
+      const historyEvents = historyEventIds.length
+        ? await fetchAllFromSupabase(supabase.from('events').select('id, date').in('id', historyEventIds))
+        : [];
+      const eventDates = new Map(historyEvents.map((event) => [Number(event.id), event.date]));
+      historyFightMeta = historyRows.map((row) => ({ ...row, event_date: eventDates.get(Number(row.EventId)) || null }));
+      historyResults = await fetchAllFromSupabase(
+        supabase.from('fight_results').select('fight_id, fighter_id, is_completed').in('fight_id', historyFightIds)
+      );
+    }
+
+    return res.json(buildPicksContextPayload({
+      fights,
+      userPredictions: userPredictionRows,
+      currentFightIds: fightIds,
+      publicPredictions: predictions,
+      users,
+      reminders: remindersResult.error ? [] : (remindersResult.data || []),
+      fightMeta: historyFightMeta,
+      results: historyResults,
+      selectedEventDate: eventData.date,
+    }));
+  } catch (error) {
+    console.error('Error building picks context:', error);
+    return res.status(500).json({ error: 'Failed to load picks context' });
+  }
+});
+
 // Get vote counts for all fights in an event (total + human counts)
 app.get('/events/:id/vote-counts', async (req, res) => {
   try {
@@ -5528,7 +5662,14 @@ app.get('/events/:id/vote-counts', async (req, res) => {
       return res.json({});
     }
 
-    const users = await fetchAllUsers('user_id, username, is_bot');
+    const users = await fetchAllUsers(`
+      user_id,
+      username,
+      is_bot,
+      avatar_config,
+      selected_playercard_id,
+      playercards!selected_playercard_id (id, name, image_url, category)
+    `);
     const userMaps = buildUserMaps(users);
     const filteredPredictions = (predictions || []).filter(
       (prediction) => Boolean(resolveUserForRow(prediction, userMaps))
@@ -6208,10 +6349,14 @@ app.post('/user/:user_id/notifications/read-all', requireUserSession, requireOwn
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
-    const { leaderboard } = await buildEventLeaderboard(id);
+    const userCache = await fetchUsersWithPlayercards();
+    const { leaderboard } = await buildEventLeaderboard(id, { userCache });
     const currentYear = new Date().getFullYear();
-    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
-    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(entry => entry.user_id), currentYear);
+    const leaderboardUserIds = leaderboard.map(entry => entry.user_id);
+    const [eventWinCounts, humanEventWinCounts] = await Promise.all([
+      fetchEventWinCounts(leaderboardUserIds, currentYear),
+      fetchHumanEventWinCounts(leaderboardUserIds, currentYear, userCache),
+    ]);
     let leaderboardWithCrowns = addEventWinCounts(leaderboard, eventWinCounts);
     leaderboardWithCrowns = addEventWinCounts(leaderboardWithCrowns, humanEventWinCounts, 'event_win_count_human');
     res.json(leaderboardWithCrowns);
@@ -7139,7 +7284,13 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     if (!targetUser) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const users = await fetchAllUsers('user_id, username, is_bot');
+    const users = await fetchAllUsers(`
+      user_id,
+      username,
+      is_bot,
+      selected_playercard_id,
+      playercards!selected_playercard_id (id, name, image_url, category)
+    `);
 
     const eventsQuery = supabase
       .from('events')
@@ -7267,6 +7418,8 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
     const humanUsers = (users || []).filter(candidate => !isBotFlag(candidate?.is_bot));
     const humanUserSet = new Set(humanUsers.map(candidate => String(candidate.user_id)));
     const userIdToUsername = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.username || `User ${candidate.user_id}`]));
+    const userIdToPlayercard = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.playercards || null]));
+    const userIdToAvatarConfig = new Map((users || []).map(candidate => [String(candidate.user_id), candidate.avatar_config || null]));
 
     let userPredictions = [];
     if (userFightIds.length > 0) {
@@ -8176,6 +8329,8 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
           ? {
             user_id: biggestNemesis.user_id,
             username: biggestNemesis.username,
+            playercard: userIdToPlayercard.get(String(biggestNemesis.user_id)) || null,
+            avatar_config: userIdToAvatarConfig.get(String(biggestNemesis.user_id)) || null,
             times_they_were_right_you_wrong: biggestNemesis.they_right_you_wrong,
             you_right_they_wrong: biggestNemesis.you_right_they_wrong,
             shared_fights: biggestNemesis.shared_fights,
@@ -8201,6 +8356,8 @@ app.get('/user/:user_id/highlights/:year', async (req, res) => {
           ? {
             user_id: pickTwin.user_id,
             username: pickTwin.username,
+            playercard: userIdToPlayercard.get(String(pickTwin.user_id)) || null,
+            avatar_config: userIdToAvatarConfig.get(String(pickTwin.user_id)) || null,
             overlap_pct: pickTwin.pick_overlap_pct,
             shared_fights: pickTwin.shared_pick_fights,
             same_picks: pickTwin.same_picks,
@@ -8364,6 +8521,39 @@ app.get('/playercards', async (req, res) => {
   } catch (error) {
     console.error('Playercards error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update the authenticated user's squid avatar.
+app.patch('/user/:user_id/avatar', requireUserSession, requireOwnUserId, async (req, res) => {
+  try {
+    const validation = validateAvatarConfig(req.body?.avatar_config);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({ avatar_config: validation.value })
+      .eq('user_id', req.authenticatedUser.user_id)
+      .select('user_id, avatar_config')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error updating user avatar:', error);
+      return res.status(500).json({ error: 'Failed to save avatar' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({
+      message: 'Avatar updated successfully',
+      avatar_config: user.avatar_config,
+    });
+  } catch (error) {
+    console.error('Avatar update error:', error);
+    return res.status(500).json({ error: 'Failed to save avatar' });
   }
 });
 

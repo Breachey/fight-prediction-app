@@ -1,0 +1,197 @@
+.squid-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.squid-avatar__silhouette {
+  filter: drop-shadow(0 2px 1.5px rgba(5, 0, 0, 0.28));
+}
+
+.squid-avatar__streak {
+  pointer-events: none;
+  opacity: var(--squid-streak-opacity, 0);
+}
+
+.squid-avatar__streak--hot {
+  transform: scale(var(--squid-streak-scale, 1));
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  filter: drop-shadow(0 0 5px rgba(233, 23, 13, 0.58));
+}
+
+.squid-avatar__flame,
+.squid-avatar__ember {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.squid-avatar__flame--inner { opacity: 0.86; }
+.squid-avatar__ember--one { opacity: 0.72; }
+.squid-avatar__ember--two { opacity: 0.82; }
+
+.squid-avatar__streak--cold {
+  filter: drop-shadow(0 0 5px rgba(43, 49, 178, 0.62));
+}
+
+.squid-avatar__frost-overlay { opacity: var(--squid-streak-opacity, 0); }
+.squid-avatar__ice-shards { opacity: 0.78; }
+.squid-avatar__snow { opacity: 0.9; }
+
+.squid-avatar__reaction {
+  pointer-events: none;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.squid-avatar__reaction--twin {
+  filter: drop-shadow(0 1px 2px rgba(5, 0, 0, 0.5));
+}
+
+.squid-avatar__rude-hand {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.squid-avatar--animated .squid-avatar__motion {
+  animation: squid-avatar-float var(--squid-motion-duration) ease-in-out var(--squid-phase) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.squid-avatar--animated .squid-avatar__eye-look {
+  animation: squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.squid-avatar--animated .squid-avatar__eye-blink {
+  animation: squid-avatar-blink 5.8s ease-in-out calc(var(--squid-phase) - 0.6s) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.squid-avatar--animated.squid-avatar--hot .squid-avatar__flame--outer {
+  animation: squid-avatar-flame 1.25s ease-in-out var(--squid-phase) infinite alternate;
+}
+
+.squid-avatar--animated.squid-avatar--hot .squid-avatar__flame--inner {
+  animation: squid-avatar-flame 0.92s ease-in-out calc(var(--squid-phase) - 0.4s) infinite alternate-reverse;
+}
+
+.squid-avatar--animated.squid-avatar--hot .squid-avatar__ember {
+  animation: squid-avatar-ember 1.8s ease-out var(--squid-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--cold .squid-avatar__ice-shards {
+  animation: squid-avatar-ice-shimmer 2.8s ease-in-out var(--squid-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--cold .squid-avatar__snow {
+  animation: squid-avatar-snow 3.2s ease-in-out var(--squid-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--reaction-twin .squid-avatar__reaction--twin {
+  animation: squid-avatar-twin-reaction 15s ease-in-out var(--squid-reaction-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__reaction--nemesis {
+  animation: squid-avatar-nemesis-reaction 17s ease-in-out var(--squid-reaction-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__rude-hand {
+  animation: squid-avatar-rude-hand 17s ease-in-out var(--squid-reaction-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--reaction-twin .squid-avatar__eye-look {
+  animation:
+    squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite,
+    squid-avatar-hide-eyes-twin 15s linear var(--squid-reaction-phase) infinite;
+}
+
+.squid-avatar--animated.squid-avatar--reaction-nemesis .squid-avatar__eye-look {
+  animation:
+    squid-avatar-look var(--squid-eye-duration) ease-in-out calc(var(--squid-phase) - 1.2s) infinite,
+    squid-avatar-hide-eyes-nemesis 17s linear var(--squid-reaction-phase) infinite;
+}
+
+@keyframes squid-avatar-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--squid-tilt-start)); }
+  50% { transform: translate3d(0, calc(var(--squid-bob) * -1), 0) rotate(var(--squid-tilt)); }
+}
+
+@keyframes squid-avatar-look {
+  0%, 18%, 100% { transform: translate3d(0, 0, 0); }
+  28%, 40% { transform: translate3d(-2px, 0.5px, 0); }
+  56%, 68% { transform: translate3d(2px, -0.5px, 0); }
+  78%, 90% { transform: translate3d(0, 1px, 0); }
+}
+
+@keyframes squid-avatar-blink {
+  0%, 44%, 48%, 76%, 80%, 100% { transform: scaleY(1); }
+  46%, 78% { transform: scaleY(0.08); }
+}
+
+@keyframes squid-avatar-flame {
+  from { transform: translate3d(-1px, 1px, 0) scaleX(0.96) rotate(-1.5deg); }
+  to { transform: translate3d(1px, -2px, 0) scaleX(1.04) rotate(1.5deg); }
+}
+
+@keyframes squid-avatar-ember {
+  0% { opacity: 0; transform: translate3d(0, 5px, 0) scale(0.72); }
+  24% { opacity: 0.82; }
+  100% { opacity: 0; transform: translate3d(2px, -10px, 0) scale(1.08); }
+}
+
+@keyframes squid-avatar-ice-shimmer {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 0.92; }
+}
+
+@keyframes squid-avatar-snow {
+  0%, 100% { transform: translate3d(0, -2px, 0); opacity: 0.42; }
+  50% { transform: translate3d(-1px, 5px, 0); opacity: 1; }
+}
+
+@keyframes squid-avatar-twin-reaction {
+  0%, 68%, 84%, 100% { opacity: 0; transform: scale(0.7); }
+  72%, 80% { opacity: 1; transform: scale(1); }
+  76% { opacity: 1; transform: scale(1.12); }
+}
+
+@keyframes squid-avatar-nemesis-reaction {
+  0%, 71%, 88%, 100% { opacity: 0; transform: translate3d(0, 3px, 0); }
+  75%, 84% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes squid-avatar-rude-hand {
+  0%, 71%, 88%, 100% { transform: translate3d(8px, 13px, 0) rotate(12deg); }
+  76%, 84% { transform: translate3d(0, 0, 0) rotate(-5deg); }
+}
+
+@keyframes squid-avatar-hide-eyes-twin {
+  0%, 68%, 84%, 100% { opacity: 1; }
+  72%, 80% { opacity: 0; }
+}
+
+@keyframes squid-avatar-hide-eyes-nemesis {
+  0%, 71%, 88%, 100% { opacity: 1; }
+  75%, 84% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .squid-avatar--animated .squid-avatar__motion,
+  .squid-avatar--animated .squid-avatar__eye-look,
+  .squid-avatar--animated .squid-avatar__eye-blink,
+  .squid-avatar--animated .squid-avatar__flame,
+  .squid-avatar--animated .squid-avatar__ember,
+  .squid-avatar--animated .squid-avatar__ice-shards,
+  .squid-avatar--animated .squid-avatar__snow,
+  .squid-avatar--animated .squid-avatar__rude-hand {
+    animation: none;
+  }
+
+  .squid-avatar__reaction { display: none; }
+}

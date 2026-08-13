@@ -2,6 +2,161 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.14.0 - 2026-08-13
+
+### Changed
+
+- Rebuilt Stats as a compact, mobile-first dashboard with a stable summary header, neutral period tabs, flatter data sections, and brand-safe chart and tier colors.
+- Added player-card identity to the pick-twin and nemesis insights while preserving every existing metric, benchmark, breakdown, and community view.
+- Made event tiers horizontally scannable on narrow screens and kept event artwork fully visible inside stable poster tiles.
+
+### Removed
+
+- Removed the oversized year hero, decorative bars, rainbow tier styling, nested gradient panels, backdrop blur, count-up behavior, and card entrance animation from Stats.
+
+## 0.13.3 - 2026-08-13
+
+### Changed
+
+- Expanded the style guidelines with the current app shell, event strip, fight workflow, heading hierarchy, leaderboard, avatar, motion, and performance rules.
+- Added an explicit design-source hierarchy plus external inspiration and internal implementation references.
+- Corrected documented radius values to match the canonical client tokens.
+
+## 0.13.2 - 2026-08-13
+
+### Fixed
+
+- Kept event status labels fully contained within their poster cards at mobile widths.
+
+## 0.13.1 - 2026-08-13
+
+### Changed
+
+- Rebuilt the playercard selector as a compact, mobile-first two-column picker with clearer selected and locked states.
+- Deferred playercard and unlock-detail loading until the selector is opened and applied selections optimistically for a faster profile flow.
+
+## 0.13.0 - 2026-08-13
+
+### Added
+
+- Added Shrek-inspired ogre and Golden Retriever character silhouettes.
+- Added Checker, Drips, Waves, and Many Eyes patterns plus eight new mouthless expressions.
+- Added a one-click cursed avatar generator for deliberately strange character, pattern, and expression combinations.
+
+### Changed
+
+- Rendered pattern and character-detail colors at their selected hex values instead of as pale translucent overlays.
+- Expanded randomized new-user avatars and persisted validation to cover all six characters, eight patterns, and eighteen expressions.
+
+## 0.12.0 - 2026-08-13
+
+### Added
+
+- Added independent eye and pattern color pickers with persisted six-digit color validation.
+- Added escalating fire and frost avatar effects for leaderboard win and loss streaks.
+- Added occasional heart-eye reactions for pick twins and angry-eye/rude-tentacle reactions for nemeses.
+
+### Changed
+
+- Kept the avatar preview visible while scrolling through customizer settings on desktop and mobile.
+- Moved streak styling off leaderboard card backgrounds and onto the avatars themselves.
+- Upgraded every existing avatar with contrasting detail colors and extended randomized new-user defaults.
+
+## 0.11.0 - 2026-08-13
+
+### Added
+
+- Added Kirby, Cloudee, and Red Panda character silhouettes alongside the original squid.
+- Added six mouthless eye expressions: Tiny, Wide, Side eye, Skeptical, Determined, and Curious.
+
+### Changed
+
+- Rebuilt the squid as one connected silhouette without an internal head-to-tentacle border.
+- Removed avatar backing plates, enlarged avatars, and enabled lightweight movement and blinking throughout leaderboards and fight vote cards.
+- Extended randomized new-user avatars and persisted avatar validation to cover character types and the expanded expression set.
+
+## 0.10.0 - 2026-08-13
+
+### Added
+
+- Added a continuous avatar color picker and procedural controls for body width, height, curve, tentacle spread and length, eye spacing, overall size, and motion.
+- Added lightweight SVG and CSS motion with drifting, blinking eyes and reduced-motion support.
+
+### Changed
+
+- Randomized every existing user's squid avatar and made both the app registration flow and database default generate a unique valid avatar for new users.
+- Enlarged the live avatar preview and selectively animated prominent avatars while keeping dense player lists inexpensive to render.
+
+## 0.9.0 - 2026-08-13
+
+### Added
+
+- Added customizable squid avatars with brand-safe colors, body shapes, patterns, eye styles, and a randomizer.
+- Added authenticated avatar persistence with validated Supabase configuration data for every user.
+
+### Changed
+
+- Displayed each user's squid avatar to the left of their username on player cards, vote cards, rival cards, and leaderboards.
+
+## 0.8.5 - 2026-08-13
+
+### Changed
+
+- Standardized page, content, section, and subsection heading styles across the client.
+- Added bottom-to-top fight-card resume behavior for the next missing pick or next live fight.
+- Advanced the Picks workspace to the next unsubmitted fight after a successful vote.
+
+### Fixed
+
+- Kept the active fight anchored below the sticky header when collapsing expanded fighter stats.
+
+## 0.8.4 - 2026-08-13
+
+### Changed
+
+- Consolidated AI-user visibility into one persistent footer preference shared by Picks and Leaderboard.
+- Replaced the shaded leaderboard period buttons with compact, neutral text tabs.
+- Changed event leaderboard deltas to show rank movement since the latest completed fight and omit point deltas.
+
+## 0.8.3 - 2026-08-13
+
+### Changed
+
+- Moved the mobile Picks, Prop Pix, and Leaderboard workspace navigation into a persistent bottom bar.
+- Reworked fighter like and dislike reminders with labeled controls, portrait reaction animations, and persistent image badges visible while stats are collapsed.
+- Simplified events without poster artwork to a high-contrast event name and date card.
+
+## 0.8.2 - 2026-08-13
+
+### Changed
+
+- Fit complete event poster artwork inside the event strip cards instead of cropping it to fill the frame.
+- Parallelized event leaderboard queries, reused loaded user and result data, and rendered cached boards immediately while refreshing them in the background.
+
+## 0.8.1 - 2026-08-13
+
+### Fixed
+
+- Contained the authenticated workspace at narrow mobile widths so the header, tabs, event strip, admin summary, and fight content no longer force a desktop-width page.
+- Centered the URL-selected event after initial event reconciliation and removed the residual 320px body minimum that could create horizontal scrolling.
+
+## 0.8.0 - 2026-08-13
+
+### Added
+
+- Added a mobile-first event workspace with URL-backed Picks, Prop Pix, and Leaderboard views plus a persistent desktop navigation rail.
+- Added a private event-scoped picks context endpoint and focused tests for request caching, workspace state, polling, vote totals, reminders, and prior outcomes.
+
+### Changed
+
+- Reworked the event picker into a quiet, snap-scrolling poster strip and deferred secondary workspace code and data until each view is opened.
+- Consolidated pick loading, paused background polling when hidden or complete, and removed redundant Profile and Stats leaderboard requests.
+- Simplified login, Stats, Profile, fight cards, controls, colors, motion, blur, shadows, and loading states around the Fight Picks brand palette.
+
+### Fixed
+
+- Preserved locally selected, unsubmitted picks across event changes and added optimistic per-fight submission with rollback on failure.
+
 ## 0.7.1 - 2026-08-08
 
 ### Fixed

@@ -1,18 +1,15 @@
 // Leaderboard.jsx
 // This component displays a leaderboard for an event and/or overall, with options to toggle between them and show/hide AI users.
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
+import { shouldPollEventLeaderboard } from './utils/pollingPolicy';
+import SquidAvatar from './components/SquidAvatar';
 import './Leaderboard.css';
 
 const LEADERBOARD_REFRESH_INTERVAL_MS = 15000;
-const getFreshLeaderboardUrl = (endpoint) => {
-  const separator = endpoint.includes('?') ? '&' : '?';
-  return `${endpoint}${separator}_refresh=${Date.now()}`;
-};
-
-function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) {
+function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, isEventComplete = false, showAIUsers = false }) {
   // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
   // State for overall leaderboard data
@@ -26,12 +23,12 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const loadedRef = useRef({ event: false, overall: false, season: false, '2025': false });
-  // Whether to show AI users in the leaderboard
-  const [showBots, setShowBots] = useState(false);
+  const showBots = showAIUsers;
   // Which leaderboard is currently selected ('event' or 'overall' or 'season' or '2025')
   const [selectedLeaderboard, setSelectedLeaderboard] = useState(eventId ? 'event' : 'overall');
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
   const lastAppliedRefreshTokenRef = useRef(refreshToken);
+  const lastFocusRefreshRef = useRef(0);
 
   const getEndpoint = useCallback((type) => {
     if (type === 'event') {
@@ -90,11 +87,14 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
 
     try {
       setError('');
-      const response = await fetch(getFreshLeaderboardUrl(endpoint), { cache: 'no-store' });
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await cachedFetchJson(endpoint, {
+        cacheKey: `leaderboard:${endpoint}`,
+        ttlMs: type === 'event' ? LEADERBOARD_REFRESH_INTERVAL_MS : 60000,
+        force: skipGlobalLoading || showManualIndicator,
+        allowStaleOnError: hasLoaded,
+        staleWhileRevalidate: !skipGlobalLoading && !showManualIndicator,
+        fetchOptions: { cache: 'no-store' },
+      });
       setLeaderboardData(type, data || []);
       loadedRef.current[type] = true;
     } catch (error) {
@@ -123,14 +123,29 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     loadedRef.current.event = false;
   }, [eventId]);
 
-  // Fetch the selected leaderboard and keep it warm during active event updates.
+  // Poll only the active, unfinished event leaderboard while the page is visible.
   useEffect(() => {
     fetchLeaderboard(selectedLeaderboard);
+    if (selectedLeaderboard !== 'event' || isEventComplete) return undefined;
     const refreshInterval = setInterval(() => {
-      fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true });
+      if (shouldPollEventLeaderboard({ selectedLeaderboard, isEventComplete, visibilityState: document.visibilityState })) {
+        fetchLeaderboard('event', { skipGlobalLoading: true });
+      }
     }, LEADERBOARD_REFRESH_INTERVAL_MS);
     return () => clearInterval(refreshInterval);
-  }, [selectedLeaderboard, fetchLeaderboard]);
+  }, [selectedLeaderboard, fetchLeaderboard, isEventComplete]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastFocusRefreshRef.current < 60000) return;
+      lastFocusRefreshRef.current = now;
+      fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true });
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchLeaderboard, selectedLeaderboard]);
 
   useEffect(() => {
     if (refreshToken === lastAppliedRefreshTokenRef.current) {
@@ -189,26 +204,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     fontFamily: 'Inter, system-ui, sans-serif'
   };
 
-  const titleStyle = {
-    fontFamily: "'Space Grotesk', 'Inter', 'Segoe UI', sans-serif",
-    fontSize: '2.25rem',
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: '30px',
-    color: 'rgba(255, 255, 255, 1)',
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase'
-  };
-
-  const sectionTitleStyle = {
-    fontSize: '1.8rem',
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: '4px',
-    color: '#ffffff',
-    letterSpacing: 0
-  };
-
   const sectionHeaderStyle = {
     textAlign: 'center',
     marginBottom: '25px'
@@ -227,7 +222,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     color: '#ef4444',
     textAlign: 'center',
     padding: '20px',
-    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+    background: 'linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%), rgba(255, 255, 255, 0.05)',
     borderRadius: '12px',
     marginBottom: '20px',
     border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -239,7 +234,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     padding: '30px',
     textAlign: 'center',
     color: 'rgba(255, 255, 255, 0.9)',
-    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+    background: 'linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%), rgba(255, 255, 255, 0.05)',
     borderRadius: '12px',
     marginBottom: '20px',
     border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -263,27 +258,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     flexWrap: 'wrap',
     marginBottom: '20px'
   };
-
-  // Match the AI toggle styling used in Fights.jsx.
-  const aiToggleButtonStyle = useMemo(() => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '8px 2px',
-    borderRadius: '0',
-    background: 'transparent',
-    border: 'none',
-    borderBottom: `1px solid ${showBots ? 'rgba(147, 197, 253, 0.58)' : 'rgba(255, 255, 255, 0.28)'}`,
-    cursor: 'pointer',
-    fontSize: '0.875rem',
-    fontWeight: 600,
-    letterSpacing: '0.04em',
-    transition: 'color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease',
-    margin: '0 auto 18px auto',
-    width: 'auto',
-    color: showBots ? 'rgba(147, 197, 253, 0.92)' : 'rgba(255, 255, 255, 0.68)',
-    opacity: showBots ? 0.95 : 0.74
-  }), [showBots]);
 
   const refreshButtonStyle = (disabled) => ({
     background: 'transparent',
@@ -330,7 +304,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       return interpolateColor('ef4444', '22c55e', factor); // red to green
     };
     const bgUrl = entry.playercard?.image_url || '';
-    const fallbackBg = 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%)';
+    const fallbackBg = 'linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%)';
     const crownSource = showBots ? entry.event_win_count : (entry.event_win_count_human ?? entry.event_win_count);
     const crownCount = Number(crownSource) || 0;
     const crownBadgeStyle = {
@@ -367,9 +341,9 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     };
     const rivalryBadgeStyle = (type) => ({
       background: type === 'twin'
-        ? 'rgba(34, 211, 238, 0.22)'
+        ? 'rgba(43, 49, 178, 0.22)'
         : 'rgba(168, 85, 247, 0.25)',
-      color: type === 'twin' ? '#a5f3fc' : '#e9d5ff',
+      color: type === 'twin' ? '#d7daff' : '#e9d5ff',
       padding: '0px 7px',
       borderRadius: 10,
       fontSize: 12,
@@ -379,10 +353,10 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       display: 'inline-flex',
       alignItems: 'center',
       gap: 4,
-      fontFamily: '"Permanent Marker", "Brush Script MT", cursive',
+      fontFamily: 'var(--font-family)',
       letterSpacing: '0.03em',
       border: type === 'twin'
-        ? '1px solid rgba(34, 211, 238, 0.52)'
+        ? '1px solid rgba(43, 49, 178, 0.52)'
         : '1px solid rgba(168, 85, 247, 0.54)',
       minWidth: 0,
       flexShrink: 0,
@@ -398,7 +372,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       ? '0 0 16px 2px #CD7F3288, 0 2px 8px rgba(0,0,0,0.15)'
       : '0 2px 8px rgba(0,0,0,0.15)';
     const rivalryShadow = isPickTwin
-      ? ', 0 0 0 2px rgba(34, 211, 238, 0.85), 0 0 18px rgba(34, 211, 238, 0.25)'
+      ? ', 0 0 0 2px rgba(43, 49, 178, 0.85), 0 0 18px rgba(43, 49, 178, 0.25)'
       : isNemesis
       ? ', 0 0 0 2px rgba(168, 85, 247, 0.9), 0 0 18px rgba(168, 85, 247, 0.28)'
       : '';
@@ -410,19 +384,13 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       ? '2.5px solid #CD7F32'
       : '1px solid rgba(38, 46, 65, 0.9)';
     const rivalryBorder = isPickTwin
-      ? '2.5px solid rgba(34, 211, 238, 0.9)'
+      ? '2.5px solid rgba(43, 49, 178, 0.9)'
       : isNemesis
       ? '2.5px solid rgba(168, 85, 247, 0.95)'
       : baseBorder;
     const statTextShadow = '0 2px 5px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.95)';
     const winStreakCount = entry.streak?.type === 'win' ? Number(entry.streak.count) || 0 : 0;
     const lossStreakCount = entry.streak?.type === 'loss' ? Number(entry.streak.count) || 0 : 0;
-    const showStreakWarmFrost = winStreakCount >= 3;
-    const showStreakFrost = lossStreakCount >= 2;
-    const streakWarmFrostOpacity = Math.min(0.72, 0.2 + winStreakCount * 0.055);
-    const streakWarmFrostBlur = Math.min(4.8, 0.9 + winStreakCount * 0.34);
-    const streakFrostOpacity = Math.min(0.82, 0.28 + lossStreakCount * 0.08);
-    const streakFrostBlur = Math.min(5, 1 + lossStreakCount * 0.45);
     const formatChange = (value) => {
       const numericValue = Number(value) || 0;
       return numericValue > 0 ? `+${numericValue}` : String(numericValue);
@@ -478,26 +446,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
           zIndex: 1,
           pointerEvents: 'none',
         }} />
-        {showStreakWarmFrost && (
-          <div
-            className="leaderboard-streak-warm-frost"
-            aria-hidden="true"
-            style={{
-              '--streak-warm-frost-opacity': streakWarmFrostOpacity,
-              '--streak-warm-frost-blur': `${streakWarmFrostBlur}px`
-            }}
-          />
-        )}
-        {showStreakFrost && (
-          <div
-            className="leaderboard-streak-frost"
-            aria-hidden="true"
-            style={{
-              '--streak-frost-opacity': streakFrostOpacity,
-              '--streak-frost-blur': `${streakFrostBlur}px`
-            }}
-          />
-        )}
         {/* Card Content */}
         <div style={{
           position: 'relative',
@@ -545,7 +493,17 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
             )}
           </div>
           {/* Name & Details */}
-          <div style={{ flex: '1 1 0', minWidth: 0, paddingRight: 12 }}>
+          <div style={{ flex: '1 1 0', minWidth: 0, paddingRight: 12, display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span className="leaderboard-squid-avatar">
+              <SquidAvatar
+                config={entry.avatar_config}
+                title={`${entry.username} avatar`}
+                animated
+                streakType={winStreakCount >= 3 ? 'hot' : lossStreakCount >= 2 ? 'cold' : null}
+                streakCount={winStreakCount || lossStreakCount}
+                reaction={isNemesis ? 'nemesis' : isPickTwin ? 'twin' : null}
+              />
+            </span>
             <div style={{ fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 display: 'flex',
@@ -595,7 +553,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
                     <span style={{
                       background: entry.streak.type === 'win' 
                         ? 'rgba(34, 197, 94, 0.15)' 
-                        : 'rgba(59, 130, 246, 0.15)',
+                        : 'rgba(43, 49, 178, 0.15)',
                       color: entry.streak.type === 'win' ? '#22c55e' : '#60a5fa',
                       padding: '0px 7px',
                       borderRadius: 10,
@@ -611,7 +569,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
                       flexShrink: 0,
                       border: entry.streak.type === 'win'
                         ? '1px solid rgba(34, 197, 94, 0.3)'
-                        : '1px solid rgba(59, 130, 246, 0.3)',
+                        : '1px solid rgba(43, 49, 178, 0.3)',
                     }}>
                       {entry.streak.type === 'win' ? '🔥' : '❄️'}{entry.streak.count}
                     </span>
@@ -713,7 +671,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
     return (
       <>
         <div style={sectionHeaderStyle}>
-          <h2 style={sectionTitleStyle}>{title}</h2>
+          <h2 className="app-content-heading leaderboard-list-heading">{title}</h2>
           <div style={sectionMetaStyle}>{metaParts.join(' | ')}</div>
         </div>
         <div style={{ width: '100%', maxWidth: 500, margin: '0 auto' }}>
@@ -744,7 +702,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
   if (isLoading) {
     return (
       <div style={containerStyle}>
-        <h1 style={titleStyle}>Leaderboard</h1>
+        <h1 className="app-page-heading leaderboard-page-heading">Leaderboard</h1>
         <div style={loadingStyle}>
           Loading leaderboard...
         </div>
@@ -756,7 +714,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
   if (error) {
     return (
       <div style={containerStyle}>
-        <h1 style={titleStyle}>Leaderboard</h1>
+        <h1 className="app-page-heading leaderboard-page-heading">Leaderboard</h1>
         <div style={errorStyle}>{error}</div>
       </div>
     );
@@ -765,7 +723,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
   // Main leaderboard UI
   return (
     <div style={containerStyle} className="leaderboard-container">
-      <h1 style={titleStyle}>Leaderboard</h1>
+      <h1 className="app-page-heading leaderboard-page-heading">Leaderboard</h1>
       {/* Leaderboard selection toggle */}
       <div style={filterToggleStyle} className="leaderboard-toggle-group">
         {eventId && (
@@ -793,15 +751,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
           onClick={() => setSelectedLeaderboard('2025')}
         >
           2025
-        </button>
-      </div>
-      {/* AI users toggle */}
-      <div style={filterToggleStyle}>
-        <button 
-          style={aiToggleButtonStyle}
-          onClick={() => setShowBots(!showBots)}
-        >
-          {showBots ? '● Show AI Users' : '○ Show AI Users'}
         </button>
       </div>
       <div style={filterToggleStyle}>
@@ -863,7 +812,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0 }) 
       <section className="leaderboard-points-explainer" aria-labelledby="leaderboard-points-explainer-title">
         <h2
           id="leaderboard-points-explainer-title"
-          className="leaderboard-points-explainer-title"
+          className="app-subsection-heading leaderboard-points-explainer-title"
         >
           How the points work
         </h2>

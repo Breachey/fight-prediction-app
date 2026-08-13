@@ -39,7 +39,9 @@ function NotificationCenter({ userId }) {
 
   useEffect(() => {
     loadNotifications();
-    const interval = window.setInterval(loadNotifications, 30000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') loadNotifications();
+    }, 30000);
     return () => window.clearInterval(interval);
   }, [loadNotifications]);
 
@@ -88,7 +90,7 @@ function NotificationCenter({ userId }) {
       {isOpen && (
         <div className="notification-panel" role="dialog" aria-label="Notifications">
           <div className="notification-panel-header">
-            <div><span className="notification-panel-kicker">Inbox</span><h2>Notifications</h2></div>
+            <div><span className="notification-panel-kicker">Inbox</span><h2 className="app-subsection-heading">Notifications</h2></div>
             <button type="button" className="notification-mark-all" onClick={markAllRead} disabled={!unreadCount}>Mark all read</button>
           </div>
           {error && <div className="notification-error">{error}</div>}

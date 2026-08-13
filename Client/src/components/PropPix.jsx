@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_URL } from '../config';
 import { fetchWithAdminSession, hasActiveAdminSession } from '../utils/adminSession';
 import { fetchWithUserSession } from '../utils/userSession';
+import { cachedFetchJson, invalidateCache } from '../utils/apiCache';
 import './PropPix.css';
 
 const WAGER_PRESETS = ['1 Shot', '2 Shots', '3 Shots', 'Drink', 'Dinner'];
@@ -52,7 +53,7 @@ function PropPix({ eventId, userId, userType }) {
   const [message, setMessage] = useState('');
   const canManageAdminActions = userType === 'admin' && hasActiveAdminSession();
 
-  const loadBets = useCallback(async () => {
+  const loadBets = useCallback(async (force = false) => {
     if (!eventId || !userId) {
       setBets([]);
       return;
@@ -60,9 +61,17 @@ function PropPix({ eventId, userId, userType }) {
 
     setLoading(true);
     try {
-      const response = await fetchWithUserSession(`${API_URL}/events/${eventId}/prop-pix`, { cache: 'no-store' });
-      if (!response.ok) await throwResponseError(response, 'Failed to load Prop Pix bets');
-      const data = await response.json();
+      const cacheKey = `prop-pix:${userId}:${eventId}`;
+      if (force) invalidateCache(cacheKey);
+      const data = await cachedFetchJson(`${API_URL}/events/${eventId}/prop-pix`, {
+        cacheKey,
+        ttlMs: 30000,
+        privateCache: true,
+        staleWhileRevalidate: !force,
+        force,
+        fetcher: fetchWithUserSession,
+        fetchOptions: { cache: 'no-store' },
+      });
       const nextBets = Array.isArray(data) ? data : [];
       setBets(nextBets);
       setVoteDrafts((previous) => {
@@ -132,7 +141,7 @@ function PropPix({ eventId, userId, userType }) {
       setComposerOpen(false);
       setActiveTab('open');
       setMessage('Prop Pix created.');
-      await loadBets();
+      await loadBets(true);
     } catch (createError) {
       setError(createError.message || 'Failed to create Prop Pix');
     }
@@ -154,7 +163,7 @@ function PropPix({ eventId, userId, userType }) {
       if (!response.ok) await throwResponseError(response, 'Failed to save your Prop Pix vote');
       await response.json();
       setMessage('Vote saved.');
-      await loadBets();
+      await loadBets(true);
     } catch (voteError) {
       setError(voteError.message || 'Failed to save your Prop Pix vote');
     }
@@ -175,7 +184,7 @@ function PropPix({ eventId, userId, userType }) {
       setClaimOpen(null);
       setClaimDrafts((previous) => ({ ...previous, [bet.id]: { optionId: '', customOutcome: '' } }));
       setMessage('Claim submitted. Waiting for another voter to confirm it.');
-      await loadBets();
+      await loadBets(true);
     } catch (claimError) {
       setError(claimError.message || 'Failed to submit the claim');
     }
@@ -192,7 +201,7 @@ function PropPix({ eventId, userId, userType }) {
       if (!response.ok) await throwResponseError(response, 'Failed to confirm the claim');
       await response.json();
       setMessage('Prop Pix closed and participants were notified.');
-      await loadBets();
+      await loadBets(true);
     } catch (confirmError) {
       setError(confirmError.message || 'Failed to confirm the claim');
     }
@@ -208,7 +217,7 @@ function PropPix({ eventId, userId, userType }) {
       if (!response.ok) await throwResponseError(response, 'Failed to close the Prop Pix as admin');
       await response.json();
       setMessage('Prop Pix closed by admin and participants were notified.');
-      await loadBets();
+      await loadBets(true);
     } catch (adminCloseError) {
       setError(adminCloseError.message || 'Failed to close the Prop Pix as admin');
     }
@@ -224,7 +233,7 @@ function PropPix({ eventId, userId, userType }) {
       if (!response.ok) await throwResponseError(response, 'Failed to cancel the Prop Pix');
       await response.json();
       setMessage('Prop Pix cancelled.');
-      await loadBets();
+      await loadBets(true);
     } catch (cancelError) {
       setError(cancelError.message || 'Failed to cancel the Prop Pix');
     }
@@ -237,7 +246,7 @@ function PropPix({ eventId, userId, userType }) {
       <div className="prop-pix-header">
         <div>
           <p className="prop-pix-eyebrow">Just for fun</p>
-          <h2 className="prop-pix-title">Prop Pix</h2>
+          <h2 className="app-page-heading prop-pix-title">Prop Pix</h2>
           <p className="prop-pix-subtitle">Side bets for the event. No points, just bragging rights and consequences.</p>
         </div>
         <button className="prop-pix-create-button" type="button" onClick={() => setComposerOpen((open) => !open)}>
