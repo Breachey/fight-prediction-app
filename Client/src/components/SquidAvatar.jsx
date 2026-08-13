@@ -163,10 +163,10 @@ function AvatarPattern({ pattern, clipId, contrastColor }) {
   return null;
 }
 
-function CharacterDetails({ character, detailColor }) {
+function CharacterDetails({ character, accentColor }) {
   if (character === 'red-panda') {
     return (
-      <g fill={detailColor} opacity="0.86">
+      <g className="squid-avatar__character-accent" fill={accentColor}>
         <path d="M25 28 C29 21 35 22 39 28 C34 30 30 34 28 39 C25 36 23 32 25 28Z" />
         <path d="M95 28 C91 21 85 22 81 28 C86 30 90 34 92 39 C95 36 97 32 95 28Z" />
         <path d="M36 54 C42 45 52 44 56 54 C53 67 45 74 36 69 C32 64 32 59 36 54Z" />
@@ -177,7 +177,7 @@ function CharacterDetails({ character, detailColor }) {
   }
   if (character === 'ogre') {
     return (
-      <g fill={detailColor} opacity="0.82">
+      <g className="squid-avatar__character-accent" fill={accentColor}>
         <ellipse cx="20" cy="30" rx="4.5" ry="3.5" transform="rotate(18 20 30)" />
         <ellipse cx="100" cy="30" rx="4.5" ry="3.5" transform="rotate(-18 100 30)" />
         <ellipse cx="55" cy="74" rx="2.6" ry="3.8" transform="rotate(18 55 74)" />
@@ -187,7 +187,7 @@ function CharacterDetails({ character, detailColor }) {
   }
   if (character === 'golden-retriever') {
     return (
-      <g fill={detailColor} opacity="0.86">
+      <g className="squid-avatar__character-accent" fill={accentColor}>
         <path d="M37 29 C27 22 20 29 20 42 C20 55 25 70 34 76 C37 62 40 45 37 29Z" />
         <path d="M83 29 C93 22 100 29 100 42 C100 55 95 70 86 76 C83 62 80 45 83 29Z" />
         <ellipse cx="60" cy="75" rx="17" ry="12" opacity="0.38" />
@@ -416,12 +416,13 @@ function SquidAvatar({
         <g className="squid-avatar__motion">
           {activeStreak === 'hot' && <AvatarStreakEffect type="hot" clipId={clipId} />}
           <g transform={geometry.transform || undefined}>
+            <path className="squid-avatar__sticker-shadow" d={geometry.path} />
             <path className="squid-avatar__silhouette" d={geometry.path} fill={normalized.color} />
           </g>
           {activeStreak === 'cold' && <AvatarStreakEffect type="cold" clipId={clipId} />}
           <AvatarPattern pattern={normalized.pattern} clipId={clipId} contrastColor={normalized.patternColor} />
           <g transform={geometry.transform || undefined}>
-            <CharacterDetails character={geometry.detail} detailColor={normalized.patternColor} />
+            <CharacterDetails character={geometry.detail} accentColor={normalized.accentColor} />
             <g className="squid-avatar__eye-look">
               <g className="squid-avatar__eye-blink">
                 <AvatarEyes eyes={normalized.eyes} color={eyeColor} accentColor={eyeAccent} eyeY={geometry.eyeY} spacing={eyeSpacing} />

@@ -194,6 +194,7 @@ function AvatarCustomizer({ userId, value, onChange }) {
             <AvatarColorControl configKey="color" label="Body" value={draftConfig.color} onChange={chooseOption} />
             <AvatarColorControl configKey="eyeColor" label="Eyes" value={draftConfig.eyeColor} onChange={chooseOption} />
             <AvatarColorControl configKey="patternColor" label="Pattern" value={draftConfig.patternColor} onChange={chooseOption} />
+            <AvatarColorControl configKey="accentColor" label="Character accent" value={draftConfig.accentColor} onChange={chooseOption} />
           </div>
         </fieldset>
 

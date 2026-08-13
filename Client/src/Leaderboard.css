@@ -17,6 +17,15 @@
   text-align: center;
 }
 
+.leaderboard-card {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 124px;
+}
+
+.leaderboard-container[data-avatar-motion-paused] .squid-avatar--animated * {
+  animation-play-state: paused !important;
+}
+
 .leaderboard-toggle-button {
   min-width: 86px;
   min-height: 34px;
@@ -152,5 +161,22 @@
     width: 44px;
     height: 44px;
     flex-basis: 44px;
+  }
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .squid-avatar--dense .squid-avatar__silhouette,
+  .squid-avatar--dense .squid-avatar__streak--hot,
+  .squid-avatar--dense .squid-avatar__streak--cold,
+  .squid-avatar--dense .squid-avatar__reaction--twin {
+    filter: none;
+  }
+
+  .squid-avatar--dense .squid-avatar__sticker-shadow {
+    transform: translate(0, 2px);
+  }
+
+  .squid-avatar--dense.squid-avatar--motion-active .squid-avatar__motion {
+    animation: none;
   }
 }

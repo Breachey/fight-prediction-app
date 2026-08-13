@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.15.1 - 2026-08-13
+
+### Changed
+
+- Removed the light sticker edge from avatars while retaining their lightweight offset shadow.
+
+## 0.15.0 - 2026-08-13
+
+### Added
+
+- Added an independently customizable character accent color, rendered above avatar patterns and persisted for every user.
+- Added a lightweight vector edge and shadow that gives avatars a sticker-like presence without reintroducing expensive SVG filters.
+
+### Changed
+
+- Renamed the Red Panda character label to Bear and Golden Retriever to Mouse-dog while preserving existing saved avatar IDs.
+
+## 0.14.1 - 2026-08-13
+
+### Changed
+
+- Limited leaderboard avatar animation to nearby rows, paused active motion while scrolling or hidden, and reduced mobile SVG effects.
+- Added offscreen leaderboard-card rendering containment to keep long standings smooth on mobile devices.
+
 ## 0.14.0 - 2026-08-13
 
 ### Changed

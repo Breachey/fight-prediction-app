@@ -14,6 +14,7 @@ test('accepts a complete procedural avatar configuration', () => {
     color: '#f99ead',
     eyeColor: '#abcdef',
     patternColor: '#123456',
+    accentColor: '#654321',
     width: 126,
     height: 84,
     roundness: 36,
@@ -30,6 +31,7 @@ test('accepts a complete procedural avatar configuration', () => {
   assert.equal(result.value.color, '#F99EAD');
   assert.equal(result.value.eyeColor, '#ABCDEF');
   assert.equal(result.value.patternColor, '#123456');
+  assert.equal(result.value.accentColor, '#654321');
   assert.equal(result.value.width, 126);
   assert.equal(result.value.character, 'ogre');
 });
@@ -38,6 +40,7 @@ test('rejects invalid colors, ranges, and extra fields', () => {
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, color: 'pink' }).valid, false);
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, eyeColor: 'black' }).valid, false);
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, patternColor: '#123' }).valid, false);
+  assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, accentColor: 'red' }).valid, false);
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, width: 131 }).valid, false);
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, motion: 12.5 }).valid, false);
   assert.equal(validateAvatarConfig({ ...DEFAULT_AVATAR_CONFIG, accessory: 'hat' }).valid, false);
@@ -54,6 +57,7 @@ test('rejects partial and non-object configurations', () => {
 test('random avatar configs always pass validation and vary procedural fields', () => {
   const configs = Array.from({ length: 40 }, () => randomAvatarConfig());
   configs.forEach((config) => assert.equal(validateAvatarConfig(config).valid, true));
+  configs.forEach((config) => assert.notEqual(config.accentColor, config.patternColor));
 
   Object.entries(AVATAR_RANGES).forEach(([key, [min, max]]) => {
     configs.forEach((config) => assert.ok(config[key] >= min && config[key] <= max));
