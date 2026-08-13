@@ -1,4 +1,5 @@
 import React from 'react';
+import SquidAvatar from './SquidAvatar';
 
 const VoteCard = ({ vote, username, rivalMarker = null }) => {
   const bgUrl = vote.playercard?.image_url || '';
@@ -7,21 +8,21 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
   const isPickTwin = rivalMarker === 'twin';
   const isNemesis = rivalMarker === 'nemesis';
   const border = isCurrentUser
-    ? '2.5px solid #22d3ee'
+    ? '2.5px solid #2b31b2'
     : isPickTwin
-    ? '2.5px solid rgba(34, 211, 238, 0.92)'
+    ? '2.5px solid rgba(43, 49, 178, 0.92)'
     : isNemesis
     ? '2.5px solid rgba(168, 85, 247, 0.95)'
     : 'none';
   const boxShadow = isCurrentUser
-    ? '0 0 0 2.5px #22d3ee, 0 2px 8px #22d3ee44'
+    ? '0 0 0 2.5px #2b31b2, 0 2px 8px #2b31b244'
     : isPickTwin
-    ? '0 0 0 2px rgba(34, 211, 238, 0.75), 0 6px 14px rgba(34, 211, 238, 0.2)'
+    ? '0 0 0 2px rgba(43, 49, 178, 0.75), 0 6px 14px rgba(43, 49, 178, 0.2)'
     : isNemesis
     ? '0 0 0 2px rgba(168, 85, 247, 0.82), 0 6px 14px rgba(168, 85, 247, 0.22)'
-    : '0 4px 12px rgba(37, 99, 235, 0.2)';
+    : '0 4px 12px rgba(43, 49, 178, 0.2)';
   const rivalryBadge = isPickTwin
-    ? { label: '👯 Twin', bg: 'rgba(34, 211, 238, 0.2)', color: '#a5f3fc', border: '1px solid rgba(34, 211, 238, 0.45)' }
+    ? { label: '👯 Twin', bg: 'rgba(43, 49, 178, 0.2)', color: '#d7daff', border: '1px solid rgba(43, 49, 178, 0.45)' }
     : isNemesis
     ? { label: '😈 Nemesis', bg: 'rgba(168, 85, 247, 0.22)', color: '#e9d5ff', border: '1px solid rgba(168, 85, 247, 0.5)' }
     : null;
@@ -56,6 +57,20 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
         minHeight: 40,
       }}>
         <span style={{
+          display: 'block',
+          width: 44,
+          height: 44,
+          flex: '0 0 44px',
+          boxSizing: 'border-box',
+        }}>
+          <SquidAvatar
+            config={vote.avatar_config}
+            title={`${vote.username} avatar`}
+            animated
+            reaction={isNemesis ? 'nemesis' : isPickTwin ? 'twin' : null}
+          />
+        </span>
+        <span style={{
           fontWeight: 700,
           color: '#fff',
           textShadow: '0 2px 8px #000a, 0 0 2px #000',
@@ -75,7 +90,7 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
             borderRadius: 12,
             fontSize: '0.78rem',
             fontWeight: 600,
-            fontFamily: '"Permanent Marker", "Brush Script MT", cursive',
+            fontFamily: 'var(--font-family)',
             letterSpacing: '0.03em',
             border: rivalryBadge.border,
             marginLeft: 2
@@ -91,7 +106,7 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
             borderRadius: 12,
             fontSize: '0.85rem',
             fontWeight: 500,
-            border: '1px solid rgba(59, 130, 246, 0.3)',
+            border: '1px solid rgba(43, 49, 178, 0.3)',
             marginLeft: 4,
           }}>AI</span>
         )}

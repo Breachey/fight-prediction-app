@@ -1,21 +1,14 @@
-/* Glassmorphism styles for UserAuth component */
-.user-auth-input {
-  transition: all 0.3s ease !important;
-}
-
-.user-auth-input:hover {
-  background-color: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.5) !important;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
-}
-
-.user-auth-input:focus {
-  background-color: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.6) !important;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2) !important;
-}
-
-.user-auth-input::placeholder {
-  color: rgba(255, 255, 255, 0.6);
-}
-
+.user-auth { width: min(100%, 390px); margin: auto; }
+.user-auth__heading { margin-bottom: 18px; text-align: left; }
+.user-auth__heading p { margin: 0 0 5px; color: var(--color-pink); font-size: .72rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.user-auth__heading h1 { margin: 0; font-size: var(--heading-page-size); letter-spacing: .08em; }
+.user-auth__form { display: flex; flex-direction: column; gap: 13px; padding: 18px; border: 1px solid rgba(252,251,253,.16); border-radius: var(--radius-sm); background: rgba(17,16,18,.94); box-shadow: 0 18px 42px rgba(0,0,0,.32); }
+.user-auth__form label { display: grid; gap: 6px; color: rgba(252,251,253,.72); font-size: .76rem; font-weight: 650; text-align: left; }
+.user-auth__form input { width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid rgba(252,251,253,.16); border-radius: var(--radius-sm); background: #080708; color: var(--color-white); outline: 0; transition: border-color 150ms ease, background-color 150ms ease; }
+.user-auth__form input:hover { border-color: rgba(252,251,253,.28); }
+.user-auth__form input::placeholder { color: rgba(252,251,253,.32); }
+.user-auth__submit { min-height: 44px; margin-top: 2px; border-color: rgba(252,251,253,.75); background: var(--color-white); color: var(--color-black); font-weight: 750; }
+.user-auth__submit:hover { background: #e9e7ea; color: var(--color-black); }
+.user-auth__toggle { padding: 5px; border: 0; background: transparent; color: rgba(252,251,253,.62); font-size: .78rem; }
+.user-auth__toggle:hover { background: transparent; color: var(--color-white); }
+.user-auth__error { padding: 9px; border: 1px solid rgba(233,23,13,.45); border-radius: var(--radius-xs); color: var(--color-pink); font-size: .78rem; }

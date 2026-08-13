@@ -2,33 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
+import PlayerCard from './components/PlayerCard';
 import './HighlightsPage.css';
 
-function CountUp({ value, duration = 900, decimals = 0, suffix = '' }) {
-  const [display, setDisplay] = useState(0);
-
-  useEffect(() => {
-    const target = Number(value) || 0;
-    let frame = null;
-    let start = null;
-
-    const tick = (timestamp) => {
-      if (!start) start = timestamp;
-      const progress = Math.min((timestamp - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(target * eased);
-      if (progress < 1) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [value, duration]);
-
-  return <>{display.toFixed(decimals)}{suffix}</>;
+function MetricValue({ value, decimals = 0, suffix = '' }) {
+  return <>{(Number(value) || 0).toFixed(decimals)}{suffix}</>;
 }
 
 function AccuracySplitPie({ correct = 0, incorrect = 0, accuracy = 0 }) {
@@ -43,7 +21,7 @@ function AccuracySplitPie({ correct = 0, incorrect = 0, accuracy = 0 }) {
       <div
         className="highlights-accuracy-pie"
         style={{
-          background: `conic-gradient(rgba(97, 168, 240, 0.95) 0deg ${degrees}deg, rgba(228, 93, 107, 0.95) ${degrees}deg 360deg)`
+          background: `conic-gradient(rgba(43, 49, 178, 0.98) 0deg ${degrees}deg, rgba(233, 23, 13, 0.92) ${degrees}deg 360deg)`
         }}
         role="img"
         aria-label={`Accuracy split: ${safeCorrect} correct and ${safeIncorrect} incorrect picks`}
@@ -305,7 +283,6 @@ function HighlightsPage({ user, defaultYear }) {
   ];
 
   const [data, setData] = useState(null);
-  const [leaderboardCrownCount, setLeaderboardCrownCount] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [openTooltipId, setOpenTooltipId] = useState(null);
@@ -347,54 +324,6 @@ function HighlightsPage({ user, defaultYear }) {
   }, [selectedPeriod, user?.user_id]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadLeaderboardCrowns = async () => {
-      if (!user?.user_id) {
-        setLeaderboardCrownCount(null);
-        return;
-      }
-
-      const endpoint = selectedPeriod === 'all-time'
-        ? `${API_URL}/leaderboard`
-        : selectedPeriod === String(currentYear)
-        ? `${API_URL}/leaderboard/season`
-        : selectedPeriod === String(previousYear)
-        ? `${API_URL}/leaderboard/${previousYear}`
-        : null;
-
-      if (!endpoint) {
-        setLeaderboardCrownCount(null);
-        return;
-      }
-
-      try {
-        const leaderboard = await cachedFetchJson(endpoint, {
-          ttlMs: 120000,
-          cacheKey: `stats-crowns:${selectedPeriod}:v1`
-        });
-        const entry = Array.isArray(leaderboard)
-          ? leaderboard.find((item) => String(item.user_id) === String(user.user_id))
-          : null;
-        const crownValue = entry
-          ? Number(entry.event_win_count_human ?? entry.event_win_count)
-          : null;
-        if (!cancelled) {
-          setLeaderboardCrownCount(Number.isFinite(crownValue) ? crownValue : null);
-        }
-      } catch {
-        if (!cancelled) {
-          setLeaderboardCrownCount(null);
-        }
-      }
-    };
-
-    loadLeaderboardCrowns();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentYear, previousYear, selectedPeriod, user?.user_id]);
-
-  useEffect(() => {
     const handlePointerDown = (event) => {
       if (event.target.closest('.highlights-info-wrap')) {
         return;
@@ -417,14 +346,7 @@ function HighlightsPage({ user, defaultYear }) {
     };
   }, []);
 
-  const summary = useMemo(() => {
-    if (!data?.summary) return data?.summary;
-    if (leaderboardCrownCount === null) return data.summary;
-    return {
-      ...data.summary,
-      event_wins: leaderboardCrownCount
-    };
-  }, [data?.summary, leaderboardCrownCount]);
+  const summary = data?.summary;
   const eventRows = useMemo(() => data?.events || [], [data?.events]);
   const bestEvent = data?.best_event;
   const toughestEvent = data?.toughest_event;
@@ -540,8 +462,8 @@ function HighlightsPage({ user, defaultYear }) {
   };
 
   const renderPeriodSwitch = (extraClassName = '') => (
-    <div className={`highlights-period-switch ${extraClassName}`.trim()}>
-      <span className="highlights-period-switch-label">View</span>
+    <div className={`highlights-period-switch ${extraClassName}`.trim()} role="group" aria-label="Stats period">
+      <span className="highlights-period-switch-label">Period</span>
       {periodOptions.map((option) => (
         <button
           key={option.key}
@@ -559,7 +481,7 @@ function HighlightsPage({ user, defaultYear }) {
   const renderSectionHeader = (kicker, title, blurb) => (
     <header className="highlights-dashboard-head">
       <p className="highlights-dashboard-kicker">{kicker}</p>
-      <h2 className="highlights-dashboard-title">{title}</h2>
+      <h2 className="app-content-heading highlights-dashboard-title">{title}</h2>
       <p className="highlights-dashboard-blurb">{blurb}</p>
     </header>
   );
@@ -697,16 +619,6 @@ function HighlightsPage({ user, defaultYear }) {
     }));
   }, [eventRowsByDate]);
 
-  const heroBars = useMemo(() => {
-    const heights = [34, 62, 28, 70, 48, 76, 54, 42, 68, 30, 73, 45, 58, 36, 66, 50, 74, 41, 61, 33, 69, 52, 75, 44];
-    const tones = ['is-blue', 'is-red', 'is-blue', 'is-red', 'is-blue', 'is-red', 'is-blue', 'is-red'];
-    return heights.map((height, idx) => ({
-      id: idx,
-      height,
-      tone: tones[idx % tones.length]
-    }));
-  }, []);
-
   const heroStats = [
     { label: 'Total Guesses', value: summary?.total_predictions, decimals: 0, suffix: '' },
     { label: 'Correct', value: summary?.correct_predictions, decimals: 0, suffix: '' },
@@ -715,6 +627,33 @@ function HighlightsPage({ user, defaultYear }) {
     { label: 'Points', value: summary?.total_points, decimals: 0, suffix: '' },
     { label: 'Avg/Event', value: summary?.average_points_per_event, decimals: 2, suffix: '' }
   ];
+
+  const renderPageHeader = ({ showSummary = false } = {}) => (
+    <header className="highlights-hero">
+      <div className="highlights-hero-content">
+        <div className="highlights-hero-copy">
+          <p className="highlights-kicker">Your performance</p>
+          <h1 className="app-page-heading highlights-title">Stats</h1>
+          <p className="highlights-subtitle">
+            {user?.username ? `${user.username} · ${selectedPeriodLabel}` : selectedPeriodLabel}
+          </p>
+        </div>
+        {renderPeriodSwitch('highlights-period-switch-hero')}
+      </div>
+      {showSummary ? (
+        <dl className="highlights-hero-summary">
+          {heroStats.map((item) => (
+            <div key={item.label} className="highlights-hero-stat">
+              <dt className="highlights-hero-stat-label">{item.label}</dt>
+              <dd className="highlights-hero-stat-value">
+                <MetricValue value={item.value} decimals={item.decimals} suffix={item.suffix} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </header>
+  );
 
   const pointRank = benchmarkMetrics?.total_points;
   const pointRankSuffix = pointRank?.total_users ? `/${pointRank.total_users}` : '';
@@ -748,10 +687,8 @@ function HighlightsPage({ user, defaultYear }) {
     return (
       <div className="highlights-page">
         <div className="highlights-shell">
-          <section className="highlights-hero">
-            <p className="highlights-kicker">Stats Dashboard</p>
-            <h1 className="highlights-title">{selectedPeriodLabel}</h1>
-            {renderPeriodSwitch('highlights-period-switch-hero')}
+          {renderPageHeader()}
+          <section className="highlights-state-panel">
             <div className="highlights-error">{error}</div>
           </section>
         </div>
@@ -763,10 +700,8 @@ function HighlightsPage({ user, defaultYear }) {
     return (
       <div className="highlights-page">
         <div className="highlights-shell">
-          <section className="highlights-hero">
-            <p className="highlights-kicker">Stats Dashboard</p>
-            <h1 className="highlights-title">{selectedPeriodLabel}</h1>
-            {renderPeriodSwitch('highlights-period-switch-hero')}
+          {renderPageHeader()}
+          <section className="highlights-state-panel">
             <p className="highlights-subtitle">No completed picks found for this time range yet.</p>
           </section>
         </div>
@@ -777,35 +712,7 @@ function HighlightsPage({ user, defaultYear }) {
   return (
     <div className="highlights-page">
       <div className="highlights-shell">
-        <section className="highlights-hero">
-          <div className="highlights-hero-bars" aria-hidden="true">
-            {heroBars.map((bar) => (
-              <span
-                key={bar.id}
-                className={`highlights-hero-bar ${bar.tone}`}
-                style={{ '--bar-height': `${bar.height}%`, '--bar-delay': `${bar.id * 24}ms` }}
-              ></span>
-            ))}
-          </div>
-          <div className="highlights-hero-content">
-            <p className="highlights-kicker">Stats Dashboard</p>
-            <h1 className="highlights-title highlights-year-title">{selectedPeriodLabel}</h1>
-            <p className="highlights-subtitle">
-              {user?.username ? `${user.username}'s ${selectedPeriodLabel.toLowerCase()} stats` : `${selectedPeriodLabel} stats`}
-            </p>
-            {renderPeriodSwitch('highlights-period-switch-hero')}
-            <div className="highlights-hero-summary">
-              {heroStats.map((item) => (
-                <div key={item.label} className="highlights-hero-stat">
-                  <p className="highlights-hero-stat-value">
-                    <CountUp value={item.value} decimals={item.decimals} suffix={item.suffix} />
-                  </p>
-                  <p className="highlights-hero-stat-label">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        {renderPageHeader({ showSummary: true })}
 
         <section className="highlights-dashboard-section highlights-core-section">
           {renderSectionHeader(
@@ -837,7 +744,7 @@ function HighlightsPage({ user, defaultYear }) {
                   {renderInfoHint('core-streak', 'Most consecutive correct picks in your timeline.')}
                   <p className="highlights-stat-label">Longest Win Streak</p>
                   <p className="highlights-stat-value">
-                    <CountUp value={summary?.longest_win_streak} decimals={0} />
+                    <MetricValue value={summary?.longest_win_streak} decimals={0} />
                   </p>
                 </article>
 
@@ -848,7 +755,7 @@ function HighlightsPage({ user, defaultYear }) {
                   {renderInfoHint('core-rank', 'Your rank by total points among active human users in this period.')}
                   <p className="highlights-stat-label">Points Rank</p>
                   <p className="highlights-stat-value">
-                    <CountUp value={pointRank?.rank || 0} decimals={0} suffix={pointRankSuffix} />
+                    <MetricValue value={pointRank?.rank || 0} decimals={0} suffix={pointRankSuffix} />
                   </p>
                   {renderPointsRankMeta()}
                 </article>
@@ -856,7 +763,7 @@ function HighlightsPage({ user, defaultYear }) {
             </div>
             <div className="highlights-streak-board highlights-animated-card" style={{ '--stagger-index': 4 }}>
               <div className="highlights-streak-board-head">
-                <h3>Longest Win Streak Leaderboard</h3>
+                <h3 className="app-subsection-heading">Longest Win Streak Leaderboard</h3>
                 <p>{selectedPeriodLabel}</p>
               </div>
               <div className="highlights-streak-board-scroll">
@@ -960,14 +867,14 @@ function HighlightsPage({ user, defaultYear }) {
           </div>
 
           <div className="highlights-top-events">
-            <h2>Points Per Event</h2>
+            <h2 className="app-content-heading">Points Per Event</h2>
             <PointsTrendChart data={pointsTrendData} />
             <p className="highlights-chart-meta">
               {firstTrendDate && lastTrendDate
                 ? `${firstTrendDate} to ${lastTrendDate}`
                 : 'Ordered by event date'}
             </p>
-            <h3 className="highlights-subsection-title">Event Tier List By Points</h3>
+            <h3 className="app-subsection-heading highlights-subsection-title">Event Tier List By Points</h3>
             <div className="highlights-tier-list">
               {eventTiers.map((tierRow, rowIndex) => (
                 <div key={tierRow.tier} className={`highlights-tier-row is-${tierRow.tier.toLowerCase()}`}>
@@ -1160,7 +1067,22 @@ function HighlightsPage({ user, defaultYear }) {
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 0 }}>
                 {renderInfoHint('rival-nemesis', 'User with the strongest confidence-weighted edge in decisive shared fights.')}
                 <p className="highlights-panel-kicker">Biggest Nemesis</p>
-                <h3>{rivalryInsights?.biggest_nemesis?.username || 'No nemesis yet'}</h3>
+                {rivalryInsights?.biggest_nemesis ? (
+                  <>
+                    <h3 className="sr-only">{rivalryInsights.biggest_nemesis.username}</h3>
+                    <div className="highlights-rival-player">
+                      <PlayerCard
+                        username={rivalryInsights.biggest_nemesis.username}
+                        playercard={rivalryInsights.biggest_nemesis.playercard}
+                        avatarConfig={rivalryInsights.biggest_nemesis.avatar_config}
+                        reaction="nemesis"
+                        size="small"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <h3>No nemesis yet</h3>
+                )}
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.biggest_nemesis
                     ? `${rivalryInsights.biggest_nemesis.times_they_were_right_you_wrong} swing fights • +${rivalryInsights.biggest_nemesis.nemesis_edge || 0} edge`
@@ -1180,7 +1102,22 @@ function HighlightsPage({ user, defaultYear }) {
               <article className="highlights-insight-card highlights-animated-card" style={{ '--stagger-index': 2 }}>
                 {renderInfoHint('rival-twin', 'User with the highest confidence-weighted pick overlap across a qualifying shared-pick sample.')}
                 <p className="highlights-panel-kicker">Pick Twin</p>
-                <h3>{rivalryInsights?.pick_twin?.username || 'No twin yet'}</h3>
+                {rivalryInsights?.pick_twin ? (
+                  <>
+                    <h3 className="sr-only">{rivalryInsights.pick_twin.username}</h3>
+                    <div className="highlights-rival-player">
+                      <PlayerCard
+                        username={rivalryInsights.pick_twin.username}
+                        playercard={rivalryInsights.pick_twin.playercard}
+                        avatarConfig={rivalryInsights.pick_twin.avatar_config}
+                        reaction="twin"
+                        size="small"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <h3>No twin yet</h3>
+                )}
                 <p className="highlights-panel-meta">
                   {rivalryInsights?.pick_twin
                     ? `${rivalryInsights.pick_twin.overlap_pct}% overlap • ${rivalryInsights.pick_twin.shared_fights || 0} shared picks`

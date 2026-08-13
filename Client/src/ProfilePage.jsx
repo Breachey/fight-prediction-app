@@ -3,6 +3,9 @@ import { API_URL } from './config';
 import { useParams } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
 import PlayerCardSelector from './components/PlayerCardSelector';
+import AvatarCustomizer from './components/AvatarCustomizer';
+import { cachedFetchJson } from './utils/apiCache';
+import './ProfilePage.css';
 
 function formatAccountAge(createdAt) {
   if (!createdAt) return '';
@@ -46,20 +49,6 @@ function ProfilePage({ user: loggedInUser }) {
     normalizedLoggedInUserId === normalizedProfileUserId
   );
 
-  // Animations
-  useEffect(() => {
-    if (cardRef.current) {
-      cardRef.current.animate([
-        { opacity: 0, transform: 'scale(0.96) translateY(30px)' },
-        { opacity: 1, transform: 'scale(1) translateY(0)' }
-      ], {
-        duration: 700,
-        easing: 'cubic-bezier(.61,1.42,.41,.99)',
-        fill: 'forwards'
-      });
-    }
-  }, [profileUser]);
-
   // CSS keyframes for animations
   const keyframes = `
     @keyframes spin { 
@@ -84,91 +73,42 @@ function ProfilePage({ user: loggedInUser }) {
     // Determine which user_id to show
     const userIdToShow = routeUserId || loggedInUser.user_id;
     
-    fetch(`${API_URL}/leaderboard`)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch leaderboard');
-        return res.json();
-      })
-      .then(data => {
+    Promise.all([
+      cachedFetchJson(`${API_URL}/user/by-id/${encodeURIComponent(userIdToShow)}`, {
+        ttlMs: 120000,
+        cacheKey: `profile:${userIdToShow}:v3`,
+      }),
+      cachedFetchJson(`${API_URL}/user/${encodeURIComponent(userIdToShow)}/highlights/${currentSeasonYear}`, {
+        ttlMs: 120000,
+        cacheKey: `profile-rivalries:${userIdToShow}:${currentSeasonYear}:v3`,
+      }),
+    ])
+      .then(([userData, highlightsData]) => {
         if (!isMounted) return;
-        
-        // Filter out bots
-        const filtered = data.filter(entry => !entry.is_bot);
-        const userById = new Map(filtered.map(entry => [String(entry.user_id), entry]));
-        
-        // Find the user entry by user_id
-        const userEntry = filtered.find(entry => String(entry.user_id) === String(userIdToShow));
-        
-        if (!userEntry) {
-          setError('User not found');
-          setLoading(false);
-          setSeasonRivalriesLoading(false);
-          return;
-        }
-        
-        // Fetch account age info using user_id (new endpoint)
-        fetch(`${API_URL}/user/by-id/${encodeURIComponent(userEntry.user_id)}`)
-          .then(res => {
-            if (!res.ok) throw new Error('Failed to fetch user profile');
-            return res.json();
-          })
-          .then(userData => {
-            if (!isMounted) return;
-            setAccountCreatedAt(userData.created_at);
-            setAccountAgeLoading(false);
-          })
-          .catch(() => {
-            if (isMounted) {
-              setAccountAgeError('Could not load account age');
-              setAccountAgeLoading(false);
-            }
-          });
-
-        fetch(`${API_URL}/user/${encodeURIComponent(userEntry.user_id)}/highlights/${currentSeasonYear}`)
-          .then(res => {
-            if (!res.ok) throw new Error('Failed to fetch rivalry insights');
-            return res.json();
-          })
-          .then(highlightsData => {
-            if (!isMounted) return;
-
-            const rivalryInsights = highlightsData?.rivalry_insights || {};
-            const enrichWithCard = (rival) => {
-              if (!rival) return null;
-              const entry = userById.get(String(rival.user_id));
-              return {
-                ...rival,
-                playercard: entry?.playercard || null
-              };
-            };
-
-            setSeasonRivalries({
-              biggestNemesis: enrichWithCard(rivalryInsights.biggest_nemesis),
-              pickTwin: enrichWithCard(rivalryInsights.pick_twin)
-            });
-            setSeasonRivalriesLoading(false);
-          })
-          .catch(() => {
-            if (isMounted) {
-              setSeasonRivalriesError('Could not load rivalry insights right now.');
-              setSeasonRivalriesLoading(false);
-            }
-          });
-        
-        // Set user profile data (display username, store user_id for backend if needed)
         setProfileUser({
-          username: userEntry.username, // display username
-          user_id: userEntry.user_id,   // keep user_id if needed for backend
-          playercard: userEntry.playercard
+          username: userData.username,
+          user_id: userData.user_id || userIdToShow,
+          playercard: userData.playercards || null,
+          avatarConfig: userData.avatar_config || null,
         });
-        
+        setAccountCreatedAt(userData.created_at);
+        setAccountAgeLoading(false);
+        const rivalryInsights = highlightsData?.rivalry_insights || {};
+        setSeasonRivalries({
+          biggestNemesis: rivalryInsights.biggest_nemesis || null,
+          pickTwin: rivalryInsights.pick_twin || null,
+        });
+        setSeasonRivalriesLoading(false);
         setLoading(false);
       })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err.message || 'Unknown error');
-          setLoading(false);
-        }
+      .catch((loadError) => {
+        if (!isMounted) return;
+        setError(loadError.message || 'Could not load profile');
+        setAccountAgeError('Could not load account age');
+        setAccountAgeLoading(false);
+        setSeasonRivalriesError('Could not load rivalry insights right now.');
+        setSeasonRivalriesLoading(false);
+        setLoading(false);
       });
       
     return () => { isMounted = false; };
@@ -203,7 +143,7 @@ function ProfilePage({ user: loggedInUser }) {
         textAlign: 'center', 
         marginTop: 80, 
         fontSize: '1.3rem', 
-        background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+        background: 'linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%), rgba(255, 255, 255, 0.05)',
         backdropFilter: 'blur(20px) saturate(180%)',
         WebkitBackdropFilter: 'blur(20px) saturate(180%)',
         padding: 32, 
@@ -245,6 +185,7 @@ function ProfilePage({ user: loggedInUser }) {
     <>
       <style>{keyframes}</style>
       <div
+        className="profile-page"
         style={{
           width: '100%',
           padding: '0 clamp(12px, 4vw, 28px)',
@@ -259,7 +200,7 @@ function ProfilePage({ user: loggedInUser }) {
             maxWidth: 800,
             margin: '0 auto',
             padding: 'clamp(16px, 4vw, 28px)',
-            background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(37, 99, 235, 0.25) 100%), rgba(255, 255, 255, 0.05)',
+            background: 'linear-gradient(135deg, rgba(233, 23, 13, 0.25) 0%, rgba(43, 49, 178, 0.25) 100%), rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(20px) saturate(180%)',
             WebkitBackdropFilter: 'blur(20px) saturate(180%)',
             borderRadius: 20,
@@ -268,11 +209,11 @@ function ProfilePage({ user: loggedInUser }) {
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
             opacity: 0,
             boxSizing: 'border-box',
-            overflow: 'hidden'
+            overflow: 'visible'
           }}
         >
           {/* Profile Title */}
-          <h1 style={{ 
+          <h1 className="app-page-heading" style={{
             color: 'rgba(255, 255, 255, 1)', 
             marginBottom: 32, 
             letterSpacing: 2, 
@@ -298,6 +239,7 @@ function ProfilePage({ user: loggedInUser }) {
                 <PlayerCard
                   username={profileUser.username}
                   playercard={profileUser.playercard}
+                  avatarConfig={profileUser.avatarConfig}
                   size="large"
                   isCurrentUser={isOwnProfile}
                 />
@@ -314,21 +256,22 @@ function ProfilePage({ user: loggedInUser }) {
                 ) : null}
               </div>
 
+              {isOwnProfile && (
+                <AvatarCustomizer
+                  userId={profileUser.user_id}
+                  value={profileUser.avatarConfig}
+                  onChange={(avatarConfig) => {
+                    setProfileUser((previous) => ({ ...previous, avatarConfig }));
+                  }}
+                />
+              )}
+
               {/* Playercard Selector for Current User */}
               {isOwnProfile && (
                 <div style={{ width: '100%', maxWidth: 600 }}>
-                  <h3 style={{ 
-                    color: 'rgba(255, 255, 255, 0.9)', 
-                    marginBottom: 16, 
-                    fontWeight: 600, 
-                    fontSize: '1.3rem', 
-                    letterSpacing: 1,
-                    textAlign: 'center'
-                  }}>
-                    Change Your Playercard
-                  </h3>
                   <PlayerCardSelector
                     currentPlayercardId={profileUser.playercard?.id}
+                    currentPlayercard={profileUser.playercard}
                     userId={profileUser.user_id}
                     onChange={(newCard) => {
                       // update the displayed card immediately
@@ -345,14 +288,14 @@ function ProfilePage({ user: loggedInUser }) {
             </div>
           )}
 
-          <div style={{
+          <div className="profile-rivalries" style={{
             marginTop: 4,
             padding: 'clamp(14px, 3vw, 22px)',
             borderRadius: 16,
             border: '1px solid rgba(255, 255, 255, 0.24)',
             background: 'linear-gradient(145deg, rgba(43, 18, 84, 0.35), rgba(12, 26, 56, 0.4))'
           }}>
-            <h3 style={{
+            <h3 className="app-subsection-heading" style={{
               margin: '0 0 6px',
               fontSize: '1.32rem',
               fontWeight: 700,
@@ -385,7 +328,7 @@ function ProfilePage({ user: loggedInUser }) {
                 gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
                 gap: 12
               }}>
-                <div style={{
+                <div className="profile-rivalry profile-rivalry--nemesis" style={{
                   padding: 14,
                   borderRadius: 12,
                   border: '1px solid rgba(248, 113, 113, 0.35)',
@@ -399,7 +342,9 @@ function ProfilePage({ user: loggedInUser }) {
                       <PlayerCard
                         username={seasonRivalries.biggestNemesis.username}
                         playercard={seasonRivalries.biggestNemesis.playercard}
+                        avatarConfig={seasonRivalries.biggestNemesis.avatar_config}
                         size="medium"
+                        reaction="nemesis"
                       />
                       <div style={{ marginTop: 10, color: 'rgba(255, 238, 238, 0.9)', fontSize: '0.88rem', lineHeight: 1.4 }}>
                         {seasonRivalries.biggestNemesis.times_they_were_right_you_wrong} swing fights
@@ -415,10 +360,10 @@ function ProfilePage({ user: loggedInUser }) {
                   )}
                 </div>
 
-                <div style={{
+                <div className="profile-rivalry profile-rivalry--twin" style={{
                   padding: 14,
                   borderRadius: 12,
-                  border: '1px solid rgba(34, 211, 238, 0.35)',
+                  border: '1px solid rgba(43, 49, 178, 0.35)',
                   background: 'linear-gradient(140deg, rgba(8, 76, 104, 0.3), rgba(255, 255, 255, 0.05))'
                 }}>
                   <div style={{ fontWeight: 700, marginBottom: 10, color: 'rgba(210, 250, 255, 0.96)' }}>
@@ -429,7 +374,9 @@ function ProfilePage({ user: loggedInUser }) {
                       <PlayerCard
                         username={seasonRivalries.pickTwin.username}
                         playercard={seasonRivalries.pickTwin.playercard}
+                        avatarConfig={seasonRivalries.pickTwin.avatar_config}
                         size="medium"
+                        reaction="twin"
                       />
                       <div style={{ marginTop: 10, color: 'rgba(220, 250, 255, 0.9)', fontSize: '0.88rem', lineHeight: 1.4 }}>
                         {Number(seasonRivalries.pickTwin.overlap_pct || 0).toFixed(2)}% overlap

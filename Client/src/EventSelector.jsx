@@ -348,6 +348,7 @@ function EventSelector({
   const [previewEditorFilter, setPreviewEditorFilter] = useState('missing');
   const [fightStatsEditorFilter, setFightStatsEditorFilter] = useState('all');
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
+  const [adminToolsOpen, setAdminToolsOpen] = useState(false);
   const [selectedEventCardStartTimes, setSelectedEventCardStartTimes] = useState({
     early_prelims: null,
     prelims: null,
@@ -478,36 +479,31 @@ function EventSelector({
     }
   }, [events, currentIndex, onEventSelect]);
 
-  // Keep selected card centered after layout has settled.
+  // Center the selected poster once when its identity changes. Native scroll snap
+  // handles the rest without repeated layout reads and delayed retries.
   useLayoutEffect(() => {
     if (!events.length) return;
+    const currentEvent = events[currentIndex];
+    const requestedEventId = selectedEventIdRef.current;
 
-    let frame1 = 0;
-    let frame2 = 0;
-    const timeoutIds = [];
+    // Event data initially renders at index zero before the URL selection is
+    // reconciled. Waiting for that reconciliation keeps the one initial
+    // centering action from turning into a long, interrupted smooth scroll.
+    if (
+      requestedEventId !== null
+      && requestedEventId !== undefined
+      && !areEventIdsEqual(currentEvent?.id, requestedEventId)
+    ) {
+      return;
+    }
+
     const behavior = hasCenteredOnInit.current ? 'smooth' : 'auto';
-
-    frame1 = window.requestAnimationFrame(() => {
-      frame2 = window.requestAnimationFrame(() => {
-        centerCardAtIndex(currentIndex, behavior);
-        hasCenteredOnInit.current = true;
-      });
+    const frame = window.requestAnimationFrame(() => {
+      centerCardAtIndex(currentIndex, behavior);
+      hasCenteredOnInit.current = true;
+      updateScrollBoundaries();
     });
-
-    // Retry centering to beat delayed image/layout changes and browser scroll restoration.
-    [80, 180, 350, 700, 1200, 1800].forEach(delayMs => {
-      const timeoutId = window.setTimeout(() => {
-        centerCardAtIndex(currentIndex, 'auto');
-        updateScrollBoundaries();
-      }, delayMs);
-      timeoutIds.push(timeoutId);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame1);
-      window.cancelAnimationFrame(frame2);
-      timeoutIds.forEach(id => window.clearTimeout(id));
-    };
+    return () => window.cancelAnimationFrame(frame);
   }, [currentIndex, events, centerCardAtIndex, updateScrollBoundaries]);
 
   useEffect(() => {
@@ -742,56 +738,13 @@ function EventSelector({
   }, [selectedEvent?.id, editingFightStatsEventId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadSelectedEventStartTimes = async () => {
-      if (!selectedEvent?.id) {
-        setSelectedEventCardStartTimes({
-          early_prelims: null,
-          prelims: null,
-          main_card: null,
-        });
-        return;
-      }
-
-      try {
-        const payload = await cachedFetchJson(`${API_URL}/events/${selectedEvent.id}/start-time`, {
-          ttlMs: 30000,
-          cacheKey: `${API_URL}/events/${selectedEvent.id}/start-time:v2`,
-          force: true,
-          allowStaleOnError: false,
-        });
-
-        if (!cancelled) {
-          setSelectedEventCardStartTimes({
-            early_prelims: typeof payload?.card_start_times?.early_prelims === 'string'
-              ? payload.card_start_times.early_prelims
-              : null,
-            prelims: typeof payload?.card_start_times?.prelims === 'string'
-              ? payload.card_start_times.prelims
-              : null,
-            main_card: typeof payload?.card_start_times?.main_card === 'string'
-              ? payload.card_start_times.main_card
-              : null,
-          });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setSelectedEventCardStartTimes({
-            early_prelims: null,
-            prelims: null,
-            main_card: null,
-          });
-        }
-      }
-    };
-
-    loadSelectedEventStartTimes();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedEvent?.id]);
+    const cardStartTimes = selectedEvent?.card_start_times || {};
+    setSelectedEventCardStartTimes({
+      early_prelims: cardStartTimes.early_prelims || null,
+      prelims: cardStartTimes.prelims || null,
+      main_card: cardStartTimes.main_card || selectedEvent?.start_time || null,
+    });
+  }, [selectedEvent?.id, selectedEvent?.card_start_times, selectedEvent?.start_time]);
 
   const isPrevSeasonEnabled = Boolean(previousSeasonYear) && isAtStart;
   const isNextSeasonEnabled = Boolean(nextSeasonYear) && isAtEnd;
@@ -1599,6 +1552,7 @@ function EventSelector({
     setFightCardPreviewEdits({});
     setFightCardScrapeLog([]);
     setAdminAccessFeedback(null);
+    setAdminToolsOpen(false);
   }, [selectedEventId]);
 
   const handleSelect = (idx) => {
@@ -1625,7 +1579,7 @@ function EventSelector({
   if (isLoading) {
     return (
       <div className="event-selector-carousel-container">
-        <div className="event-selector-heading">Choose an Event</div>
+        <h2 className="app-section-heading event-selector-heading">Choose an Event</h2>
         <div className="loading-message">Loading events...</div>
       </div>
     );
@@ -1634,7 +1588,7 @@ function EventSelector({
   if (error) {
     return (
       <div className="event-selector-carousel-container">
-        <div className="event-selector-heading">Choose an Event</div>
+        <h2 className="app-section-heading event-selector-heading">Choose an Event</h2>
         <div className="error-message">{error}</div>
       </div>
     );
@@ -1642,48 +1596,7 @@ function EventSelector({
 
   return (
     <>
-      {/* SVG Filter for electric border effect */}
-      <svg className="electric-border-svg" style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          <filter
-            id="electric-border-filter"
-            colorInterpolationFilters="sRGB"
-            filterUnits="objectBoundingBox"
-            x="0"
-            y="0"
-            width="1"
-            height="1"
-          >
-            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise1" seed="1" />
-            <feOffset in="noise1" dx="0" dy="0" result="offsetNoise1">
-              <animate attributeName="dy" values="250; 0" dur="4s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise2" seed="1" />
-            <feOffset in="noise2" dx="0" dy="0" result="offsetNoise2">
-              <animate attributeName="dy" values="0; -250" dur="4s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise3" seed="2" />
-            <feOffset in="noise3" dx="0" dy="0" result="offsetNoise3">
-              <animate attributeName="dx" values="180; 0" dur="4s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="4" result="noise4" seed="2" />
-            <feOffset in="noise4" dx="0" dy="0" result="offsetNoise4">
-              <animate attributeName="dx" values="0; -180" dur="4s" repeatCount="indefinite" calcMode="linear" />
-            </feOffset>
-
-            <feComposite in="offsetNoise1" in2="offsetNoise2" result="part1" />
-            <feComposite in="offsetNoise3" in2="offsetNoise4" result="part2" />
-            <feBlend in="part1" in2="part2" mode="color-dodge" result="combinedNoise" />
-
-            <feDisplacementMap in="SourceGraphic" in2="combinedNoise" scale="8" xChannelSelector="R" yChannelSelector="B" />
-          </filter>
-        </defs>
-      </svg>
-
-      <div className="event-selector-heading">Choose an Event</div>
+      <h2 className="app-section-heading event-selector-heading">Events</h2>
       <div className="event-season-nav" role="group" aria-label="Season navigation">
         <button
           type="button"
@@ -1719,9 +1632,6 @@ function EventSelector({
           >
             {events.map((event, idx) => {
               const dateStr = formatEventDate(event.date);
-              // Format location
-              const locationParts = [event.venue, event.location_city, event.location_state].filter(Boolean);
-              const locationStr = locationParts.join(', ');
               const isSelected = idx === currentIndex;
               return (
                 <div
@@ -1733,18 +1643,6 @@ function EventSelector({
                   aria-pressed={isSelected}
                   ref={el => cardRefs.current[idx] = el}
                 >
-                  {/* Electric border layers for selected card */}
-                  {isSelected && (
-                    <>
-                      <div className="electric-border-outer">
-                        <div className="electric-border-inner"></div>
-                      </div>
-                      <div className="electric-glow-1"></div>
-                      <div className="electric-glow-2"></div>
-                      <div className="electric-background-glow"></div>
-                    </>
-                  )}
-                  
                   {event.image_url ? (
                     <div className="event-image-container">
                       <img 
@@ -1772,12 +1670,6 @@ function EventSelector({
                     <div className="event-text-content">
                       <span className="event-title">{event.name}</span>
                       {dateStr && <span className="event-date">{dateStr}</span>}
-                      {locationStr && <span className="event-location">{locationStr}</span>}
-                      <div className="event-badges">
-                        <span className={`status-badge ${event.status === 'Complete' ? 'completed' : 'active'}`}>
-                          {event.status === 'Complete' ? 'Completed' : (event.has_fight_data === false ? 'Coming Soon' : 'Upcoming')}
-                        </span>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -1815,6 +1707,16 @@ function EventSelector({
               )}
             </div>
             {canManageAdminActions && (
+              <button
+                type="button"
+                className="event-admin-tools-toggle"
+                aria-expanded={adminToolsOpen}
+                onClick={() => setAdminToolsOpen((open) => !open)}
+              >
+                {adminToolsOpen ? 'Hide admin tools' : 'Open admin tools'}
+              </button>
+            )}
+            {canManageAdminActions && adminToolsOpen && (
               <div className="event-admin-panel__actions">
                 {finalizeFeedback && (
                   <div className={`event-admin-feedback ${finalizeFeedback.type}`}>
