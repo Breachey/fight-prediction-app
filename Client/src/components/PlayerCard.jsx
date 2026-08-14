@@ -14,6 +14,7 @@ function PlayerCard({ username, playercard, avatarConfig, size = 'medium', isCur
   const bgUrl = playercard?.image_url || '';
   const cardName = playercard?.name || 'Default';
   const cardCategory = playercard?.category || 'basic';
+  const usesDenseAvatarMotion = size !== 'large';
 
   // Fallback background (gradient)
   const fallbackBg = 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #ef4444 100%)';
@@ -27,8 +28,14 @@ function PlayerCard({ username, playercard, avatarConfig, size = 'medium', isCur
       title={cardName}
     >
       {avatarConfig !== undefined && (
-        <span className="playercard-avatar">
-          <SquidAvatar config={avatarConfig} title={`${username || 'Player'} avatar`} animated reaction={reaction} />
+        <span className={`playercard-avatar${usesDenseAvatarMotion ? ' squid-avatar-dense-host' : ''}${usesDenseAvatarMotion && isCurrentUser ? ' squid-avatar-dense-host--current' : ''}`}>
+          <SquidAvatar
+            config={avatarConfig}
+            className={usesDenseAvatarMotion ? 'squid-avatar--dense' : ''}
+            title={`${username || 'Player'} avatar`}
+            animated
+            reaction={reaction}
+          />
         </span>
       )}
       <span className="playercard-username">{username}</span>

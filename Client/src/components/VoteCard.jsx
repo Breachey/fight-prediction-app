@@ -56,7 +56,7 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
         padding: '8px 16px',
         minHeight: 40,
       }}>
-        <span style={{
+        <span className={`squid-avatar-dense-host${isCurrentUser ? ' squid-avatar-dense-host--current' : ''}`} style={{
           display: 'block',
           width: 44,
           height: 44,
@@ -65,6 +65,7 @@ const VoteCard = ({ vote, username, rivalMarker = null }) => {
         }}>
           <SquidAvatar
             config={vote.avatar_config}
+            className="squid-avatar--dense"
             title={`${vote.username} avatar`}
             animated
             reaction={isNemesis ? 'nemesis' : isPickTwin ? 'twin' : null}

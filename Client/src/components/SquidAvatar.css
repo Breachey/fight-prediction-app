@@ -221,6 +221,41 @@
   75%, 84% { opacity: 0; }
 }
 
+@keyframes squid-avatar-dense-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -2px, 0); }
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  /* Dense mobile lists get one composited animation total: the signed-in user's host. */
+  .squid-avatar--dense * {
+    animation: none !important;
+  }
+
+  .squid-avatar-dense-host--current {
+    animation: squid-avatar-dense-drift 6.4s ease-in-out infinite;
+    backface-visibility: hidden;
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+  }
+
+  /* Keep rivalry meaning visible without continuously animating nested SVG groups. */
+  .squid-avatar--dense.squid-avatar--reaction-twin .squid-avatar__eye-look,
+  .squid-avatar--dense.squid-avatar--reaction-nemesis .squid-avatar__eye-look {
+    opacity: 0;
+  }
+
+  .squid-avatar--dense.squid-avatar--reaction-twin .squid-avatar__reaction--twin,
+  .squid-avatar--dense.squid-avatar--reaction-nemesis .squid-avatar__reaction--nemesis {
+    opacity: 1;
+    transform: none;
+  }
+
+  .squid-avatar--dense.squid-avatar--reaction-nemesis .squid-avatar__rude-hand {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .squid-avatar--animated .squid-avatar__motion,
   .squid-avatar--animated .squid-avatar__eye-look,
@@ -231,6 +266,12 @@
   .squid-avatar--animated .squid-avatar__snow,
   .squid-avatar--animated .squid-avatar__rude-hand {
     animation: none;
+  }
+
+  .squid-avatar-dense-host--current {
+    animation: none;
+    transform: none;
+    will-change: auto;
   }
 
   .squid-avatar__reaction { display: none; }
