@@ -11,6 +11,7 @@ import './Leaderboard.css';
 const LEADERBOARD_REFRESH_INTERVAL_MS = 15000;
 const AVATAR_SCROLL_IDLE_MS = 160;
 const AVATAR_VISIBILITY_MARGIN = '160px 0px';
+const DENSE_AVATAR_MOBILE_QUERY = '(max-width: 768px), (pointer: coarse)';
 function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, isEventComplete = false, showAIUsers = false }) {
   // State for event-specific leaderboard data
   const [eventLeaderboard, setEventLeaderboard] = useState([]);
@@ -199,6 +200,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
+    if (window.matchMedia?.(DENSE_AVATAR_MOBILE_QUERY).matches) return undefined;
 
     const avatarHosts = [...container.querySelectorAll('.leaderboard-squid-avatar')];
     const setAvatarMotion = (host, active) => {
@@ -225,6 +227,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
+    if (window.matchMedia?.(DENSE_AVATAR_MOBILE_QUERY).matches) return undefined;
 
     let scrollIdleTimer;
     let animationFrame;
@@ -567,7 +570,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
           </div>
           {/* Name & Details */}
           <div style={{ flex: '1 1 0', minWidth: 0, paddingRight: 12, display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span className="leaderboard-squid-avatar">
+            <span className={`leaderboard-squid-avatar squid-avatar-dense-host${isCurrentUser ? ' squid-avatar-dense-host--current' : ''}`}>
               <SquidAvatar
                 config={entry.avatar_config}
                 className="squid-avatar--dense squid-avatar--motion-gated"

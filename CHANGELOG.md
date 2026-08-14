@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.15.2 - 2026-08-14
+
+### Changed
+
+- Replaced dense-list mobile avatar motion with one lightweight animation on the signed-in user's avatar while keeping every other avatar and contextual streak or rivalry treatment static.
+- Removed mobile leaderboard scroll and visibility animation bookkeeping while retaining desktop visibility gating.
+
 ## 0.15.1 - 2026-08-13
 
 ### Changed
