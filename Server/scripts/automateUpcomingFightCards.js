@@ -6,6 +6,7 @@ const {
   assessLineupChange,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
+  resolveAutomationReportPath,
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,
@@ -83,9 +84,13 @@ async function emitReport(report) {
   const serialized = JSON.stringify(report, null, 2);
   console.log(serialized);
 
-  const reportPath = String(process.env.AUTOMATION_REPORT_PATH || '').trim();
+  const reportPath = resolveAutomationReportPath(
+    process.env.AUTOMATION_REPORT_PATH,
+    repoRoot
+  );
   if (reportPath) {
     await fs.writeFile(reportPath, `${serialized}\n`, 'utf8');
+    console.log(`Automation report written to ${reportPath}`);
   }
 }
 

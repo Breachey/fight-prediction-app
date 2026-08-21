@@ -8,6 +8,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from email_automation_report import (  # noqa: E402
+    build_html_report,
     build_subject,
     build_text_report,
     load_report,
@@ -53,6 +54,12 @@ class AutomationEmailReportTests(unittest.TestCase):
         self.assertIn("KO/TKO wins: 1", body)
         self.assertIn("Live Tapology refresh failed.", body)
         self.assertIn("https://github.com/example/run/1", body)
+        self.assertEqual(
+            build_html_report(report, "success", "").count(
+                "Fight Picks scrape automation report"
+            ),
+            1,
+        )
 
     def test_failed_workflow_uses_action_required_subject(self):
         report = {"status": "complete", "results": []}
@@ -98,6 +105,9 @@ class AutomationEmailReportTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "failed")
         self.assertIn("before it produced", report["error"])
+        body = build_text_report(report, "success", "")
+        self.assertIn("No per-event results were available.", body)
+        self.assertNotIn("No incomplete upcoming event was found", body)
 
 
 if __name__ == "__main__":
