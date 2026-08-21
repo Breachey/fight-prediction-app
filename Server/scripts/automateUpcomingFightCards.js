@@ -4,10 +4,10 @@ const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const {
   assessLineupChange,
-  countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   selectDueEvents,
+  summarizeFilledFightCardData,
   summarizeMissingFightCardData,
 } = require('../lib/fightCardAutomation');
 const {
@@ -188,11 +188,15 @@ async function importPreview(supabase, event, preview) {
 async function processEvent({ supabase, event, options, now }) {
   const context = await loadEventContext(supabase, event);
   const existingSummary = summarizeMissingFightCardData(context.existingRows);
+  const eventDetails = {
+    eventId: event.id,
+    eventName: event.name,
+    eventDate: event.date,
+  };
 
   if (context.existingResults.length > 0 || hasEventStarted(context.existingRows, now)) {
     return {
-      eventId: event.id,
-      eventName: event.name,
+      ...eventDetails,
       status: 'skipped-started',
       reason: 'Fight results exist or the stored card start time has passed.',
       existingMissing: existingSummary,
@@ -201,8 +205,7 @@ async function processEvent({ supabase, event, options, now }) {
 
   if (options.dryRun) {
     return {
-      eventId: event.id,
-      eventName: event.name,
+      ...eventDetails,
       status: 'dry-run',
       action: context.existingRows.length > 0 ? 'refresh-and-fill-blanks' : 'scrape-and-import',
       existingMissing: existingSummary,
@@ -238,10 +241,11 @@ async function processEvent({ supabase, event, options, now }) {
     if (preview.blockers.length > 0) {
       warn(`Event ${event.id} was not imported: ${preview.blockers.join(' ')}`);
       return {
-        eventId: event.id,
-        eventName: event.name,
+        ...eventDetails,
         status: 'blocked',
         profileLimit,
+        existingMissing: existingSummary,
+        remainingMissing: summarizeMissingFightCardData(preview.rows),
         blockers: preview.blockers,
         warnings: preview.warnings,
       };
@@ -262,20 +266,21 @@ async function processEvent({ supabase, event, options, now }) {
           + 'belong to removed or changed fights.'
         );
         return {
-          eventId: event.id,
-          eventName: event.name,
+          ...eventDetails,
           status: 'lineup-change-review-required',
           reason: `${affectedCount} prediction(s) would be invalidated by this lineup change.`,
           profileLimit,
           lineupChanges: lineupAssessment.lineupChanges,
           predictionImpact: lineupAssessment.predictionImpact,
+          existingMissing: existingSummary,
           warnings: preview.warnings,
         };
       }
     }
 
-    const filledValueCount = countFilledFightCardValues(context.existingRows, preview.rows);
-    if (context.existingRows.length > 0 && filledValueCount === 0 && !lineupAssessment) {
+    const newlyFilled = summarizeFilledFightCardData(context.existingRows, preview.rows);
+    const remainingMissing = summarizeMissingFightCardData(preview.rows);
+    if (context.existingRows.length > 0 && newlyFilled.filledValueCount === 0 && !lineupAssessment) {
       const eventImageUpdate = await backfillEventImageIfMissing({
         supabase,
         eventId: event.id,
@@ -283,11 +288,12 @@ async function processEvent({ supabase, event, options, now }) {
         fallbackImageUrl: preview.previewEvent?.tapology_event_image_url,
       });
       return {
-        eventId: event.id,
-        eventName: event.name,
+        ...eventDetails,
         status: 'checked-no-new-values',
         profileLimit,
         existingMissing: existingSummary,
+        newlyFilled,
+        remainingMissing,
         warnings: preview.warnings,
         eventImageUpdate,
       };
@@ -295,16 +301,17 @@ async function processEvent({ supabase, event, options, now }) {
 
     const persisted = await importPreview(supabase, event, preview);
     return {
-      eventId: event.id,
-      eventName: event.name,
+      ...eventDetails,
       status: lineupAssessment
         ? 'lineup-updated'
         : (context.existingRows.length > 0 ? 'filled-missing-values' : 'imported-new-card'),
       profileLimit,
-      filledValueCount,
+      filledValueCount: newlyFilled.filledValueCount,
+      newlyFilled,
+      existingMissing: existingSummary,
       rowCount: preview.rowCount,
       fightCount: preview.fightCount,
-      remainingMissing: summarizeMissingFightCardData(preview.rows),
+      remainingMissing,
       lineupChanges: lineupAssessment?.lineupChanges || null,
       predictionImpact: lineupAssessment?.predictionImpact || null,
       warnings: preview.warnings,
@@ -358,6 +365,7 @@ async function main() {
       results.push({
         eventId: event.id,
         eventName: event.name,
+        eventDate: event.date,
         status: 'failed',
         error: error.message || String(error),
       });

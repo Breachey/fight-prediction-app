@@ -395,6 +395,7 @@ function App() {
                   user_type={user.user_type}
                   onLeaderboardRefresh={handleLeaderboardRefreshRequest}
                   refreshToken={fightCardRefreshToken}
+                  isEventComplete={Boolean(selectedEvent?.is_completed)}
                   showAIUsers={showAIUsers}
                 />
               </div>}

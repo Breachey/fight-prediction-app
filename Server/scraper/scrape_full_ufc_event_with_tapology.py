@@ -444,6 +444,13 @@ def cached_streak_is_current(row: Dict[str, object]) -> bool:
 
 
 def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
+    last_attempt_at = max(
+        (
+            cache_value_to_csv(row.get("last_success_at")),
+            cache_value_to_csv(row.get("last_failure_at")),
+        ),
+        default="",
+    )
     return {
         "TapologyFighterURL": cache_value_to_csv(row.get("tapology_fighter_url")),
         "TapologyMatchConfidence": cache_confidence(
@@ -462,6 +469,7 @@ def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
         "Submission_Losses": cache_value_to_csv(row.get("submission_losses")),
         "Decision_Wins": cache_value_to_csv(row.get("decision_wins")),
         "Decision_Losses": cache_value_to_csv(row.get("decision_losses")),
+        "_TapologyLastAttemptAt": last_attempt_at,
     }
 
 
@@ -2393,12 +2401,46 @@ def should_fetch_tapology_profile(fighter_data: Dict[str, str]) -> bool:
     return any(not cache_value_to_csv(fighter_data.get(field)) for field in profile_fields)
 
 
+def record_tapology_profile_failures(
+    event: Dict,
+    failures: Dict[str, Dict[str, str]],
+    timeout: float,
+) -> None:
+    if not failures:
+        return
+
+    failed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    payloads = []
+    for fight in event.get("FightCard", []):
+        for fighter in fight.get("Fighters", []):
+            fighter_key = normalize_name(fighter_full_name(fighter))
+            failure = failures.get(fighter_key)
+            fighter_id = parse_optional_int(fighter.get("FighterId"))
+            if not failure or fighter_id is None:
+                continue
+            payloads.append({
+                "fighter_id": fighter_id,
+                "tapology_fighter_url": cache_value_to_csv(
+                    failure.get("TapologyFighterURL")
+                ) or None,
+                "last_failure_at": failed_at,
+                "last_error": cache_value_to_csv(failure.get("error"))[:500] or None,
+            })
+
+    for table_name in ("tapology_fighter_cache", "fighters"):
+        try:
+            upsert_supabase_rows(table_name, payloads, "fighter_id", timeout)
+        except (requests.RequestException, ValueError) as err:
+            print(f"{table_name} profile failure update skipped: {err}")
+
+
 def profile_limit_reached(profile_attempt_count: int, profile_limit: int) -> bool:
     return profile_limit >= 0 and profile_attempt_count >= profile_limit
 
 
 def fetch_tapology_profiles_for_enrichment(
     tapology_session: requests.Session,
+    event: Dict,
     enrichment: Dict[str, Dict[str, str]],
     timeout: float,
     tapology_delay_seconds: float,
@@ -2407,8 +2449,16 @@ def fetch_tapology_profiles_for_enrichment(
     profile_count = 0
     profile_attempt_count = 0
     refreshed_profiles: Dict[str, Dict[str, str]] = {}
+    failed_profiles: Dict[str, Dict[str, str]] = {}
 
-    for fighter_key, fighter_data in enrichment.items():
+    profile_candidates = sorted(
+        enrichment.items(),
+        key=lambda item: (
+            cache_value_to_csv(item[1].get("_TapologyLastAttemptAt")),
+            item[0],
+        ),
+    )
+    for fighter_key, fighter_data in profile_candidates:
         fighter_url = fighter_data.get("TapologyFighterURL", "")
         if not fighter_url:
             continue
@@ -2429,6 +2479,10 @@ def fetch_tapology_profiles_for_enrichment(
             )
         except (requests.RequestException, RuntimeError) as err:
             print(f"Unable to fetch Tapology fighter page {fighter_url}: {err}")
+            failed_profiles[fighter_key] = {
+                "TapologyFighterURL": fighter_url,
+                "error": str(err),
+            }
             continue
 
         fighter_profile = parse_tapology_fighter_profile(fighter_html)
@@ -2446,6 +2500,8 @@ def fetch_tapology_profiles_for_enrichment(
             "Tapology fighter profile fetch limit reached: "
             f"{tapology_profile_limit} attempt(s)."
         )
+
+    record_tapology_profile_failures(event, failed_profiles, timeout)
 
     return profile_count, profile_attempt_count, refreshed_profiles
 
@@ -2477,6 +2533,7 @@ def fetch_tapology_fighter_enrichment(
         print(f"Unable to fetch Tapology event page {tapology_event_url}: {err}")
         profile_count, _, refreshed_profiles = fetch_tapology_profiles_for_enrichment(
             tapology_session=tapology_session,
+            event=event,
             enrichment=enrichment,
             timeout=timeout,
             tapology_delay_seconds=tapology_delay_seconds,
@@ -2539,6 +2596,7 @@ def fetch_tapology_fighter_enrichment(
 
     profile_count, _, refreshed_profiles = fetch_tapology_profiles_for_enrichment(
         tapology_session=tapology_session,
+        event=event,
         enrichment=enrichment,
         timeout=timeout,
         tapology_delay_seconds=tapology_delay_seconds,

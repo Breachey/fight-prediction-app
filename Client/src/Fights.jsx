@@ -4,6 +4,11 @@ import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
 import { fetchWithUserSession } from './utils/userSession';
 import { getInitialFightTargetId, getNextUnvotedFightId } from './utils/fightNavigation';
+import {
+  haveFightCardsChanged,
+  haveFightResultsChanged,
+  shouldPollFightCard,
+} from './utils/pollingPolicy';
 import ReactCountryFlag from 'react-country-flag';
 import { getCountryCode, convertInchesToHeightString, formatStreak } from './utils/countryUtils';
 import './Fights.css';
@@ -12,6 +17,7 @@ import VoteCard from './components/VoteCard';
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
+const FIGHT_CARD_REFRESH_INTERVAL_MS = 15000;
 const REMINDER_EMOJI_MAP = {
   [REMINDER_TYPE_BROKEN_HEART]: '💔',
   [REMINDER_TYPE_HEART_EYES]: '😍'
@@ -290,7 +296,16 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
   );
 }
 
-function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, refreshToken = 0, showAIUsers = false }) {
+function Fights({
+  eventId,
+  username,
+  user_id,
+  user_type,
+  onLeaderboardRefresh,
+  refreshToken = 0,
+  isEventComplete = false,
+  showAIUsers = false,
+}) {
   const currentSeasonYear = new Date().getFullYear();
   const canManageAdminActions = user_type === 'admin' && hasActiveAdminSession();
   const reminderStorageKey = `voteReminders_${user_id || username || 'guest'}`;
@@ -314,6 +329,7 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     }, {});
   }, []);
   const [fights, setFights] = useState([]);
+  const [isRefreshingFightCard, setIsRefreshingFightCard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadedEventId, setLoadedEventId] = useState(null);
   const [error, setError] = useState('');
@@ -351,6 +367,9 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
   const fightCardRefs = useRef(new Map());
   const scheduledFightScrollRef = useRef(null);
   const initialFightScrollKeyRef = useRef(null);
+  const fightsRef = useRef([]);
+  const activeEventIdRef = useRef(eventId);
+  const fightCardRefreshInFlightRef = useRef(false);
 
   const scheduleFightScroll = useCallback((fightId, behavior = 'smooth') => {
     if (fightId === null || fightId === undefined || typeof window === 'undefined') return;
@@ -385,6 +404,103 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
 
     cacheKeys.forEach((key) => invalidateCache(key));
   }, []);
+
+  useEffect(() => {
+    fightsRef.current = fights;
+  }, [fights]);
+
+  useEffect(() => {
+    activeEventIdRef.current = eventId;
+  }, [eventId]);
+
+  const allFightsResolved = fights.length > 0
+    && fights.every((fight) => fight.is_completed || fight.is_canceled);
+
+  const refreshFightCard = useCallback(async ({ showIndicator = false } = {}) => {
+    if (!eventId || fightCardRefreshInFlightRef.current) return;
+
+    const requestedEventId = eventId;
+    fightCardRefreshInFlightRef.current = true;
+    if (showIndicator) {
+      setError('');
+      setIsRefreshingFightCard(true);
+    }
+
+    try {
+      const incoming = await cachedFetchJson(`${API_URL}/events/${requestedEventId}/fights`, {
+        cacheKey: `fight-card-live:${requestedEventId}`,
+        force: true,
+        allowStaleOnError: false,
+        fetchOptions: { cache: 'no-store' },
+      });
+      const incomingFights = (Array.isArray(incoming) ? incoming : []).map((fight) => ({
+        ...fight,
+        fighter1_id: String(fight.fighter1_id),
+        fighter2_id: String(fight.fighter2_id),
+      }));
+      if (String(activeEventIdRef.current) !== String(requestedEventId)) return;
+
+      const currentFights = fightsRef.current;
+
+      if (!haveFightCardsChanged(currentFights, incomingFights)) return;
+
+      const resultsChanged = haveFightResultsChanged(currentFights, incomingFights);
+      fightsRef.current = incomingFights;
+      setFights(incomingFights);
+      invalidateCache(`picks-context:${user_id}:${requestedEventId}`);
+
+      if (resultsChanged) {
+        invalidateLeaderboardCaches(requestedEventId);
+        onLeaderboardRefresh?.();
+      }
+    } catch (refreshError) {
+      console.warn('Fight card refresh failed:', refreshError);
+      if (showIndicator) {
+        setError('Could not refresh fights. The current card is still shown.');
+      }
+    } finally {
+      fightCardRefreshInFlightRef.current = false;
+      if (showIndicator) setIsRefreshingFightCard(false);
+    }
+  }, [eventId, invalidateLeaderboardCaches, onLeaderboardRefresh, user_id]);
+
+  useEffect(() => {
+    if (!shouldPollFightCard({
+      isEventComplete,
+      allFightsResolved,
+      visibilityState: document.visibilityState,
+    })) {
+      return undefined;
+    }
+
+    const refreshInterval = window.setInterval(() => {
+      if (shouldPollFightCard({
+        isEventComplete,
+        allFightsResolved,
+        visibilityState: document.visibilityState,
+      })) {
+        refreshFightCard();
+      }
+    }, FIGHT_CARD_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(refreshInterval);
+  }, [allFightsResolved, isEventComplete, refreshFightCard]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!shouldPollFightCard({
+        isEventComplete,
+        allFightsResolved,
+        visibilityState: document.visibilityState,
+      })) {
+        return;
+      }
+      refreshFightCard();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [allFightsResolved, isEventComplete, refreshFightCard]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -1222,6 +1338,21 @@ function Fights({ eventId, username, user_id, user_type, onLeaderboardRefresh, r
     <div className="fights-container">
       <div className="fights-header">
         <h2 className="app-section-heading fights-title">Upcoming Fights</h2>
+        <div className="fight-card-refresh-controls">
+          {!isEventComplete && !allFightsResolved && (
+            <span className="fight-card-refresh-status">Auto-refresh on</span>
+          )}
+          <button
+            type="button"
+            className={`fight-card-refresh-button${isRefreshingFightCard ? ' is-refreshing' : ''}`}
+            onClick={() => refreshFightCard({ showIndicator: true })}
+            disabled={isRefreshingFightCard}
+            aria-label="Refresh fight card"
+            title="Refresh fight card"
+          >
+            <span aria-hidden="true">↻</span>
+          </button>
+        </div>
       </div>
 
       <div className="fights-content">

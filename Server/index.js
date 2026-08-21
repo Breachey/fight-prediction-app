@@ -45,6 +45,8 @@ const {
 } = require('./lib/propPix');
 const { createNotifications } = require('./lib/notifications');
 const { buildPicksContextPayload } = require('./lib/picksContext');
+const { buildEventRecap } = require('./lib/eventRecap');
+const { buildEventFriendComparison } = require('./lib/eventFriendComparison');
 const { randomAvatarConfig, validateAvatarConfig } = require('./lib/avatarConfig');
 const {
   addFightToFightRankChanges,
@@ -353,10 +355,13 @@ app.use((req, res, next) => {
   const isEvents = path === '/events';
   const isLeaderboard = path.startsWith('/leaderboard');
   const isEventLeaderboard = /^\/events\/[^/]+\/leaderboard$/.test(path);
+  const isEventFights = /^\/events\/[^/]+\/fights$/.test(path);
+  const isEventRecap = /^\/events\/[^/]+\/recap$/.test(path);
+  const isEventComparison = /^\/events\/[^/]+\/friend-comparison$/.test(path);
   const isPlayercards = path === '/playercards';
   const isHighlights = /^\/user\/[^/]+\/highlights\/(\d{4}|all-time)$/.test(path);
 
-  if (isLeaderboard || isEventLeaderboard) {
+  if (isLeaderboard || isEventLeaderboard || isEventFights || isEventRecap || isEventComparison) {
     res.set('Cache-Control', LEADERBOARD_CACHE_CONTROL);
   } else if (isEvents || isPlayercards || isHighlights) {
     res.set('Cache-Control', CACHE_CONTROL);
@@ -5462,10 +5467,15 @@ app.get('/events/:id/fights', async (req, res) => {
       return res.json([]);
     }
 
-    // Get fight results
+    const fightIds = Array.from(new Set(
+      data.map((row) => Number(row.FightId)).filter(Number.isFinite)
+    ));
+
+    // Get only the selected event's fight results so live refreshes stay lightweight.
     const { data: fightResults, error: resultsError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed');
+      .select('fight_id, fighter_id, is_completed')
+      .in('fight_id', fightIds);
 
     if (resultsError) {
       console.error('Error fetching fight results:', resultsError);
@@ -6366,6 +6376,160 @@ app.get('/events/:id/leaderboard', async (req, res) => {
       error: 'Failed to process event leaderboard',
       details: error.message 
     });
+  }
+});
+
+// Compare the signed-in user's visible picks with one human participant on this card.
+app.get('/events/:id/friend-comparison', requireUserSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const friendUserId = req.query.friend_user_id
+      ? normalizeUserId(req.query.friend_user_id)
+      : null;
+    if (!eventId) return res.status(400).json({ error: 'Invalid event id' });
+    if (req.query.friend_user_id && !friendUserId) {
+      return res.status(400).json({ error: 'Invalid friend user id' });
+    }
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, name, date, is_completed')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const [users, fightRows] = await Promise.all([
+      fetchAllUsers(`
+        user_id,
+        username,
+        is_bot,
+        avatar_config,
+        selected_playercard_id,
+        playercards!selected_playercard_id (id, name, image_url, category)
+      `),
+      fetchAllFromSupabase(
+        supabase
+          .from('ufc_full_fight_card')
+          .select('FightId, FightOrder, CardSegment, FightStatus, FighterId, FirstName, LastName, Corner')
+          .eq('EventId', eventId)
+      ),
+    ]);
+    const fightIds = [...new Set(
+      (fightRows || []).map((row) => Number(row.FightId)).filter(Number.isFinite)
+    )];
+    const [predictions, predictionResults, fightResults] = fightIds.length > 0
+      ? await Promise.all([
+          fetchAllFromSupabase(
+            supabase
+              .from('predictions')
+              .select('fight_id, fighter_id, user_id, username')
+              .in('fight_id', fightIds)
+          ),
+          fetchAllFromSupabase(
+            supabase
+              .from('prediction_results')
+              .select('fight_id, user_id, username, predicted_correctly, points')
+              .eq('event_id', eventId)
+          ),
+          fetchAllFromSupabase(
+            supabase
+              .from('fight_results')
+              .select('fight_id, fighter_id, is_completed')
+              .in('fight_id', fightIds)
+          ),
+        ])
+      : [[], [], []];
+
+    const comparison = buildEventFriendComparison({
+      event,
+      viewerUserId: req.authenticatedUser.user_id,
+      friendUserId,
+      users,
+      fightRows,
+      predictions,
+      predictionResults,
+      fightResults,
+    });
+    if (friendUserId && !comparison.selected_friend) {
+      return res.status(404).json({ error: 'That friend has no picks on this event' });
+    }
+    return res.json(comparison);
+  } catch (error) {
+    console.error('Error building friend comparison:', error);
+    return res.status(500).json({ error: 'Failed to build friend comparison' });
+  }
+});
+
+// Build a human-only social recap after an event is finalized.
+app.get('/events/:id/recap', async (req, res) => {
+  try {
+    const eventId = Number(req.params.id);
+    if (!Number.isFinite(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, name, date, is_completed, image_url')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    if (!event.is_completed) {
+      return res.json(buildEventRecap({ event }));
+    }
+
+    const userCache = await fetchUsersWithPlayercards();
+    const [leaderboardResult, fightRows, predictionResults] = await Promise.all([
+      buildEventLeaderboard(eventId, { userCache }),
+      fetchAllFromSupabase(
+        supabase
+          .from('ufc_full_fight_card')
+          .select('FightId, FightOrder, CardSegment, FighterId, FirstName, LastName, Corner')
+          .eq('EventId', eventId)
+      ),
+      fetchAllFromSupabase(
+        supabase
+          .from('prediction_results')
+          .select('fight_id, user_id, username, predicted_correctly, points')
+          .eq('event_id', eventId)
+      ),
+    ]);
+    const fightIds = [...new Set(
+      (fightRows || []).map((row) => Number(row.FightId)).filter(Number.isFinite)
+    )];
+    const [predictions, fightResults] = fightIds.length > 0
+      ? await Promise.all([
+          fetchAllFromSupabase(
+            supabase
+              .from('predictions')
+              .select('fight_id, fighter_id, betting_odds, user_id, username')
+              .in('fight_id', fightIds)
+          ),
+          fetchAllFromSupabase(
+            supabase
+              .from('fight_results')
+              .select('fight_id, fighter_id, is_completed')
+              .in('fight_id', fightIds)
+          ),
+        ])
+      : [[], []];
+
+    return res.json(buildEventRecap({
+      event,
+      leaderboard: leaderboardResult.leaderboard,
+      predictions,
+      predictionResults,
+      fightRows,
+      fightResults,
+      users: userCache.users,
+    }));
+  } catch (error) {
+    console.error('Error building event recap:', error);
+    return res.status(500).json({ error: 'Failed to build event recap' });
   }
 });
 

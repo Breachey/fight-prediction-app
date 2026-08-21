@@ -26,6 +26,13 @@ class AutomationEmailReportTests(unittest.TestCase):
                 "eventName": "UFC Fight Night: Test",
                 "status": "filled-missing-values",
                 "filledValueCount": 3,
+                "existingMissing": {
+                    "byField": {"Streak": 4, "style": 1, "KO_TKO_Wins": 1}
+                },
+                "newlyFilled": {
+                    "newRowCount": 0,
+                    "byField": {"Streak": 2, "style": 1, "KO_TKO_Wins": 0},
+                },
                 "remainingMissing": {
                     "byField": {"Streak": 2, "style": 0, "KO_TKO_Wins": 1}
                 },
@@ -39,8 +46,11 @@ class AutomationEmailReportTests(unittest.TestCase):
         self.assertIn("Scrape complete", subject)
         self.assertIn("UFC Fight Night: Test", subject)
         self.assertIn("New blank values filled: 3", body)
+        self.assertIn("New information by field: Streak: +2, Style: +1", body)
+        self.assertIn("Missing before this run: 6 values (Streak: 4", body)
+        self.assertIn("Still missing: 3 values (Streak: 2", body)
         self.assertIn("Streak: 2", body)
-        self.assertIn("KO_TKO_Wins: 1", body)
+        self.assertIn("KO/TKO wins: 1", body)
         self.assertIn("Live Tapology refresh failed.", body)
         self.assertIn("https://github.com/example/run/1", body)
 
