@@ -716,7 +716,7 @@ button.submit-vote-button:focus-visible {
 }
 
 .fight-card.completed::before {
-  content: 'FIGHT COMPLETED';
+  content: attr(data-result-label);
   position: absolute;
   top: 0;
   left: 50%;
@@ -741,6 +741,14 @@ button.submit-vote-button:focus-visible {
   filter: grayscale(70%);
   border: 1px solid rgba(128, 128, 128, 0.2);
   background: linear-gradient(145deg, rgba(11, 17, 32, 0.72), rgba(17, 24, 39, 0.72));
+}
+
+.fighter-card.neutral-result {
+  cursor: not-allowed;
+  opacity: 1;
+  filter: none;
+  border-color: rgba(252, 251, 253, 0.32);
+  background: rgba(252, 251, 253, 0.05);
 }
 
 /* Vote badge styles */
@@ -1889,6 +1897,10 @@ button.admin-edit-button:hover {
 .admin-buttons {
   display: flex;
   gap: 12px;
+}
+
+.admin-neutral-result-buttons {
+  margin-top: -4px;
 }
 
 button.admin-winner-button {

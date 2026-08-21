@@ -18,6 +18,10 @@ import VoteCard from './components/VoteCard';
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
 const FIGHT_CARD_REFRESH_INTERVAL_MS = 15000;
+const RESULT_TYPE_LABELS = {
+  draw: 'Draw',
+  no_contest: 'No Contest',
+};
 const REMINDER_EMOJI_MAP = {
   [REMINDER_TYPE_BROKEN_HEART]: '💔',
   [REMINDER_TYPE_HEART_EYES]: '😍'
@@ -585,14 +589,14 @@ function Fights({
   };
 
   // Admin function to handle fight result updates
-  const handleResultUpdate = async (fightId, winner) => {
+  const handleResultUpdate = async (fightId, winner, resultType = winner ? 'winner' : null) => {
     try {
       const response = await fetchWithAdminSession(`${API_URL}/ufc_full_fight_card/${fightId}/result`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ winner }),
+        body: JSON.stringify({ winner, result_type: resultType }),
       });
 
       if (!response.ok) {
@@ -614,6 +618,10 @@ function Fights({
           mergedFight[key] = val;
         }
       });
+      // Null is meaningful for draws, no contests, and cleared results.
+      mergedFight.winner = updatedFight.winner ?? null;
+      mergedFight.result_type = updatedFight.result_type ?? null;
+      mergedFight.is_completed = Boolean(updatedFight.is_completed);
 
       setFights(fights.map(fight => 
         fight.id === fightId ? mergedFight : fight
@@ -1372,11 +1380,13 @@ function Fights({
           const fightFormatDetails = getFightFormatDetails(fight);
           const hasFightMeta = fight.card_tier || fight.weightclass || fight.is_canceled || fightFormatDetails;
           const fightCardClassName = `fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''} ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
+          const neutralResultLabel = RESULT_TYPE_LABELS[fight.result_type] || null;
 
           return (
         <div
           key={fight.id}
           className={fightCardClassName}
+          data-result-label={neutralResultLabel || (fight.is_completed ? 'Fight Completed' : undefined)}
           data-fight-id={fight.id}
           ref={(node) => {
             const fightKey = String(fight.id);
@@ -1435,9 +1445,11 @@ function Fights({
             <div
               className={`fighter-card ${
                 fight.is_completed
-                  ? String(fight.winner) === String(fight.fighter1_id)
-                    ? 'winner'
-                    : 'loser'
+                  ? fight.winner
+                    ? String(fight.winner) === String(fight.fighter1_id)
+                      ? 'winner'
+                      : 'loser'
+                    : 'neutral-result'
                   : (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id)
                     ? 'selected'
                     : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id)
@@ -1591,9 +1603,11 @@ function Fights({
             <div
               className={`fighter-card ${
                 fight.is_completed
-                  ? String(fight.winner) === String(fight.fighter2_id)
-                    ? 'winner'
-                    : 'loser'
+                  ? fight.winner
+                    ? String(fight.winner) === String(fight.fighter2_id)
+                      ? 'winner'
+                      : 'loser'
+                    : 'neutral-result'
                   : (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id)
                     ? 'selected'
                     : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id)
@@ -1910,10 +1924,12 @@ function Fights({
                     <div className="admin-canceled-display">
                       <span className="canceled-text">Fight Canceled</span>
                     </div>
-                  ) : fight.winner && editingFight !== fight.id ? (
+                  ) : fight.is_completed && editingFight !== fight.id ? (
                     <div className="admin-result-display">
                       <span className="winner-text">
-                        Winner: {String(fight.winner) === String(fight.fighter1_id) ? fight.fighter1_name : fight.fighter2_name}
+                        {fight.winner
+                          ? `Winner: ${String(fight.winner) === String(fight.fighter1_id) ? fight.fighter1_name : fight.fighter2_name}`
+                          : RESULT_TYPE_LABELS[fight.result_type] || 'Completed'}
                       </span>
                       <div className="admin-action-buttons">
                         <button 
@@ -1930,29 +1946,43 @@ function Fights({
                         </button>
                       </div>
                     </div>
-                  ) : (editingFight === fight.id || !fight.winner) && (
+                  ) : (editingFight === fight.id || !fight.is_completed) && (
                     <div className="admin-result-editor">
                       <div className="admin-buttons">
                         <button
                           className={`admin-winner-button ${String(fight.winner) === String(fight.fighter1_id) ? 'selected' : ''}`}
-                          onClick={() => handleResultUpdate(fight.id, fight.fighter1_id)}
+                          onClick={() => handleResultUpdate(fight.id, fight.fighter1_id, 'winner')}
                         >
                           {fight.fighter1_name} Won
                         </button>
                         <button
                           className={`admin-winner-button ${String(fight.winner) === String(fight.fighter2_id) ? 'selected' : ''}`}
-                          onClick={() => handleResultUpdate(fight.id, fight.fighter2_id)}
+                          onClick={() => handleResultUpdate(fight.id, fight.fighter2_id, 'winner')}
                         >
                           {fight.fighter2_name} Won
                         </button>
                       </div>
+                      <div className="admin-buttons admin-neutral-result-buttons">
+                        <button
+                          className={`admin-winner-button ${fight.result_type === 'draw' ? 'selected' : ''}`}
+                          onClick={() => handleResultUpdate(fight.id, null, 'draw')}
+                        >
+                          Draw
+                        </button>
+                        <button
+                          className={`admin-winner-button ${fight.result_type === 'no_contest' ? 'selected' : ''}`}
+                          onClick={() => handleResultUpdate(fight.id, null, 'no_contest')}
+                        >
+                          No Contest
+                        </button>
+                      </div>
                       <div className="admin-action-buttons">
-                        {fight.winner && (
+                        {fight.is_completed && (
                           <button
                             className="admin-unselect-button"
-                            onClick={() => handleResultUpdate(fight.id, null)}
+                            onClick={() => handleResultUpdate(fight.id, null, null)}
                           >
-                            Unselect Winner
+                            Clear Result
                           </button>
                         )}
                         <button 

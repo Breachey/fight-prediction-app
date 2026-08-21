@@ -52,6 +52,7 @@ const {
   addFightToFightRankChanges,
   findLatestCompletedFightId,
 } = require('./lib/eventLeaderboardDeltas');
+const { scorePredictionOutcome } = require('./lib/predictionScoring');
 const {
   runUfcEventDiscovery,
 } = require('./lib/ufcEventDiscovery');
@@ -730,7 +731,7 @@ async function loadStreakVerificationByFighterId(rows) {
     fightIds.length > 0
       ? supabase
           .from('fight_results')
-          .select('fight_id,fighter_id,is_completed')
+          .select('fight_id,fighter_id,is_completed,result_type')
           .in('fight_id', fightIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -752,7 +753,9 @@ async function loadStreakVerificationByFighterId(rows) {
     );
     const result = resultsByFightId.get(Number(row?.FightId ?? row?.fightId));
     let comparisonRow = row;
-    if (result?.is_completed === true && row) {
+    const hasWinnerResult = result?.is_completed === true
+      && (result.result_type === 'winner' || (!result.result_type && result.fighter_id != null));
+    if (hasWinnerResult && row) {
       const won = Number(result.fighter_id) === fighterId;
       const wins = normalizeFiniteInteger(row.Record_Wins);
       const losses = normalizeFiniteInteger(row.Record_Losses);
@@ -794,14 +797,16 @@ async function persistVerifiedStreakAnchor({ row, eventId, streak, source }) {
   if (Number.isFinite(fightId)) {
     const { data: result, error: resultError } = await supabase
       .from('fight_results')
-      .select('fighter_id,is_completed')
+      .select('fighter_id,is_completed,result_type')
       .eq('fight_id', fightId)
       .maybeSingle();
     if (resultError) {
       throw new Error(`Failed to check the fight result before verifying streak: ${resultError.message}`);
     }
     fightCompleted = result?.is_completed === true;
-    if (fightCompleted) {
+    const hasWinnerResult = fightCompleted
+      && (result.result_type === 'winner' || (!result.result_type && result.fighter_id != null));
+    if (hasWinnerResult) {
       const won = Number(result.fighter_id) === fighterId;
       const recordWins = normalizeFiniteInteger(row?.Record_Wins);
       const recordLosses = normalizeFiniteInteger(row?.Record_Losses);
@@ -1405,21 +1410,6 @@ function parseOptionalInteger(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function calculatePredictionPointsFromOdds(odds) {
-  if (odds === undefined || odds === null) {
-    return 1;
-  }
-
-  const numericOdds = Number(odds);
-  if (!Number.isFinite(numericOdds) || numericOdds === 0) {
-    return 1;
-  }
-
-  return numericOdds > 0
-    ? Math.ceil((numericOdds / 100) + 1)
-    : Math.ceil((100 / Math.abs(numericOdds)) + 1);
-}
-
 function isMainCardSegment(segment) {
   return String(segment || '').trim().toLowerCase() === 'main';
 }
@@ -1523,7 +1513,7 @@ async function recalculatePredictionResultsForEvent(eventId) {
     fetchAllFromSupabase(
       supabase
         .from('fight_results')
-        .select('fight_id, fighter_id, is_completed')
+        .select('fight_id, fighter_id, is_completed, result_type')
         .in('fight_id', fightIds)
     ),
     fetchAllFromSupabase(
@@ -1534,17 +1524,25 @@ async function recalculatePredictionResultsForEvent(eventId) {
     ),
   ]);
 
-  const completedWinnerByFightId = new Map();
+  const completedOutcomeByFightId = new Map();
   (fightResults || []).forEach((row) => {
     const fightId = Number(row?.fight_id);
-    if (!Number.isFinite(fightId) || !row?.is_completed || row?.fighter_id === null) {
+    if (!Number.isFinite(fightId) || !row?.is_completed) {
       return;
     }
-    completedWinnerByFightId.set(fightId, row.fighter_id);
+    const resultType = row.result_type
+      || (row.fighter_id !== null && row.fighter_id !== undefined ? 'winner' : null);
+    if (!['winner', 'draw', 'no_contest'].includes(resultType)) {
+      return;
+    }
+    completedOutcomeByFightId.set(fightId, {
+      resultType,
+      winnerId: resultType === 'winner' ? row.fighter_id : null,
+    });
   });
 
   const completedFights = [...fightMetaById.values()]
-    .filter((fight) => completedWinnerByFightId.has(fight.fight_id))
+    .filter((fight) => completedOutcomeByFightId.has(fight.fight_id))
     .sort(compareFightSequence);
   const allMainCardFightIds = [...fightMetaById.values()]
     .filter((fight) => isMainCardSegment(fight.card_segment))
@@ -1590,11 +1588,17 @@ async function recalculatePredictionResultsForEvent(eventId) {
         return;
       }
 
-      const predictedCorrectly = String(prediction.fighter_id) === String(completedWinnerByFightId.get(fight.fight_id));
-      let points = 0;
+      const outcome = completedOutcomeByFightId.get(fight.fight_id);
+      const baseScore = scorePredictionOutcome({
+        resultType: outcome.resultType,
+        winnerId: outcome.winnerId,
+        predictionFighterId: prediction.fighter_id,
+        bettingOdds: prediction.betting_odds,
+      });
+      const predictedCorrectly = baseScore.predictedCorrectly;
+      let points = baseScore.points;
 
       if (predictedCorrectly) {
-        points = calculatePredictionPointsFromOdds(prediction.betting_odds);
         runningCorrectStreak += 1;
 
         EVENT_STREAK_BONUS_THRESHOLDS.forEach(({ streak, bonus }) => {
@@ -2226,7 +2230,7 @@ app.get('/fights', async (req, res) => {
     // Get fight results
     const { data: fightResults, error: resultsError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id');
+      .select('fight_id, fighter_id, is_completed, result_type');
 
     if (resultsError) {
       console.error('Error fetching fight results:', resultsError);
@@ -2236,8 +2240,7 @@ app.get('/fights', async (req, res) => {
     // Create a map of fight results
     const fightResultsMap = new Map();
     fightResults.forEach(result => {
-      const { fight_id, fighter_id } = result;
-      fightResultsMap.set(fight_id, fighter_id);
+      fightResultsMap.set(result.fight_id, result);
     });
 
     // Group fighters by FightId
@@ -2428,7 +2431,7 @@ app.get('/predictions/history', requireUserSession, async (req, res) => {
 
     const fightResultsQuery = supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed')
+      .select('fight_id, fighter_id, is_completed, result_type')
       .in('fight_id', fightIds);
     const fightResults = await fetchAllFromSupabase(fightResultsQuery);
     const fightResultMap = new Map(
@@ -2436,7 +2439,8 @@ app.get('/predictions/history', requireUserSession, async (req, res) => {
         Number(result.fight_id),
         {
           winner: result.fighter_id,
-          is_completed: Boolean(result.is_completed)
+          is_completed: Boolean(result.is_completed),
+          result_type: result.result_type,
         }
       ])
     );
@@ -2460,8 +2464,9 @@ app.get('/predictions/history', requireUserSession, async (req, res) => {
           event_id: eventId,
           event_date: eventId ? (eventDateMap.get(eventId) || null) : null,
           winner,
+          result_type: result?.result_type || (winner !== null ? 'winner' : null),
           is_completed: isCompleted,
-          fighter_won: fighterWon
+          fighter_won: fighterWon,
         };
       })
       .sort((a, b) => {
@@ -2807,14 +2812,15 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
 app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
-    const { winner } = req.body;
+    const { winner, result_type: requestedResultType } = req.body;
 
     debugLog('Received request to update fight result:', {
       id,
       idType: typeof id,
       idLength: id.length,
       winner,
-      winnerType: typeof winner
+      winnerType: typeof winner,
+      requestedResultType,
     });
 
     // First get the fight data to get the event_id and fighter IDs
@@ -2841,9 +2847,22 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       return res.status(404).json({ error: 'Missing fighter data' });
     }
 
-    // Determine the winner's fighter_id
+    const inferredResultType = requestedResultType
+      || (winner !== null && winner !== undefined && winner !== '' ? 'winner' : null);
+    if (inferredResultType !== null && !['winner', 'draw', 'no_contest'].includes(inferredResultType)) {
+      return res.status(400).json({ error: 'Result type must be winner, draw, or no_contest' });
+    }
+
+    if (inferredResultType !== 'winner' && winner !== null && winner !== undefined && winner !== '') {
+      return res.status(400).json({ error: 'Draw and no contest results cannot include a winner' });
+    }
+
+    // Determine the winner's fighter_id for winner outcomes.
     let winner_id = null;
-    if (winner !== null && winner !== undefined && winner !== '') {
+    if (inferredResultType === 'winner') {
+      if (winner === null || winner === undefined || winner === '') {
+        return res.status(400).json({ error: 'Winner id is required for a winner result' });
+      }
       winner_id = Number(winner);
       if (!Number.isFinite(winner_id)) {
         return res.status(400).json({ error: 'Invalid winner id' });
@@ -2860,7 +2879,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
 
     const { data: existingResult, error: existingResultError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed')
+      .select('fight_id, fighter_id, is_completed, result_type')
       .eq('fight_id', id)
       .maybeSingle();
 
@@ -2869,14 +2888,17 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
       return res.status(500).json({ error: 'Failed to fetch existing fight result' });
     }
 
-    // Update fight_results table with fighter_id
+    const isCompleted = inferredResultType !== null;
+
+    // Store the completed outcome; neutral outcomes intentionally have no fighter_id.
     const { error: updateError } = await supabase
       .from('fight_results')
       .upsert([
         {
           fight_id: id,
           fighter_id: winner_id,
-          is_completed: winner_id !== null
+          is_completed: isCompleted,
+          result_type: inferredResultType,
         }
       ], {
         onConflict: ['fight_id']
@@ -2895,7 +2917,11 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     const previousWinnerId = existingResult?.is_completed && existingResult?.fighter_id !== null
       ? Number(existingResult.fighter_id)
       : null;
-    const resultChanged = previousWinnerId !== winner_id;
+    const previousResultType = existingResult?.result_type
+      || (previousWinnerId !== null ? 'winner' : null);
+    const resultChanged = previousWinnerId !== winner_id
+      || previousResultType !== inferredResultType
+      || Boolean(existingResult?.is_completed) !== isCompleted;
 
     if (resultChanged) {
       try {
@@ -2915,6 +2941,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
         event_id,
         updated_fight_id: id,
         winner_id,
+        result_type: inferredResultType,
         rowCount: recalculatedResults.rowCount,
       });
     } catch (predictionResultsError) {
@@ -2925,7 +2952,7 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
     // Get the updated fight result
     const { data: updatedResult, error: getResultError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed')
+      .select('fight_id, fighter_id, is_completed, result_type')
       .eq('fight_id', id)
       .single();
 
@@ -2955,7 +2982,8 @@ app.post('/ufc_full_fight_card/:id/result', requireAdminSession, async (req, res
         fight_id: id,
         event_id,
         winner_id,
-        is_completed: winner_id !== null,
+        result_type: inferredResultType,
+        is_completed: isCompleted,
         fighter_streak_sync: fighterStreakSync,
       },
     });
@@ -4154,7 +4182,7 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
     if (existingFightIds.length > 0) {
       const { data, error } = await supabase
         .from('fight_results')
-        .select('fight_id, fighter_id, is_completed')
+        .select('fight_id, fighter_id, is_completed, result_type')
         .in('fight_id', existingFightIds);
 
       if (error) {
@@ -5474,7 +5502,7 @@ app.get('/events/:id/fights', async (req, res) => {
     // Get only the selected event's fight results so live refreshes stay lightweight.
     const { data: fightResults, error: resultsError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed')
+      .select('fight_id, fighter_id, is_completed, result_type')
       .in('fight_id', fightIds);
 
     if (resultsError) {
@@ -5488,7 +5516,8 @@ app.get('/events/:id/fights', async (req, res) => {
       const numericFightId = Number(result.fight_id);
       fightResultsMap.set(numericFightId, {
         winner: result.fighter_id,
-        is_completed: result.is_completed
+        is_completed: result.is_completed,
+        result_type: result.result_type,
       });
     });
 
@@ -5572,7 +5601,7 @@ app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
     }
 
     const [resultsResult, predictions, users, remindersResult, userPredictionRows] = await Promise.all([
-      supabase.from('fight_results').select('fight_id, fighter_id, is_completed').in('fight_id', fightIds),
+      supabase.from('fight_results').select('fight_id, fighter_id, is_completed, result_type').in('fight_id', fightIds),
       fetchAllFromSupabase(supabase.from('predictions').select('fight_id, fighter_id, user_id, username').in('fight_id', fightIds)),
       fetchAllUsers('user_id, username, is_bot'),
       supabase.from('fighter_vote_reminders').select('fighter_id, fighter_name, reminder_type, created_at, updated_at').eq('user_id', req.authenticatedUser.user_id).order('updated_at', { ascending: false }),
@@ -5598,7 +5627,11 @@ app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
         eventDate: eventData.date || null,
         redFighter: group.red,
         blueFighter: group.blue,
-        result: result ? { winner: result.fighter_id, is_completed: result.is_completed } : null,
+        result: result ? {
+          winner: result.fighter_id,
+          is_completed: result.is_completed,
+          result_type: result.result_type,
+        } : null,
         weightclassMap,
       })];
     });
@@ -5617,7 +5650,7 @@ app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
       const eventDates = new Map(historyEvents.map((event) => [Number(event.id), event.date]));
       historyFightMeta = historyRows.map((row) => ({ ...row, event_date: eventDates.get(Number(row.EventId)) || null }));
       historyResults = await fetchAllFromSupabase(
-        supabase.from('fight_results').select('fight_id, fighter_id, is_completed').in('fight_id', historyFightIds)
+        supabase.from('fight_results').select('fight_id, fighter_id, is_completed, result_type').in('fight_id', historyFightIds)
       );
     }
 
@@ -6436,7 +6469,7 @@ app.get('/events/:id/friend-comparison', requireUserSession, async (req, res) =>
           fetchAllFromSupabase(
             supabase
               .from('fight_results')
-              .select('fight_id, fighter_id, is_completed')
+              .select('fight_id, fighter_id, is_completed, result_type')
               .in('fight_id', fightIds)
           ),
         ])
@@ -6512,7 +6545,7 @@ app.get('/events/:id/recap', async (req, res) => {
           fetchAllFromSupabase(
             supabase
               .from('fight_results')
-              .select('fight_id, fighter_id, is_completed')
+              .select('fight_id, fighter_id, is_completed, result_type')
               .in('fight_id', fightIds)
           ),
         ])
@@ -6832,7 +6865,7 @@ app.get('/ufc_full_fight_card/:id', async (req, res) => {
     // Get the fight result (keep .single() here)
     const { data: fightResult, error: getResultError } = await supabase
       .from('fight_results')
-      .select('fight_id, fighter_id, is_completed')
+      .select('fight_id, fighter_id, is_completed, result_type')
       .eq('fight_id', id)
       .single();
 
