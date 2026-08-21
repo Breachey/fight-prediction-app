@@ -14,6 +14,12 @@ function getFightStateCopy(fight, friendName) {
   if (fight.comparison_state === 'canceled') {
     return { label: 'Canceled', detail: 'No sweat' };
   }
+  if (fight.is_completed && fight.result_type === 'draw') {
+    return { label: 'Draw', detail: 'No points' };
+  }
+  if (fight.is_completed && fight.result_type === 'no_contest') {
+    return { label: 'No contest', detail: 'No points' };
+  }
   if (fight.comparison_state === 'agreement') {
     if (!fight.is_completed) return { label: 'Agree', detail: 'Same side' };
     if (fight.viewer_pick?.is_correct) return { label: 'Agree', detail: 'Both hit' };

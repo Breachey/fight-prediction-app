@@ -184,6 +184,9 @@ function buildEventFriendComparison({
     const result = resultsByFight.get(fight.fight_id) || null;
     const isCompleted = Boolean(result?.is_completed);
     const winnerId = isCompleted ? normalizeId(result?.fighter_id) : null;
+    const resultType = isCompleted
+      ? (result?.result_type || (winnerId ? 'winner' : null))
+      : null;
     const isVisible = Boolean(viewerPrediction) || isCompleted;
     const viewerPick = toPick(viewerPrediction, fight, viewerId, isCompleted, winnerId);
     const friendPick = isVisible
@@ -205,6 +208,7 @@ function buildEventFriendComparison({
       card_segment: fight.card_segment,
       matchup: [...fight.fighters.values()],
       is_completed: isCompleted,
+      result_type: resultType,
       is_canceled: fight.is_canceled,
       is_visible: isVisible,
       comparison_state: comparisonState,

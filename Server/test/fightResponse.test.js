@@ -115,9 +115,24 @@ test('buildFightResponse keeps fight metadata and title round fields', () => {
   assert.equal(response.fighter2_style, 'Wrestling');
   assert.equal(response.winner, 2);
   assert.equal(response.is_completed, true);
+  assert.equal(response.result_type, 'winner');
   assert.equal(response.card_tier, 'Prelims');
   assert.equal(response.weightclass, 'Lightweight Bangers');
   assert.equal(response.scheduled_rounds, 5);
   assert.equal(response.is_title_fight, true);
   assert.equal(response.title_fight_name, 'Interim Belt');
+});
+
+test('buildFightResponse preserves completed neutral outcomes without a winner', () => {
+  const response = buildFightResponse({
+    fightId: 123,
+    eventId: 99,
+    redFighter,
+    blueFighter,
+    result: { fighter_id: null, is_completed: true, result_type: 'no_contest' },
+  });
+
+  assert.equal(response.winner, null);
+  assert.equal(response.is_completed, true);
+  assert.equal(response.result_type, 'no_contest');
 });

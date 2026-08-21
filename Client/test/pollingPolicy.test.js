@@ -39,4 +39,8 @@ test('detects completed, canceled, and corrected fight results', () => {
   assert.equal(haveFightResultsChanged(current, completed), true);
   assert.equal(haveFightResultsChanged(completed, equivalent), false);
   assert.equal(haveFightResultsChanged(completed, corrected), true);
+  assert.equal(haveFightResultsChanged(
+    [{ id: 10, winner: null, result_type: 'draw', is_completed: true, is_canceled: false }],
+    [{ id: 10, winner: null, result_type: 'no_contest', is_completed: true, is_canceled: false }]
+  ), true);
 });

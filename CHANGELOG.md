@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.19.0 - 2026-08-21
+
+### Added
+
+- Added Draw and No Contest fight outcomes to the admin result controls and fight-card result display.
+
+### Changed
+
+- Made Draw and No Contest complete a fight while awarding every submitted pick zero points and leaving both fighters without a win or loss result.
+
 ## 0.18.4 - 2026-08-21
 
 ### Fixed

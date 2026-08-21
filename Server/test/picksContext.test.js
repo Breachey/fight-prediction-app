@@ -61,3 +61,16 @@ test('buildPicksContextPayload returns stable empty collections', () => {
     prior_pick_outcomes: [],
   });
 });
+
+test('buildPriorPickOutcomes treats a neutral result as completed without a loss', () => {
+  const outcomes = buildPriorPickOutcomes({
+    predictions: [{ fight_id: 1, fighter_id: 11 }],
+    fightMeta: [{ FightId: 1, EventId: 100, event_date: '2026-01-01' }],
+    results: [{ fight_id: 1, fighter_id: null, is_completed: true, result_type: 'draw' }],
+    selectedEventDate: '2026-08-01',
+  });
+
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].result_type, 'draw');
+  assert.equal(outcomes[0].fighter_won, null);
+});

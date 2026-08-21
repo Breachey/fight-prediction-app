@@ -48,8 +48,11 @@ function buildPriorPickOutcomes({ predictions = [], fightMeta = [], results = []
         event_id: meta?.EventId || null,
         event_date: meta?.event_date || null,
         winner: result.fighter_id ?? null,
+        result_type: result.result_type || (result.fighter_id != null ? 'winner' : null),
         is_completed: true,
-        fighter_won: String(result.fighter_id) === String(prediction.fighter_id),
+        fighter_won: result.fighter_id == null
+          ? null
+          : String(result.fighter_id) === String(prediction.fighter_id),
       };
     })
     .filter(Boolean)

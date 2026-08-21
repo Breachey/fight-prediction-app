@@ -131,15 +131,21 @@ function resolveFightResult(result) {
       ? result.winner
       : result.fighter_id;
 
+    const isCompleted = result.is_completed ?? Boolean(winner);
+    const resultType = result.result_type
+      || (isCompleted && winner !== null && winner !== undefined ? 'winner' : null);
+
     return {
-      winner: winner || null,
-      is_completed: result.is_completed ?? Boolean(winner),
+      winner: winner ?? null,
+      is_completed: isCompleted,
+      result_type: resultType,
     };
   }
 
   return {
-    winner: result || null,
+    winner: result ?? null,
     is_completed: Boolean(result),
+    result_type: result ? 'winner' : null,
   };
 }
 
@@ -214,6 +220,7 @@ function buildFightResponse({
     fighter2_decision_losses: blue.decisionLosses,
     winner: resolvedResult.winner,
     is_completed: resolvedResult.is_completed,
+    result_type: resolvedResult.result_type,
     is_canceled: redFighter?.FightStatus === 'Canceled' || blueFighter?.FightStatus === 'Canceled',
     fight_status: fightStatus,
     card_tier: normalizeCardTier(redFighter?.CardSegment),

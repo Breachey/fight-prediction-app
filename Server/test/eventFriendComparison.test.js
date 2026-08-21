@@ -89,3 +89,30 @@ test('returns a stable empty comparison when no friend has picked the card', () 
   assert.deepEqual(comparison.fights, []);
   assert.equal(comparison.summary.locked_fights, 3);
 });
+
+test('preserves neutral completed outcomes with zero-point picks', () => {
+  const comparison = buildEventFriendComparison({
+    viewerUserId: 1,
+    friendUserId: 2,
+    users,
+    fightRows,
+    predictions: [
+      { fight_id: 20, fighter_id: 201, user_id: 1 },
+      { fight_id: 20, fighter_id: 202, user_id: 2 },
+    ],
+    predictionResults: [
+      { fight_id: 20, user_id: 1, predicted_correctly: false, points: 0 },
+      { fight_id: 20, user_id: 2, predicted_correctly: false, points: 0 },
+    ],
+    fightResults: [{ fight_id: 20, fighter_id: null, is_completed: true, result_type: 'draw' }],
+  });
+
+  const draw = comparison.fights.find((fight) => fight.fight_id === '20');
+  assert.equal(draw.is_completed, true);
+  assert.equal(draw.result_type, 'draw');
+  assert.equal(draw.winner, null);
+  assert.equal(draw.viewer_pick.points, 0);
+  assert.equal(draw.viewer_pick.is_correct, null);
+  assert.equal(draw.friend_pick.points, 0);
+  assert.equal(draw.friend_pick.is_correct, null);
+});

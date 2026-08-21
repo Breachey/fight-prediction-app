@@ -18,6 +18,7 @@ function normalizeFightCardForComparison(fights) {
     fighter1_id: fight?.fighter1_id == null ? null : String(fight.fighter1_id),
     fighter2_id: fight?.fighter2_id == null ? null : String(fight.fighter2_id),
     winner: fight?.winner == null ? null : String(fight.winner),
+    result_type: fight?.result_type || null,
   }));
 }
 
@@ -30,6 +31,7 @@ export function haveFightResultsChanged(currentFights, incomingFights) {
   const resultState = (fights) => (Array.isArray(fights) ? fights : []).map((fight) => ({
     id: String(fight?.id ?? ''),
     winner: fight?.winner == null ? null : String(fight.winner),
+    result_type: fight?.result_type || null,
     is_completed: Boolean(fight?.is_completed),
     is_canceled: Boolean(fight?.is_canceled),
   }));
