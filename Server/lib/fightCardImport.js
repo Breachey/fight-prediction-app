@@ -1120,7 +1120,7 @@ async function buildFightCardPreview({
       blockers.push(`${rowLabel} has invalid Corner "${cornerValue}".`);
     }
 
-    if (!normalizeText(row.FirstName) || !normalizeText(row.LastName)) {
+    if (!normalizeText(row.FirstName) && !normalizeText(row.LastName)) {
       blockers.push(`${rowLabel} is missing the fighter name.`);
     }
 

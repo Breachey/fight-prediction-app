@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.18.3 - 2026-08-21
+
+### Fixed
+
+- Allowed fight-card imports for mononymous fighters when the UFC feed supplies a last name without a first name, while continuing to reject rows with no name at all.
+
 ## 0.18.2 - 2026-08-21
 
 ### Changed

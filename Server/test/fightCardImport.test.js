@@ -213,6 +213,70 @@ test('buildFightCardPreview distinguishes cached Tapology data from no Tapology 
   );
 });
 
+test('buildFightCardPreview accepts mononymous fighters but still blocks a fully blank name', async () => {
+  const baseRow = {
+    Event: 'UFC Test',
+    EventId: '1326',
+    FightId: '12959',
+    Corner: 'Red',
+  };
+  const mononymRows = [
+    {
+      ...baseRow,
+      __rowNumber: 2,
+      FighterId: '3634',
+      FirstName: '',
+      LastName: 'Aoriqileng',
+    },
+    {
+      ...baseRow,
+      __rowNumber: 3,
+      FighterId: '4270',
+      Corner: 'Blue',
+      FirstName: 'Kai',
+      LastName: 'Asakura',
+    },
+  ];
+
+  const mononymPreview = await buildFightCardPreview({
+    eventId: 1326,
+    csvPath: '/tmp/mononym.csv',
+    headers: [],
+    rows: mononymRows,
+    headerErrors: [],
+    eventRecord: { id: 1326, name: 'UFC Test' },
+    existingFightCardRows: [],
+    existingFightResults: [],
+    scraperOutput: {},
+  });
+
+  assert.equal(
+    mononymPreview.blockers.some((blocker) => blocker.includes('missing the fighter name')),
+    false
+  );
+  assert.equal(mononymPreview.rows[0].FirstName, null);
+  assert.equal(mononymPreview.rows[0].LastName, 'Aoriqileng');
+
+  const blankNamePreview = await buildFightCardPreview({
+    eventId: 1326,
+    csvPath: '/tmp/blank-name.csv',
+    headers: [],
+    rows: [
+      { ...mononymRows[0], FirstName: '', LastName: '' },
+      mononymRows[1],
+    ],
+    headerErrors: [],
+    eventRecord: { id: 1326, name: 'UFC Test' },
+    existingFightCardRows: [],
+    existingFightResults: [],
+    scraperOutput: {},
+  });
+
+  assert(
+    blankNamePreview.blockers.includes('Row 2 is missing the fighter name.')
+  );
+});
+
 test('syncFighterStyleFromFightCardRows does not recycle fight-card stats into fighters', async () => {
   const fighterRows = [];
   const fakeSupabase = {
