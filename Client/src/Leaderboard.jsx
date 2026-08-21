@@ -5,7 +5,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson } from './utils/apiCache';
 import { shouldPollEventLeaderboard } from './utils/pollingPolicy';
+import { fetchWithUserSession } from './utils/userSession';
 import SquidAvatar from './components/SquidAvatar';
+import EventRecap from './components/EventRecap';
+import EventFriendComparison from './components/EventFriendComparison';
 import './Leaderboard.css';
 
 const LEADERBOARD_REFRESH_INTERVAL_MS = 15000;
@@ -25,6 +28,13 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [eventRecap, setEventRecap] = useState(null);
+  const [isRecapLoading, setIsRecapLoading] = useState(false);
+  const [recapError, setRecapError] = useState('');
+  const [eventComparison, setEventComparison] = useState(null);
+  const [selectedFriendId, setSelectedFriendId] = useState('');
+  const [isComparisonLoading, setIsComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState('');
   const loadedRef = useRef({ event: false, overall: false, season: false, '2025': false });
   const showBots = showAIUsers;
   // Which leaderboard is currently selected ('event' or 'overall' or 'season' or '2025')
@@ -32,6 +42,10 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
   const lastAppliedRefreshTokenRef = useRef(refreshToken);
   const lastFocusRefreshRef = useRef(0);
+  const activeRecapEventIdRef = useRef(eventId);
+  const activeComparisonEventIdRef = useRef(eventId);
+  const activeComparisonFriendIdRef = useRef('');
+  const comparisonRequestIdRef = useRef(0);
   const containerRef = useRef(null);
 
   const getEndpoint = useCallback((type) => {
@@ -120,12 +134,131 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
     }
   }, [getEndpoint, setLeaderboardData]);
 
+  const fetchEventRecap = useCallback(async ({ force = false } = {}) => {
+    if (!eventId || !isEventComplete) return;
+    const requestedEventId = eventId;
+    setIsRecapLoading(true);
+    setRecapError('');
+    try {
+      const recap = await cachedFetchJson(`${API_URL}/events/${requestedEventId}/recap`, {
+        cacheKey: `event-recap:${requestedEventId}`,
+        ttlMs: 60000,
+        force,
+        allowStaleOnError: !force,
+        staleWhileRevalidate: !force,
+        fetchOptions: { cache: 'no-store' },
+      });
+      if (String(activeRecapEventIdRef.current) !== String(requestedEventId)) return;
+      setEventRecap(recap || null);
+    } catch (recapFetchError) {
+      console.error('Error fetching event recap:', recapFetchError);
+      if (String(activeRecapEventIdRef.current) === String(requestedEventId)) {
+        setRecapError('The event recap could not be loaded.');
+      }
+    } finally {
+      if (String(activeRecapEventIdRef.current) === String(requestedEventId)) {
+        setIsRecapLoading(false);
+      }
+    }
+  }, [eventId, isEventComplete]);
+
+  const fetchEventComparison = useCallback(async ({ friendUserId = '', force = false } = {}) => {
+    if (!eventId || !currentUserId) return;
+    const requestedEventId = eventId;
+    const requestedFriendId = friendUserId ? String(friendUserId) : '';
+    const requestId = comparisonRequestIdRef.current + 1;
+    comparisonRequestIdRef.current = requestId;
+    setIsComparisonLoading(true);
+    setComparisonError('');
+
+    const friendParam = requestedFriendId
+      ? `?friend_user_id=${encodeURIComponent(requestedFriendId)}`
+      : '';
+    const endpoint = `${API_URL}/events/${requestedEventId}/friend-comparison${friendParam}`;
+    try {
+      const comparison = await cachedFetchJson(endpoint, {
+        cacheKey: `event-friend-comparison:${currentUserId}:${requestedEventId}:${requestedFriendId || 'default'}`,
+        ttlMs: isEventComplete ? 60000 : LEADERBOARD_REFRESH_INTERVAL_MS,
+        force,
+        allowStaleOnError: !force,
+        staleWhileRevalidate: !force,
+        privateCache: true,
+        fetcher: fetchWithUserSession,
+        fetchOptions: { cache: 'no-store' },
+      });
+      if (
+        comparisonRequestIdRef.current !== requestId ||
+        String(activeComparisonEventIdRef.current) !== String(requestedEventId)
+      ) return;
+      setEventComparison(comparison || null);
+      const resolvedFriendId = comparison?.selected_friend?.user_id
+        ? String(comparison.selected_friend.user_id)
+        : '';
+      activeComparisonFriendIdRef.current = resolvedFriendId;
+      if (requestedFriendId) setSelectedFriendId(resolvedFriendId);
+    } catch (comparisonFetchError) {
+      console.error('Error fetching event friend comparison:', comparisonFetchError);
+      if (
+        comparisonRequestIdRef.current === requestId &&
+        String(activeComparisonEventIdRef.current) === String(requestedEventId)
+      ) {
+        setComparisonError('The friend comparison could not be loaded.');
+      }
+    } finally {
+      if (
+        comparisonRequestIdRef.current === requestId &&
+        String(activeComparisonEventIdRef.current) === String(requestedEventId)
+      ) {
+        setIsComparisonLoading(false);
+      }
+    }
+  }, [currentUserId, eventId, isEventComplete]);
+
   // Reset selected leaderboard if eventId changes
   useEffect(() => {
+    activeRecapEventIdRef.current = eventId;
+    activeComparisonEventIdRef.current = eventId;
+    activeComparisonFriendIdRef.current = '';
+    comparisonRequestIdRef.current += 1;
     setSelectedLeaderboard(eventId ? 'event' : 'overall');
     setEventLeaderboard([]);
+    setEventRecap(null);
+    setRecapError('');
+    setEventComparison(null);
+    setSelectedFriendId('');
+    setComparisonError('');
     loadedRef.current.event = false;
   }, [eventId]);
+
+  useEffect(() => {
+    if (selectedLeaderboard !== 'event' || !eventId || !isEventComplete) return;
+    fetchEventRecap();
+  }, [eventId, fetchEventRecap, isEventComplete, selectedLeaderboard]);
+
+  useEffect(() => {
+    if (selectedLeaderboard !== 'event' || !eventId || !currentUserId) return;
+    fetchEventComparison({ friendUserId: activeComparisonFriendIdRef.current });
+  }, [currentUserId, eventId, fetchEventComparison, selectedLeaderboard]);
+
+  const handleFriendChange = (friendUserId) => {
+    const normalizedFriendId = String(friendUserId || '');
+    activeComparisonFriendIdRef.current = normalizedFriendId;
+    setSelectedFriendId(normalizedFriendId);
+    fetchEventComparison({ friendUserId: normalizedFriendId, force: true });
+  };
+
+  const handleManualRefresh = () => {
+    fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true, showManualIndicator: true });
+    if (selectedLeaderboard === 'event') {
+      fetchEventComparison({
+        friendUserId: activeComparisonFriendIdRef.current,
+        force: true,
+      });
+    }
+    if (selectedLeaderboard === 'event' && isEventComplete) {
+      fetchEventRecap({ force: true });
+    }
+  };
 
   // Poll only the active, unfinished event leaderboard while the page is visible.
   useEffect(() => {
@@ -134,10 +267,14 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
     const refreshInterval = setInterval(() => {
       if (shouldPollEventLeaderboard({ selectedLeaderboard, isEventComplete, visibilityState: document.visibilityState })) {
         fetchLeaderboard('event', { skipGlobalLoading: true });
+        fetchEventComparison({
+          friendUserId: activeComparisonFriendIdRef.current,
+          force: true,
+        });
       }
     }, LEADERBOARD_REFRESH_INTERVAL_MS);
     return () => clearInterval(refreshInterval);
-  }, [selectedLeaderboard, fetchLeaderboard, isEventComplete]);
+  }, [selectedLeaderboard, fetchLeaderboard, fetchEventComparison, isEventComplete]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -146,10 +283,16 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       if (now - lastFocusRefreshRef.current < 60000) return;
       lastFocusRefreshRef.current = now;
       fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true });
+      if (selectedLeaderboard === 'event') {
+        fetchEventComparison({
+          friendUserId: activeComparisonFriendIdRef.current,
+          force: true,
+        });
+      }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [fetchLeaderboard, selectedLeaderboard]);
+  }, [fetchEventComparison, fetchLeaderboard, selectedLeaderboard]);
 
   useEffect(() => {
     if (refreshToken === lastAppliedRefreshTokenRef.current) {
@@ -161,7 +304,13 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       skipGlobalLoading: true,
       showManualIndicator: true
     });
-  }, [refreshToken, selectedLeaderboard, fetchLeaderboard]);
+    if (selectedLeaderboard === 'event') {
+      fetchEventComparison({
+        friendUserId: activeComparisonFriendIdRef.current,
+        force: true,
+      });
+    }
+  }, [refreshToken, selectedLeaderboard, fetchEventComparison, fetchLeaderboard]);
 
   useEffect(() => {
     let cancelled = false;
@@ -852,7 +1001,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
         <button
           className="refresh-button"
           style={refreshButtonStyle(isRefreshing)}
-          onClick={() => fetchLeaderboard(selectedLeaderboard, { skipGlobalLoading: true, showManualIndicator: true })}
+          onClick={handleManualRefresh}
           disabled={isRefreshing}
           aria-label="Refresh leaderboard"
           title="Refresh leaderboard"
@@ -862,11 +1011,23 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       </div>
       {/* Show only the selected leaderboard */}
       {selectedLeaderboard === 'event' && eventId && (
-        <LeaderboardCardsList
-          data={eventLeaderboard}
-          title="Event Leaderboard"
-          showEventCount={false}
-        />
+        <>
+          {isEventComplete && (
+            <EventRecap recap={eventRecap} isLoading={isRecapLoading} error={recapError} />
+          )}
+          <LeaderboardCardsList
+            data={eventLeaderboard}
+            title="Event Leaderboard"
+            showEventCount={false}
+          />
+          <EventFriendComparison
+            comparison={eventComparison}
+            isLoading={isComparisonLoading}
+            error={comparisonError}
+            selectedFriendId={selectedFriendId}
+            onFriendChange={handleFriendChange}
+          />
+        </>
       )}
       {selectedLeaderboard === 'season' && (
         <LeaderboardCardsList

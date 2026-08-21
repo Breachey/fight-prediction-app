@@ -6,6 +6,7 @@ const {
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   selectDueEvents,
+  summarizeFilledFightCardData,
   summarizeMissingFightCardData,
 } = require('../lib/fightCardAutomation');
 
@@ -16,12 +17,13 @@ function fightRows(fightId, redId, redName, blueId, blueName) {
   ];
 }
 
-test('selectDueEvents selects incomplete events due today or tomorrow', () => {
+test('selectDueEvents selects the nearest incomplete events regardless of how far away they are', () => {
   const events = [
-    { id: 3, date: '2026-08-07', is_completed: false },
-    { id: 1, date: '2026-08-05', is_completed: false },
-    { id: 2, date: '2026-08-06', is_completed: false },
-    { id: 4, date: '2026-08-06', is_completed: true },
+    { id: 3, date: '2026-09-12', is_completed: false },
+    { id: 1, date: '2026-08-04', is_completed: false },
+    { id: 2, date: '2026-08-29', is_completed: false },
+    { id: 4, date: '2026-08-22', is_completed: true },
+    { id: 5, date: 'TBD', is_completed: false },
   ];
 
   const selected = selectDueEvents({
@@ -30,7 +32,7 @@ test('selectDueEvents selects incomplete events due today or tomorrow', () => {
     timeZone: 'America/Denver',
   });
 
-  assert.deepEqual(selected.map((event) => event.id), [1, 2]);
+  assert.deepEqual(selected.map((event) => event.id), [2, 3]);
 });
 
 test('selectDueEvents allows an explicit future event but never a completed event', () => {
@@ -70,6 +72,37 @@ test('mergeScrapedRowsWithStoredValues only fills blanks on an existing card', (
   assert.equal(merged.style, 'Boxing');
   assert.equal(merged.KO_TKO_Wins, '8');
   assert.equal(countFilledFightCardValues(existing, [merged]), 2);
+});
+
+test('summarizeFilledFightCardData reports new values by field and new fighter rows', () => {
+  const existing = [{
+    FightId: 10,
+    FighterId: 100,
+    Corner: 'Red',
+    odds: null,
+    Streak: '3',
+  }];
+  const next = [{
+    FightId: 10,
+    FighterId: 100,
+    Corner: 'Red',
+    odds: '-110',
+    Streak: '3',
+  }, {
+    FightId: 10,
+    FighterId: 101,
+    Corner: 'Blue',
+    odds: '+105',
+    style: 'Wrestling',
+  }];
+
+  const summary = summarizeFilledFightCardData(existing, next);
+
+  assert.equal(summary.filledValueCount, 3);
+  assert.equal(summary.newRowCount, 1);
+  assert.equal(summary.byField.odds, 2);
+  assert.equal(summary.byField.style, 1);
+  assert.equal(summary.byField.Streak, 0);
 });
 
 test('summarizeMissingFightCardData counts zero as a populated stat', () => {

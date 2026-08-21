@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.18.2 - 2026-08-21
+
+### Changed
+
+- Made scheduled fight-card automation continuously target the nearest incomplete upcoming cards regardless of how far away they are.
+- Rotated limited Tapology profile attempts across never-tried and least-recently-tried fighters so partial or failed profiles cannot stall card-wide enrichment.
+- Expanded scrape emails with event dates, before-and-after missing-data summaries, newly filled fields, and newly discovered fighter rows.
+
+## 0.18.1 - 2026-08-19
+
+### Changed
+
+- Moved the event friend comparison below the Event leaderboard so standings remain the first event-specific view.
+
+## 0.18.0 - 2026-08-19
+
+### Added
+
+- Added an event-specific friend comparison to the Event leaderboard with a human participant picker, head-to-head points, agreements, disagreements, and remaining sweat fights.
+- Added fight-by-fight comparison rows that reveal a friend's pick only after the signed-in user has picked that fight or its result is complete.
+
+### Changed
+
+- Kept personalized comparisons in authenticated, memory-only caching and refreshed unfinished matchups with live leaderboard results.
+
+## 0.17.0 - 2026-08-19
+
+### Added
+
+- Added a human-only recap to completed event leaderboards with a three-player podium and awards for upset calls, contrarian winners, group bad beats, hot streaks, perfect main cards, and final-fight rank jumps.
+- Added native sharing with a clipboard fallback for compact event recap summaries.
+
+### Changed
+
+- Kept AI accounts out of recap standings and awards so completed-event celebrations reflect the friends pool.
+
+## 0.16.0 - 2026-08-19
+
+### Added
+
+- Added automatic 15-second fight-card and result refreshes while the Picks view is visible, with immediate focus revalidation and a manual refresh control.
+
+### Changed
+
+- Paused fight-card polling in hidden tabs and after an event is complete or every fight is resolved.
+- Limited live result queries to the selected event and bypassed response caching so updated cards and outcomes appear promptly.
+
 ## 0.15.2 - 2026-08-14
 
 ### Changed

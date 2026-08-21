@@ -1,0 +1,410 @@
+.friend-comparison {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto 30px;
+}
+
+.friend-comparison__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.friend-comparison__kicker,
+.friend-comparison__title {
+  margin: 0;
+}
+
+.friend-comparison__kicker {
+  margin-bottom: 5px;
+}
+
+.friend-comparison__updating {
+  color: rgba(252, 251, 253, 0.58);
+  font-size: 0.72rem;
+}
+
+.friend-comparison__selector {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.friend-comparison__selector > span {
+  color: rgba(252, 251, 253, 0.62);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.friend-comparison__selector select {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 36px 9px 11px;
+  border: 1px solid rgba(252, 251, 253, 0.18);
+  border-radius: var(--radius-sm);
+  background: #111012;
+  color: var(--color-white);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.friend-comparison__selector select:hover {
+  border-color: rgba(249, 158, 173, 0.5);
+}
+
+.friend-comparison__selector select:focus-visible {
+  outline: 2px solid var(--color-pink);
+  outline-offset: 2px;
+}
+
+.friend-comparison__selector select:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.friend-comparison__scoreboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid rgba(252, 251, 253, 0.14);
+  border-radius: var(--radius-sm);
+  background: #111012;
+}
+
+.friend-comparison__person {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.friend-comparison__person--viewer {
+  background: rgba(233, 23, 13, 0.09);
+}
+
+.friend-comparison__person--friend {
+  grid-template-columns: minmax(0, 1fr) 42px;
+  background: rgba(43, 49, 178, 0.13);
+  text-align: right;
+}
+
+.friend-comparison__person--friend .friend-comparison__avatar {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.friend-comparison__person--friend .friend-comparison__person-copy {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.friend-comparison__avatar {
+  width: 42px;
+  height: 42px;
+}
+
+.friend-comparison__person-copy {
+  min-width: 0;
+}
+
+.friend-comparison__person-copy small,
+.friend-comparison__person-copy strong,
+.friend-comparison__person b {
+  display: block;
+}
+
+.friend-comparison__person-copy small {
+  color: rgba(252, 251, 253, 0.5);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+}
+
+.friend-comparison__person-copy strong {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--color-white);
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-comparison__person b {
+  grid-column: 1 / -1;
+  color: rgba(252, 251, 253, 0.88);
+  font-size: 0.78rem;
+}
+
+.friend-comparison__versus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border-right: 1px solid rgba(252, 251, 253, 0.1);
+  border-left: 1px solid rgba(252, 251, 253, 0.1);
+  color: rgba(252, 251, 253, 0.52);
+  text-align: center;
+}
+
+.friend-comparison__versus span {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.friend-comparison__versus strong {
+  margin-top: 2px;
+  color: var(--color-white);
+  font-size: 0.82rem;
+}
+
+.friend-comparison__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 8px 0 20px;
+  border-top: 1px solid rgba(252, 251, 253, 0.1);
+  border-bottom: 1px solid rgba(252, 251, 253, 0.1);
+}
+
+.friend-comparison__stats div {
+  min-width: 0;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.friend-comparison__stats div + div {
+  border-left: 1px solid rgba(252, 251, 253, 0.1);
+}
+
+.friend-comparison__stats dt {
+  color: rgba(252, 251, 253, 0.54);
+  font-size: 0.66rem;
+}
+
+.friend-comparison__stats dd {
+  margin: 3px 0 0;
+  color: var(--color-white);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.friend-comparison__stats .is-live dt,
+.friend-comparison__stats .is-live dd {
+  color: var(--color-pink);
+}
+
+.friend-comparison__fight-list-title {
+  margin: 0 0 6px;
+}
+
+.friend-comparison__fight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.friend-comparison__fight {
+  overflow: hidden;
+  border: 1px solid rgba(252, 251, 253, 0.12);
+  border-radius: var(--radius-sm);
+  background: #111012;
+}
+
+.friend-comparison__fight--disagreement {
+  border-color: rgba(249, 158, 173, 0.32);
+}
+
+.friend-comparison__fight-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(252, 251, 253, 0.08);
+}
+
+.friend-comparison__fight-meta span {
+  flex: 0 0 auto;
+  color: rgba(252, 251, 253, 0.46);
+  font-size: 0.62rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.friend-comparison__fight-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(252, 251, 253, 0.78);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-comparison__fight-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px minmax(0, 1fr);
+  min-height: 72px;
+}
+
+.friend-comparison__pick {
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+  padding: 10px;
+  flex-direction: column;
+}
+
+.friend-comparison__pick--viewer {
+  background: rgba(233, 23, 13, 0.055);
+  text-align: left;
+}
+
+.friend-comparison__pick--friend {
+  background: rgba(43, 49, 178, 0.08);
+  text-align: right;
+}
+
+.friend-comparison__pick strong {
+  overflow: hidden;
+  color: var(--color-white);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-comparison__pick small {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  margin-top: 4px;
+  flex-direction: column;
+  color: rgba(252, 251, 253, 0.52);
+  font-size: 0.61rem;
+  line-height: 1.25;
+}
+
+.friend-comparison__corner {
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.friend-comparison__corner--red {
+  color: var(--color-pink);
+}
+
+.friend-comparison__corner--blue {
+  color: #aeb2ff;
+}
+
+.friend-comparison__fight-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  flex-direction: column;
+  border-right: 1px solid rgba(252, 251, 253, 0.08);
+  border-left: 1px solid rgba(252, 251, 253, 0.08);
+  text-align: center;
+}
+
+.friend-comparison__fight-state strong {
+  color: rgba(252, 251, 253, 0.88);
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
+.friend-comparison__fight--disagreement .friend-comparison__fight-state strong {
+  color: var(--color-pink);
+}
+
+.friend-comparison__fight-state small {
+  margin-top: 3px;
+  color: rgba(252, 251, 253, 0.44);
+  font-size: 0.57rem;
+  line-height: 1.2;
+}
+
+.friend-comparison__empty,
+.friend-comparison-state {
+  padding: 14px;
+  border: 1px solid rgba(252, 251, 253, 0.12);
+  border-radius: var(--radius-sm);
+  color: rgba(252, 251, 253, 0.66);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.friend-comparison-state {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto 24px;
+}
+
+.friend-comparison__inline-error,
+.friend-comparison-state--error {
+  color: var(--color-pink);
+}
+
+.friend-comparison__inline-error {
+  margin: -6px 0 10px;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 460px) {
+  .friend-comparison__scoreboard {
+    grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
+  }
+
+  .friend-comparison__person {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+    padding: 10px 7px;
+  }
+
+  .friend-comparison__person--friend {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+
+  .friend-comparison__avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .friend-comparison__person-copy strong {
+    font-size: 0.75rem;
+  }
+
+  .friend-comparison__person b {
+    font-size: 0.7rem;
+  }
+
+  .friend-comparison__stats dt {
+    min-height: 28px;
+    line-height: 1.25;
+  }
+
+  .friend-comparison__fight-grid {
+    grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr);
+  }
+
+  .friend-comparison__pick {
+    padding: 9px 7px;
+  }
+
+  .friend-comparison__pick strong {
+    font-size: 0.7rem;
+  }
+
+  .friend-comparison__fight-state strong {
+    font-size: 0.61rem;
+  }
+}

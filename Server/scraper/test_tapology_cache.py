@@ -37,6 +37,88 @@ class TapologyCacheTests(unittest.TestCase):
         self.assertEqual(ambiguous_manual["Streak"], "")
         self.assertEqual(manual_streak["Streak"], "3")
 
+    def test_cached_profile_tracks_the_most_recent_attempt(self):
+        cached = scraper.normalize_tapology_cache_fighter({
+            "last_success_at": "2026-08-01T00:00:00Z",
+            "last_failure_at": "2026-08-10T00:00:00Z",
+        })
+
+        self.assertEqual(cached["_TapologyLastAttemptAt"], "2026-08-10T00:00:00Z")
+
+    @mock.patch.object(scraper, "record_tapology_profile_failures")
+    @mock.patch.object(scraper, "parse_tapology_fighter_profile")
+    @mock.patch.object(scraper, "fetch_tapology_fighter_html")
+    def test_profile_limit_rotates_to_never_and_least_recently_attempted_fighters(
+        self,
+        fetch_profile,
+        parse_profile,
+        record_failures,
+    ):
+        fetch_profile.return_value = "profile html"
+        parse_profile.return_value = {"Streak": "2"}
+        enrichment = {
+            "recent fighter": {
+                "TapologyFighterURL": "https://example.com/recent",
+                "_TapologyLastAttemptAt": "2026-08-20T00:00:00Z",
+            },
+            "never fighter": {
+                "TapologyFighterURL": "https://example.com/never",
+                "_TapologyLastAttemptAt": "",
+            },
+            "older fighter": {
+                "TapologyFighterURL": "https://example.com/older",
+                "_TapologyLastAttemptAt": "2026-08-01T00:00:00Z",
+            },
+        }
+
+        _, attempt_count, refreshed = scraper.fetch_tapology_profiles_for_enrichment(
+            tapology_session=mock.Mock(),
+            event={"FightCard": []},
+            enrichment=enrichment,
+            timeout=5,
+            tapology_delay_seconds=0,
+            tapology_profile_limit=2,
+        )
+
+        self.assertEqual(attempt_count, 2)
+        self.assertEqual(list(refreshed), ["never fighter", "older fighter"])
+        self.assertEqual(
+            [call.kwargs["tapology_fighter_url"] for call in fetch_profile.call_args_list],
+            ["https://example.com/never", "https://example.com/older"],
+        )
+        record_failures.assert_called_once()
+
+    @mock.patch.object(scraper, "upsert_supabase_rows")
+    def test_profile_failures_are_recorded_for_future_rotation(self, upsert_rows):
+        event = {
+            "FightCard": [{
+                "Fighters": [{
+                    "FighterId": 10,
+                    "Name": {"FirstName": "Test", "LastName": "Fighter"},
+                }],
+            }],
+        }
+
+        scraper.record_tapology_profile_failures(
+            event,
+            {
+                "test fighter": {
+                    "TapologyFighterURL": "https://example.com/fighter",
+                    "error": "blocked",
+                },
+            },
+            timeout=5,
+        )
+
+        self.assertEqual(
+            [call.args[0] for call in upsert_rows.call_args_list],
+            ["tapology_fighter_cache", "fighters"],
+        )
+        payload = upsert_rows.call_args_list[0].args[1][0]
+        self.assertEqual(payload["fighter_id"], 10)
+        self.assertEqual(payload["last_error"], "blocked")
+        self.assertTrue(payload["last_failure_at"])
+
     def test_verified_cached_streak_must_match_the_current_record(self):
         lookup = scraper.empty_tapology_cache_lookup()
         lookup["fighters_by_fighter_id"]["10"] = {

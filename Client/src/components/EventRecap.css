@@ -1,0 +1,243 @@
+.event-recap {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto 30px;
+}
+
+.event-recap__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.event-recap__kicker {
+  margin: 0 0 5px;
+}
+
+.event-recap__title {
+  margin: 0;
+  color: var(--color-white);
+}
+
+.event-recap__meta {
+  margin: 5px 0 0;
+  color: rgba(252, 251, 253, 0.58);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-recap__share-wrap {
+  display: flex;
+  min-width: 42px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-recap__share {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(252, 251, 253, 0.18);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: rgba(252, 251, 253, 0.78);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.event-recap__share:hover {
+  border-color: rgba(249, 158, 173, 0.56);
+  background: rgba(249, 158, 173, 0.08);
+  color: var(--color-white);
+}
+
+.event-recap__share:focus-visible {
+  outline: 2px solid var(--color-pink);
+  outline-offset: 2px;
+}
+
+.event-recap__share-status {
+  min-height: 13px;
+  color: rgba(252, 251, 253, 0.58);
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
+.event-recap__podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.event-recap__podium-entry {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 12px 8px 10px;
+  flex-direction: column;
+  border: 1px solid rgba(252, 251, 253, 0.14);
+  border-radius: var(--radius-sm);
+  background: #111012;
+  text-align: center;
+}
+
+.event-recap__podium-entry--1 {
+  border-color: rgba(249, 158, 173, 0.58);
+  background: rgba(249, 158, 173, 0.07);
+}
+
+.event-recap__place {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  background: rgba(252, 251, 253, 0.08);
+  color: rgba(252, 251, 253, 0.72);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.event-recap__avatar {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
+}
+
+.event-recap__podium-entry strong {
+  width: 100%;
+  overflow: hidden;
+  color: var(--color-white);
+  font-size: 0.85rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-recap__podium-entry > span:not(.event-recap__place):not(.event-recap__avatar) {
+  margin-top: 3px;
+  color: rgba(252, 251, 253, 0.86);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.event-recap__podium-entry small {
+  margin-top: 2px;
+  color: rgba(252, 251, 253, 0.52);
+  font-size: 0.66rem;
+}
+
+.event-recap__awards {
+  margin-top: 20px;
+}
+
+.event-recap__awards-title {
+  margin: 0 0 4px;
+}
+
+.event-recap__award-list {
+  border-top: 1px solid rgba(252, 251, 253, 0.14);
+}
+
+.event-recap__award {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(252, 251, 253, 0.1);
+}
+
+.event-recap__award-copy {
+  min-width: 0;
+}
+
+.event-recap__award-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-pink);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.event-recap__award strong {
+  display: block;
+  color: var(--color-white);
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.event-recap__award p {
+  margin: 3px 0 0;
+  color: rgba(252, 251, 253, 0.58);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.event-recap__award-value {
+  padding: 4px 6px;
+  border: 1px solid rgba(43, 49, 178, 0.58);
+  border-radius: var(--radius-xs);
+  background: rgba(43, 49, 178, 0.16);
+  color: var(--color-white);
+  font-size: 0.74rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.event-recap-state {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto 24px;
+  padding: 12px;
+  border: 1px solid rgba(252, 251, 253, 0.12);
+  border-radius: var(--radius-sm);
+  color: rgba(252, 251, 253, 0.68);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.event-recap-state--error {
+  border-color: rgba(233, 23, 13, 0.42);
+  color: var(--color-pink);
+}
+
+@media (max-width: 420px) {
+  .event-recap__podium-entry {
+    padding-inline: 5px;
+  }
+
+  .event-recap__avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .event-recap__podium-entry strong {
+    font-size: 0.76rem;
+  }
+
+  .event-recap__podium-entry small {
+    font-size: 0.6rem;
+  }
+
+  .event-recap__award {
+    gap: 8px;
+  }
+
+  .event-recap__award-value {
+    max-width: 104px;
+    overflow: hidden;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+  }
+}

@@ -20,6 +20,21 @@ ATTENTION_STATUSES = {
     "attention-required",
 }
 
+FIELD_LABELS = {
+    "odds": "Odds",
+    "TapologyFighterURL": "Tapology URL",
+    "TapologyMatchConfidence": "Tapology match confidence",
+    "Rank": "Rank",
+    "Streak": "Streak",
+    "style": "Style",
+    "KO_TKO_Wins": "KO/TKO wins",
+    "KO_TKO_Losses": "KO/TKO losses",
+    "Submission_Wins": "Submission wins",
+    "Submission_Losses": "Submission losses",
+    "Decision_Wins": "Decision wins",
+    "Decision_Losses": "Decision losses",
+}
+
 
 def positive_missing_fields(summary: Dict) -> List[Tuple[str, int]]:
     return [
@@ -33,7 +48,27 @@ def format_missing_summary(summary: Dict) -> str:
     fields = positive_missing_fields(summary or {})
     if not fields:
         return "None"
-    return ", ".join(f"{field}: {count}" for field, count in fields)
+    missing_count = int(summary.get("missingValueCount") or sum(count for _, count in fields))
+    affected_rows = summary.get("rowsWithMissingValues")
+    total_rows = summary.get("rowCount")
+    row_detail = (
+        f" across {affected_rows}/{total_rows} fighter rows"
+        if affected_rows is not None and total_rows is not None
+        else ""
+    )
+    field_detail = ", ".join(
+        f"{FIELD_LABELS.get(field, field)}: {count}" for field, count in fields
+    )
+    return f"{missing_count} values{row_detail} ({field_detail})"
+
+
+def format_filled_summary(summary: Dict) -> str:
+    fields = positive_missing_fields(summary or {})
+    if not fields:
+        return "None"
+    return ", ".join(
+        f"{FIELD_LABELS.get(field, field)}: +{count}" for field, count in fields
+    )
 
 
 def report_needs_attention(report: Dict, workflow_outcome: str) -> bool:
@@ -48,7 +83,7 @@ def build_subject(report: Dict, workflow_outcome: str) -> str:
     if report_needs_attention(report, workflow_outcome):
         prefix = "ACTION REQUIRED"
     elif report.get("status") == "no-events-due":
-        prefix = "No events due"
+        prefix = "No upcoming cards"
     elif report.get("dryRun"):
         prefix = "Dry run complete"
     else:
@@ -99,8 +134,9 @@ def lineup_change_lines(result: Dict) -> List[str]:
 
 
 def result_lines(result: Dict) -> List[str]:
+    event_date = f" on {result['eventDate']}" if result.get("eventDate") else ""
     lines = [
-        f"Event: {result.get('eventName') or 'Unknown'} ({result.get('eventId') or 'no ID'})",
+        f"Event: {result.get('eventName') or 'Unknown'} ({result.get('eventId') or 'no ID'}){event_date}",
         f"Outcome: {result.get('status') or 'unknown'}",
     ]
     if result.get("action"):
@@ -115,10 +151,19 @@ def result_lines(result: Dict) -> List[str]:
         lines.append(f"Tapology profile attempt limit: {result['profileLimit']}")
     if result.get("filledValueCount") is not None:
         lines.append(f"New blank values filled: {result['filledValueCount']}")
+    newly_filled = result.get("newlyFilled") or {}
+    if newly_filled.get("newRowCount"):
+        lines.append(f"New fighter rows discovered: {newly_filled['newRowCount']}")
+    if newly_filled:
+        lines.append(f"New information by field: {format_filled_summary(newly_filled)}")
     lines.extend(lineup_change_lines(result))
 
+    if result.get("existingMissing"):
+        lines.append(
+            f"Missing before this run: {format_missing_summary(result['existingMissing'])}"
+        )
     missing = result.get("remainingMissing") or result.get("existingMissing") or {}
-    lines.append(f"Missing data: {format_missing_summary(missing)}")
+    lines.append(f"Still missing: {format_missing_summary(missing)}")
 
     for label, values in (("Warning", result.get("warnings")), ("Blocker", result.get("blockers"))):
         for value in values or []:
@@ -145,7 +190,7 @@ def build_text_report(report: Dict, workflow_outcome: str, run_url: str) -> str:
 
     results = report.get("results") or []
     if not results:
-        lines.extend(["", "No event was processed during this run."])
+        lines.extend(["", "No incomplete upcoming event was found to process during this run."])
     else:
         for result in results:
             lines.extend(["", "-" * 64, *result_lines(result)])

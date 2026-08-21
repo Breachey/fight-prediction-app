@@ -13,6 +13,8 @@ For questions, contact [breachey@gmail.com](mailto:breachey@gmail.com).
 - Make fight picks for each card and compare against community voting trends.
 - Toggle AI users on leaderboards and vote views for comparison.
 - Track event, season, and overall leaderboard performance.
+- Compare an entire event card with one friend, including agreements, disagreements, points, and remaining sweat fights.
+- Celebrate completed cards with a friends-only podium, event awards, and a shareable recap.
 - View profile pages, rivalry insights, trend charts, benchmarks, and personalized highlights.
 - Unlock and equip collectible player cards based on participation.
 - Manage event outcomes with admin tools for result updates, cancellations, and finalization.
@@ -45,7 +47,7 @@ The app loads UFC events from Supabase, presents them in a mobile-friendly selec
 
 ### Social Competition
 
-Fight Picks emphasizes competition and community. Users can compare picks against other players, inspect vote breakdowns, see event-specific and long-running leaderboards, and surface rivalry markers like pick twins and biggest nemeses.
+Fight Picks emphasizes competition and community. Users can compare an entire event card with one friend, inspect vote breakdowns, see event-specific and long-running leaderboards, and surface rivalry markers like pick twins and biggest nemeses. Friend comparisons keep unearned pick details hidden until the signed-in user has picked that fight or the result is complete.
 
 ### Profiles, Stats, and Unlocks
 
@@ -132,7 +134,7 @@ From the repository root:
 - `npm run sync:fighter-style -- --event-id=1302` backfills the `fighter_style` table from imported fight-card rows for one event
 - `npm run sync:tapology-cache -- --event-id=1313` refreshes Supabase Tapology cache rows for one event without importing the fight card
 - `npm run smoke:fight-card-import -- 1302` previews and imports a single event fight card directly against Supabase, then verifies the resulting row and fight counts
-- `npm run automate:fight-cards -- --dry-run` shows which incomplete events are due for automated scraping today or tomorrow
+- `npm run automate:fight-cards -- --dry-run` shows the nearest incomplete upcoming events selected for automated scraping
 - `npm run automate:fight-cards -- --event-id=1318` immediately runs the guarded automation for one event table ID
 - `npm run start` starts the server
 
@@ -164,7 +166,7 @@ For Node hosts like Render, make sure the server install step runs from `Server/
 
 ### Scheduled fight-card scraping
 
-The `Automate upcoming fight cards` GitHub Actions workflow runs every six hours, but it only scrapes incomplete events dated today or tomorrow in `America/Denver`. This keeps the normal request volume near fight day instead of continuously scraping.
+The `Automate upcoming fight cards` GitHub Actions workflow runs every six hours and always selects the nearest incomplete upcoming cards, even when the next event is more than a day away. Selection uses `America/Denver`, skips past and completed events, and processes at most two cards per run so the next card is continuously checked and enriched throughout the gap between events.
 
 Configure these repository Actions secrets before enabling the workflow:
 
@@ -172,9 +174,9 @@ Configure these repository Actions secrets before enabling the workflow:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `AUTOMATION_GMAIL_APP_PASSWORD`
 
-The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. Lineup changes are reconciled automatically when removed or changed fights have no predictions; picks on unchanged fight IDs remain intact. If any prediction belongs to a removed or changed fight, automation stops and the report identifies the affected fights and prediction count for admin review. The job also stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
+The scheduled job imports a new card only when the normal preview validation passes. For an existing card it preserves every populated odds and fighter-stat value, fills blanks with newly scraped data, and fetches at most two missing Tapology profiles per run. Profile attempts rotate toward never-tried and least-recently-tried fighters, with failed attempts recorded, so one partial or blocked profile cannot keep later fighters from being enriched on subsequent runs. Lineup changes are reconciled automatically when removed or changed fights have no predictions; picks on unchanged fight IDs remain intact. If any prediction belongs to a removed or changed fight, automation stops and the report identifies the affected fights and prediction count for admin review. The job also stops touching a card once results exist or its stored start time has passed. Every run remains available in the GitHub Actions log, and `workflow_dispatch` can run a specific event or a dry run manually.
 
-Every workflow run emails `breachey@gmail.com`, including no-op and failed runs. The email reports processed events, outcomes, filled-value counts, remaining missing fields, warnings, blockers, fatal errors, and a link to the complete GitHub Actions log. To create `AUTOMATION_GMAIL_APP_PASSWORD`, enable Google 2-Step Verification and create a dedicated 16-digit [Google App Password](https://support.google.com/mail/answer/185833). Store only that app password as the GitHub repository secret; never store the normal Gmail password. App-password spaces are accepted and removed by the reporting script.
+Every workflow run emails `breachey@gmail.com`, including no-op and failed runs. The email reports each upcoming event date and outcome, what was missing before the run, newly filled values broken down by field, newly discovered fighter rows, what remains missing, lineup changes, warnings, blockers, fatal errors, and a link to the complete GitHub Actions log. To create `AUTOMATION_GMAIL_APP_PASSWORD`, enable Google 2-Step Verification and create a dedicated 16-digit [Google App Password](https://support.google.com/mail/answer/185833). Store only that app password as the GitHub repository secret; never store the normal Gmail password. App-password spaces are accepted and removed by the reporting script.
 
 GitHub-hosted Actions are free for public repositories. Private repositories consume the account's included Actions minutes, so configure an Actions budget with paid usage disabled if the account has a payment method and strict zero spend is required.
 

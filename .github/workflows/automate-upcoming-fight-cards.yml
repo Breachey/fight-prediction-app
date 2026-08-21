@@ -62,7 +62,7 @@ jobs:
       - name: Install scraper dependencies
         run: python -m pip install --disable-pip-version-check -r Server/scraper/requirements.txt
 
-      - name: Scrape and incrementally fill due fight cards
+      - name: Scrape and incrementally fill upcoming fight cards
         id: automation
         run: npm run automate:fight-cards
 

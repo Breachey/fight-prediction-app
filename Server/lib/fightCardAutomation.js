@@ -28,10 +28,9 @@ function dateKeyInTimeZone(date, timeZone) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function addCalendarDays(dateKey, days) {
-  const [year, month, day] = String(dateKey).split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
+function eventDateKey(value) {
+  const dateKey = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : null;
 }
 
 function selectDueEvents({
@@ -42,7 +41,6 @@ function selectDueEvents({
   maxEvents = 2,
 }) {
   const today = dateKeyInTimeZone(now, timeZone);
-  const tomorrow = addCalendarDays(today, 1);
   const explicitId = explicitEventId === null || explicitEventId === undefined || explicitEventId === ''
     ? null
     : Number(explicitEventId);
@@ -57,7 +55,8 @@ function selectDueEvents({
         return Number(event?.id) === explicitId;
       }
 
-      return event?.date === today || event?.date === tomorrow;
+      const dateKey = eventDateKey(event?.date);
+      return dateKey !== null && dateKey >= today;
     })
     .sort((left, right) => (
       String(left.date || '').localeCompare(String(right.date || ''))
@@ -207,19 +206,35 @@ function summarizeMissingFightCardData(rows) {
 }
 
 function countFilledFightCardValues(existingRows, nextRows) {
-  const nextByKey = new Map((nextRows || []).map((row) => [fightCardRowKey(row), row]));
+  return summarizeFilledFightCardData(existingRows, nextRows).filledValueCount;
+}
 
-  return (existingRows || []).reduce((count, existing) => {
-    const next = nextByKey.get(fightCardRowKey(existing));
-    if (!next) {
-      return count;
+function summarizeFilledFightCardData(existingRows, nextRows) {
+  const existingByKey = new Map(
+    (existingRows || []).map((row) => [fightCardRowKey(row), row])
+  );
+  const nextByKey = new Map((nextRows || []).map((row) => [fightCardRowKey(row), row]));
+  const byField = Object.fromEntries(AUTOMATION_FILL_FIELDS.map((field) => [field, 0]));
+  let newRowCount = 0;
+
+  for (const [key, next] of nextByKey.entries()) {
+    const existing = existingByKey.get(key);
+    if (!existing) {
+      newRowCount += 1;
     }
 
-    return count + AUTOMATION_FILL_FIELDS.reduce(
-      (fieldCount, field) => fieldCount + (!hasValue(existing[field]) && hasValue(next[field]) ? 1 : 0),
-      0
-    );
-  }, 0);
+    for (const field of AUTOMATION_FILL_FIELDS) {
+      if ((!existing || !hasValue(existing[field])) && hasValue(next[field])) {
+        byField[field] += 1;
+      }
+    }
+  }
+
+  return {
+    filledValueCount: Object.values(byField).reduce((sum, count) => sum + count, 0),
+    newRowCount,
+    byField,
+  };
 }
 
 function hasEventStarted(rows, now = new Date()) {
@@ -237,5 +252,6 @@ module.exports = {
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   selectDueEvents,
+  summarizeFilledFightCardData,
   summarizeMissingFightCardData,
 };

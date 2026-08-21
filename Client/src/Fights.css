@@ -39,6 +39,15 @@
 }
 .fights-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; text-align: left; }
 .fights-title { margin: 0; background: none; color: rgba(252,251,253,.72); font-family: var(--font-family); font-size: var(--heading-section-size); font-weight: 750; line-height: 1.2; letter-spacing: .1em; text-transform: uppercase; -webkit-text-fill-color: currentColor; }
+.fight-card-refresh-controls { display: flex; align-items: center; gap: 8px; }
+.fight-card-refresh-status { color: rgba(252,251,253,.58); font-size: .72rem; font-weight: 650; white-space: nowrap; }
+.fight-card-refresh-button { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid rgba(252,251,253,.18); border-radius: var(--radius-xs); background: transparent; color: rgba(252,251,253,.78); cursor: pointer; font-size: 1rem; line-height: 1; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
+.fight-card-refresh-button:hover { border-color: rgba(249,158,173,.56); background: rgba(249,158,173,.08); color: var(--color-white); }
+.fight-card-refresh-button:focus-visible { outline: 2px solid var(--color-pink); outline-offset: 2px; }
+.fight-card-refresh-button:disabled { cursor: wait; opacity: .55; }
+.fight-card-refresh-button.is-refreshing span { animation: fight-card-refresh-spin 700ms linear infinite; }
+@keyframes fight-card-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fight-card-refresh-button.is-refreshing span { animation: none; } }
 .fight-card { padding: 14px; margin-bottom: 10px; border: 1px solid rgba(252,251,253,.13); border-radius: var(--radius-sm); background: #111012; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; transition: border-color 150ms ease, background-color 150ms ease; }
 .fight-card:hover { transform: none; box-shadow: none; }
 .fight-card.title-fight { border-color: rgba(249,158,173,.5); box-shadow: none; animation: none; }
