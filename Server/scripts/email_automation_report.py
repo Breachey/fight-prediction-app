@@ -190,7 +190,12 @@ def build_text_report(report: Dict, workflow_outcome: str, run_url: str) -> str:
 
     results = report.get("results") or []
     if not results:
-        lines.extend(["", "No incomplete upcoming event was found to process during this run."])
+        no_results_message = (
+            "No per-event results were available."
+            if report.get("error")
+            else "No incomplete upcoming event was found to process during this run."
+        )
+        lines.extend(["", no_results_message])
     else:
         for result in results:
             lines.extend(["", "-" * 64, *result_lines(result)])
@@ -199,10 +204,11 @@ def build_text_report(report: Dict, workflow_outcome: str, run_url: str) -> str:
 
 def build_html_report(report: Dict, workflow_outcome: str, run_url: str) -> str:
     text_report = build_text_report(report, workflow_outcome, run_url)
+    report_body = text_report.removeprefix("Fight Picks scrape automation report\n\n")
     return (
         "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#202124\">"
         "<h2>Fight Picks scrape automation report</h2>"
-        f"<pre style=\"white-space:pre-wrap;font:14px/1.5 Arial,sans-serif\">{html.escape(text_report)}</pre>"
+        f"<pre style=\"white-space:pre-wrap;font:14px/1.5 Arial,sans-serif\">{html.escape(report_body)}</pre>"
         "</body></html>"
     )
 

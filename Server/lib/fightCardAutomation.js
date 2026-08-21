@@ -1,3 +1,5 @@
+const path = require('path');
+
 const AUTOMATION_FILL_FIELDS = [
   'odds',
   'TapologyFighterURL',
@@ -15,6 +17,15 @@ const AUTOMATION_FILL_FIELDS = [
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function resolveAutomationReportPath(value, repoRoot) {
+  const reportPath = String(value || '').trim();
+  if (!reportPath) {
+    return null;
+  }
+
+  return path.isAbsolute(reportPath) ? reportPath : path.resolve(repoRoot, reportPath);
 }
 
 function dateKeyInTimeZone(date, timeZone) {
@@ -251,6 +262,7 @@ module.exports = {
   countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
+  resolveAutomationReportPath,
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,

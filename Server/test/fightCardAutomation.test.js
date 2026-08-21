@@ -1,14 +1,31 @@
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 const {
   assessLineupChange,
   countFilledFightCardValues,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
+  resolveAutomationReportPath,
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,
 } = require('../lib/fightCardAutomation');
+
+test('resolveAutomationReportPath anchors relative reports at the repository root', () => {
+  const repositoryRoot = path.resolve('/tmp', 'fight-picks-repository');
+  const absoluteReportPath = path.resolve('/tmp', 'reports', 'automation.json');
+
+  assert.equal(
+    resolveAutomationReportPath('automation-report.json', repositoryRoot),
+    path.join(repositoryRoot, 'automation-report.json')
+  );
+  assert.equal(
+    resolveAutomationReportPath(absoluteReportPath, repositoryRoot),
+    absoluteReportPath
+  );
+  assert.equal(resolveAutomationReportPath('  ', repositoryRoot), null);
+});
 
 function fightRows(fightId, redId, redName, blueId, blueName) {
   return [

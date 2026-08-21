@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.18.4 - 2026-08-21
+
+### Fixed
+
+- Made the scrape and email steps share one absolute automation-report path so scrape emails contain the structured per-event results instead of the missing-report fallback.
+- Replaced the misleading no-upcoming-event message with a no-results notice when report generation genuinely fails, and removed the duplicated HTML email title.
+
 ## 0.18.3 - 2026-08-21
 
 ### Fixed
