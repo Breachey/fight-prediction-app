@@ -133,6 +133,40 @@ def lineup_change_lines(result: Dict) -> List[str]:
     return lines
 
 
+def event_discovery_lines(report: Dict) -> List[str]:
+    discovery = report.get("eventDiscovery") or {}
+    if not discovery:
+        return []
+
+    status = discovery.get("status") or "unknown"
+    lines = ["UFC event discovery", f"Outcome: {status}"]
+    if discovery.get("reason"):
+        lines.append(f"Reason: {discovery['reason']}")
+    if discovery.get("error"):
+        lines.append(f"Error: {discovery['error']}")
+
+    if status == "complete":
+        lines.extend([
+            f"UFC IDs scanned: {discovery.get('scanned', 0)}",
+            f"API events found: {discovery.get('apiEventsFound', 0)}",
+            f"Eligible UFC events: {discovery.get('eligibleEventsFound', 0)}",
+            f"Events added: {discovery.get('insertedCount', 0)}",
+            f"Events updated: {discovery.get('updatedCount', 0)}",
+            f"Events unchanged: {discovery.get('unchangedCount', 0)}",
+            f"Event posters added: {discovery.get('posterCount', 0)}",
+        ])
+        for event in discovery.get("changedEvents") or []:
+            event_date = f" on {event['date']}" if event.get("date") else ""
+            lines.append(
+                f"{str(event.get('action') or 'changed').title()} event "
+                f"{event.get('id')}: {event.get('name') or 'Unknown'}{event_date}"
+            )
+        for error in discovery.get("posterErrors") or []:
+            lines.append(f"Poster warning: {error}")
+
+    return lines
+
+
 def result_lines(result: Dict) -> List[str]:
     event_date = f" on {result['eventDate']}" if result.get("eventDate") else ""
     lines = [
@@ -187,6 +221,10 @@ def build_text_report(report: Dict, workflow_outcome: str, run_url: str) -> str:
         lines.append(f"GitHub run: {run_url}")
     if report.get("error"):
         lines.extend(["", f"Fatal error: {report['error']}"])
+
+    discovery_lines = event_discovery_lines(report)
+    if discovery_lines:
+        lines.extend(["", "-" * 64, *discovery_lines])
 
     results = report.get("results") or []
     if not results:

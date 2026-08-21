@@ -28,6 +28,44 @@ function resolveAutomationReportPath(value, repoRoot) {
   return path.isAbsolute(reportPath) ? reportPath : path.resolve(repoRoot, reportPath);
 }
 
+function summarizeUfcEventDiscovery(result) {
+  const optionalNumber = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const changedEvents = (result?.events || [])
+    .filter((event) => ['inserted', 'updated'].includes(event?.action))
+    .map((event) => ({
+      id: Number(event.id),
+      name: event.name || null,
+      date: event.date || null,
+      action: event.action,
+    }));
+
+  return {
+    status: 'complete',
+    startedAt: result?.startedAt || null,
+    finishedAt: result?.finishedAt || null,
+    startId: optionalNumber(result?.startId),
+    endId: optionalNumber(result?.endId),
+    scanned: Number(result?.scanned) || 0,
+    apiEventsFound: Number(result?.api_events_found) || 0,
+    eligibleEventsFound: Number(result?.eligible_events_found) || 0,
+    filteredEvents: Number(result?.filtered_events) || 0,
+    insertedCount: Number(result?.insertedCount) || 0,
+    updatedCount: Number(result?.updatedCount) || 0,
+    unchangedCount: Number(result?.unchangedCount) || 0,
+    posterCount: Number(result?.posterCount) || 0,
+    posterAttemptCount: Number(result?.posterAttemptCount) || 0,
+    posterSkippedCount: Number(result?.posterSkippedCount) || 0,
+    posterErrors: Array.isArray(result?.posterErrors) ? result.posterErrors : [],
+    changedEvents,
+  };
+}
+
 function dateKeyInTimeZone(date, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -266,4 +304,5 @@ module.exports = {
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,
+  summarizeUfcEventDiscovery,
 };

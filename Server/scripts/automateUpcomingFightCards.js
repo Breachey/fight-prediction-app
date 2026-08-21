@@ -10,6 +10,7 @@ const {
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,
+  summarizeUfcEventDiscovery,
 } = require('../lib/fightCardAutomation');
 const {
   backfillEventImageIfMissing,
@@ -19,6 +20,7 @@ const {
   runFightCardScraper,
 } = require('../lib/fightCardImport');
 const { syncFighterStyleFromFightCardRows } = require('../lib/fighterStyleSync');
+const { runUfcEventDiscovery } = require('../lib/ufcEventDiscovery');
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
@@ -67,6 +69,12 @@ function parseArgs(argv) {
     ),
     scraperTimeoutMs: readInteger(
       namedArgs.get('timeout-ms') || process.env.AUTOMATION_SCRAPER_TIMEOUT_MS,
+      300000,
+      1000
+    ),
+    eventDiscoveryTimeoutMs: readInteger(
+      namedArgs.get('event-discovery-timeout-ms')
+        || process.env.AUTOMATION_EVENT_DISCOVERY_TIMEOUT_MS,
       300000,
       1000
     ),
@@ -339,6 +347,29 @@ async function main() {
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  let eventDiscovery;
+  if (options.dryRun) {
+    eventDiscovery = {
+      status: 'skipped-dry-run',
+      reason: 'Event discovery was skipped because dry runs do not write to the events table.',
+    };
+  } else {
+    try {
+      const discoveryResult = await runUfcEventDiscovery({
+        repoRoot,
+        timeoutMs: options.eventDiscoveryTimeoutMs,
+      });
+      eventDiscovery = summarizeUfcEventDiscovery(discoveryResult);
+    } catch (error) {
+      warn(`UFC event discovery failed: ${error.message || error}`);
+      eventDiscovery = {
+        status: 'failed',
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  const eventDiscoveryFailed = eventDiscovery.status === 'failed';
   const now = new Date();
   const events = await loadEvents(supabase, options.eventId);
   const dueEvents = selectDueEvents({
@@ -351,13 +382,17 @@ async function main() {
 
   if (dueEvents.length === 0) {
     await emitReport({
-      status: 'no-events-due',
+      status: eventDiscoveryFailed ? 'attention-required' : 'no-events-due',
       checkedAt: now.toISOString(),
       timeZone: options.timeZone,
       explicitEventId: options.eventId,
       dryRun: options.dryRun,
+      eventDiscovery,
       results: [],
     });
+    if (eventDiscoveryFailed) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -383,13 +418,15 @@ async function main() {
     'lineup-change-refused',
     'lineup-change-review-required',
   ]);
-  const needsAttention = results.some((result) => attentionStatuses.has(result.status));
+  const needsAttention = eventDiscoveryFailed
+    || results.some((result) => attentionStatuses.has(result.status));
 
   await emitReport({
     status: needsAttention ? 'attention-required' : 'complete',
     checkedAt: now.toISOString(),
     timeZone: options.timeZone,
     dryRun: options.dryRun,
+    eventDiscovery,
     results,
   });
 

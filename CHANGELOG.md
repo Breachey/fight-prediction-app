@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.20.0 - 2026-08-21
+
+### Added
+
+- Added automatic UFC event discovery to every scheduled fight-card automation run so new numbered and Fight Night events no longer require the admin discovery button.
+- Added event-discovery counts, changed-event details, poster results, and discovery errors to automation emails.
+
+### Changed
+
+- Reloaded upcoming events after discovery so newly added cards can be selected for fight-card enrichment in the same run.
+- Kept dry runs write-free by explicitly skipping automatic event discovery.
+
+## 0.19.1 - 2026-08-21
+
+### Fixed
+
+- Applied the fight-result outcome migration to production so fight and picks-context requests can load the new result type.
+- Aligned the avatar accent-color migration timestamp with production history so future database pushes remain synchronized.
+
 ## 0.19.0 - 2026-08-21
 
 ### Added

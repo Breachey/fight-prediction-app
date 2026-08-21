@@ -22,6 +22,23 @@ class AutomationEmailReportTests(unittest.TestCase):
             "checkedAt": "2026-08-07T12:00:00Z",
             "timeZone": "America/Denver",
             "dryRun": False,
+            "eventDiscovery": {
+                "status": "complete",
+                "scanned": 80,
+                "apiEventsFound": 12,
+                "eligibleEventsFound": 10,
+                "insertedCount": 1,
+                "updatedCount": 1,
+                "unchangedCount": 8,
+                "posterCount": 1,
+                "changedEvents": [{
+                    "id": 1325,
+                    "name": "UFC 331",
+                    "date": "2026-09-26",
+                    "action": "inserted",
+                }],
+                "posterErrors": ["1326: Tapology unavailable"],
+            },
             "results": [{
                 "eventId": 1324,
                 "eventName": "UFC Fight Night: Test",
@@ -54,6 +71,10 @@ class AutomationEmailReportTests(unittest.TestCase):
         self.assertIn("KO/TKO wins: 1", body)
         self.assertIn("Live Tapology refresh failed.", body)
         self.assertIn("https://github.com/example/run/1", body)
+        self.assertIn("UFC IDs scanned: 80", body)
+        self.assertIn("Events added: 1", body)
+        self.assertIn("Inserted event 1325: UFC 331 on 2026-09-26", body)
+        self.assertIn("Poster warning: 1326: Tapology unavailable", body)
         self.assertEqual(
             build_html_report(report, "success", "").count(
                 "Fight Picks scrape automation report"

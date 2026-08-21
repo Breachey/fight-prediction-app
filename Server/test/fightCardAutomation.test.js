@@ -10,6 +10,7 @@ const {
   selectDueEvents,
   summarizeFilledFightCardData,
   summarizeMissingFightCardData,
+  summarizeUfcEventDiscovery,
 } = require('../lib/fightCardAutomation');
 
 test('resolveAutomationReportPath anchors relative reports at the repository root', () => {
@@ -25,6 +26,36 @@ test('resolveAutomationReportPath anchors relative reports at the repository roo
     absoluteReportPath
   );
   assert.equal(resolveAutomationReportPath('  ', repositoryRoot), null);
+});
+
+test('summarizeUfcEventDiscovery reports counts and only changed events', () => {
+  const summary = summarizeUfcEventDiscovery({
+    startedAt: '2026-08-21T12:00:00Z',
+    finishedAt: '2026-08-21T12:01:00Z',
+    startId: 1300,
+    scanned: 80,
+    api_events_found: 12,
+    eligible_events_found: 10,
+    filtered_events: 2,
+    insertedCount: 2,
+    updatedCount: 1,
+    unchangedCount: 7,
+    posterCount: 1,
+    posterErrors: ['1330: Tapology unavailable'],
+    events: [
+      { id: 1328, name: 'UFC 332', date: '2026-10-03', action: 'inserted', image_url: 'https://example.com/1328.jpg' },
+      { id: 1327, name: 'UFC Fight Night', date: '2026-09-26', action: 'updated' },
+      { id: 1326, name: 'UFC Fight Night', date: '2026-09-19', action: 'unchanged' },
+    ],
+  });
+
+  assert.equal(summary.status, 'complete');
+  assert.equal(summary.scanned, 80);
+  assert.equal(summary.insertedCount, 2);
+  assert.equal(summary.updatedCount, 1);
+  assert.deepEqual(summary.changedEvents.map((event) => event.id), [1328, 1327]);
+  assert.equal(summary.endId, null);
+  assert.deepEqual(summary.posterErrors, ['1330: Tapology unavailable']);
 });
 
 function fightRows(fightId, redId, redName, blueId, blueName) {
