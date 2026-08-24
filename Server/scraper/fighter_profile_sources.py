@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validated fighter enrichment from Sherdog, UFC.com, then Wikipedia."""
 
+import datetime
 import re
 import time
 import unicodedata
@@ -17,7 +18,21 @@ METHOD_FIELDS = [
     "KO_TKO_Wins", "KO_TKO_Losses", "Submission_Wins",
     "Submission_Losses", "Decision_Wins", "Decision_Losses",
 ]
-PROFILE_FIELDS = ["Rank", "Streak", "style", *METHOD_FIELDS]
+PERFORMANCE_FIELDS = [
+    "SigStrLandedPerMin",
+    "SigStrAbsorbedPerMin",
+    "SigStrikeAccuracyPct",
+    "SigStrikeDefensePct",
+    "TakedownAvgPer15",
+    "TakedownAccuracyPct",
+    "TakedownDefensePct",
+    "SubmissionAvgPer15",
+    "KnockdownAvgPer15",
+    "AverageFightTimeSeconds",
+    "RecentForm",
+    "LastFightDate",
+]
+PROFILE_FIELDS = ["Rank", "Streak", "style", *METHOD_FIELDS, *PERFORMANCE_FIELDS]
 KNOWN_NAME_ALIASES = {
     "aoriqileng": {"qileng aori"},
     "sumudaerji": {"su mudaerji"},
@@ -83,8 +98,26 @@ def build_session() -> requests.Session:
 
 
 def _integer(text: object) -> Optional[int]:
-    match = re.search(r"\d+", str(text or ""))
+    match = re.search(r"\d+", str(text or "").replace(",", ""))
     return int(match.group(0)) if match else None
+
+
+def _decimal(text: object) -> Optional[float]:
+    match = re.search(r"-?\d+(?:\.\d+)?", str(text or "").replace(",", ""))
+    return float(match.group(0)) if match else None
+
+
+def _iso_sherdog_date(text: object) -> str:
+    match = re.search(r"\b([A-Z][a-z]{2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})\b", str(text or ""))
+    if not match:
+        return ""
+    try:
+        return datetime.datetime.strptime(
+            f"{match.group(1)} {match.group(2)} {match.group(3)}",
+            "%b %d %Y",
+        ).date().isoformat()
+    except ValueError:
+        return ""
 
 
 def _parse_sherdog_record_side(soup: BeautifulSoup, selector: str, suffix: str) -> Dict[str, int]:
@@ -126,11 +159,19 @@ def parse_sherdog_profile(html: str, url: str = "") -> Dict[str, object]:
         **_parse_sherdog_record_side(soup, ".loses", "Losses"),
     }
     results: List[str] = []
+    last_fight_date = ""
     for row in soup.select("table.new_table.fighter tr:not(.table_head)"):
         cells = row.select("td")
         result = normalize_name(cells[0].get_text(" ", strip=True)) if cells else ""
         if result in {"win", "loss", "draw", "nc"}:
             results.append(result)
+            if not last_fight_date:
+                last_fight_date = _iso_sherdog_date(row.get_text(" ", strip=True))
+    if results:
+        result_labels = {"win": "W", "loss": "L", "draw": "D", "nc": "NC"}
+        profile["RecentForm"] = ",".join(result_labels[result] for result in results[:5])
+    if last_fight_date:
+        profile["LastFightDate"] = last_fight_date
     decisive_results = [result for result in results if result in {"win", "loss"}]
     if decisive_results:
         first = decisive_results[0]
@@ -202,8 +243,10 @@ def fetch_sherdog_profile(
         identity_ok = name_score(fighter_name, str(profile.get("name", ""))) >= 96
         record_ok = (
             expected_wins is not None and expected_losses is not None
-            and profile.get("Record_Wins") == int(expected_wins)
-            and profile.get("Record_Losses") == int(expected_losses)
+            and profile.get("Record_Wins") is not None
+            and profile.get("Record_Losses") is not None
+            and abs(int(profile["Record_Wins"]) - int(expected_wins)) <= 1
+            and abs(int(profile["Record_Losses"]) - int(expected_losses)) <= 1
         )
         methods_ok = _method_totals_are_valid(profile)
         tested.append({
@@ -244,6 +287,48 @@ def parse_ufc_profile(html: str, url: str = "") -> Dict[str, object]:
         value = field.select_one(".c-bio__text")
         if normalize_name(label.get_text(" ", strip=True) if label else "") == "fighting style" and value:
             profile["style"] = value.get_text(" ", strip=True)
+    performance_map = {
+        "sig str landed": "SigStrLandedPerMin",
+        "sig str absorbed": "SigStrAbsorbedPerMin",
+        "takedown avg": "TakedownAvgPer15",
+        "submission avg": "SubmissionAvgPer15",
+        "sig str defense": "SigStrikeDefensePct",
+        "takedown defense": "TakedownDefensePct",
+        "knockdown avg": "KnockdownAvgPer15",
+    }
+    for group in soup.select(".c-stat-compare__group"):
+        label_node = group.select_one(".c-stat-compare__label")
+        value_node = group.select_one(".c-stat-compare__number")
+        label = normalize_name(label_node.get_text(" ", strip=True) if label_node else "")
+        raw_value = value_node.get_text(" ", strip=True) if value_node else ""
+        if label == "average fight time":
+            time_match = re.fullmatch(r"\s*(\d+):(\d{2})\s*", raw_value)
+            if time_match:
+                profile["AverageFightTimeSeconds"] = (
+                    int(time_match.group(1)) * 60 + int(time_match.group(2))
+                )
+            continue
+        field_name = performance_map.get(label)
+        parsed_value = _decimal(raw_value)
+        if field_name and parsed_value is not None:
+            profile[field_name] = parsed_value
+    totals: Dict[str, int] = {}
+    for group in soup.select(".c-overlap__stats"):
+        label_node = group.select_one(".c-overlap__stats-text")
+        value_node = group.select_one(".c-overlap__stats-value")
+        label = normalize_name(label_node.get_text(" ", strip=True) if label_node else "")
+        parsed_value = _integer(value_node.get_text(" ", strip=True) if value_node else "")
+        if label and parsed_value is not None:
+            totals[label] = parsed_value
+    accuracy_pairs = (
+        ("sig strikes landed", "sig strikes attempted", "SigStrikeAccuracyPct"),
+        ("takedowns landed", "takedowns attempted", "TakedownAccuracyPct"),
+    )
+    for landed_key, attempted_key, field_name in accuracy_pairs:
+        landed = totals.get(landed_key)
+        attempted = totals.get(attempted_key)
+        if landed is not None and attempted:
+            profile[field_name] = round(100 * landed / attempted)
     image = soup.find("meta", attrs={"property": "og:image"})
     profile["ImageURL"] = image.get("content", "") if image else ""
     tags = [node.get_text(" ", strip=True) for node in soup.select(".hero-profile__tag")]
