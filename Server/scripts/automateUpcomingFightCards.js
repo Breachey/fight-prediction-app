@@ -4,8 +4,8 @@ const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const {
   assessLineupChange,
+  countUpdatedFightCardOdds,
   hasEventStarted,
-  mergeScrapedRowsWithStoredValues,
   resolveAutomationReportPath,
   selectDueEvents,
   summarizeFilledFightCardData,
@@ -238,12 +238,11 @@ async function processEvent({ supabase, event, options, now }) {
       tapologyProfileLimit: String(profileLimit),
     });
     const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
-    const mergedRows = mergeScrapedRowsWithStoredValues(parsedCsv.rows, context.existingRows);
     const preview = await buildFightCardPreview({
       eventId: event.id,
       csvPath: scraperOutput.csvPath,
       headers: parsedCsv.headers,
-      rows: mergedRows,
+      rows: parsedCsv.rows,
       headerErrors: parsedCsv.headerErrors,
       eventRecord: event,
       existingFightCardRows: context.existingRows,
@@ -292,8 +291,14 @@ async function processEvent({ supabase, event, options, now }) {
     }
 
     const newlyFilled = summarizeFilledFightCardData(context.existingRows, preview.rows);
+    const updatedOddsCount = countUpdatedFightCardOdds(context.existingRows, preview.rows);
     const remainingMissing = summarizeMissingFightCardData(preview.rows);
-    if (context.existingRows.length > 0 && newlyFilled.filledValueCount === 0 && !lineupAssessment) {
+    if (
+      context.existingRows.length > 0
+      && newlyFilled.filledValueCount === 0
+      && updatedOddsCount === 0
+      && !lineupAssessment
+    ) {
       const eventImageUpdate = await backfillEventImageIfMissing({
         supabase,
         eventId: event.id,
@@ -306,6 +311,7 @@ async function processEvent({ supabase, event, options, now }) {
         profileLimit,
         existingMissing: existingSummary,
         newlyFilled,
+        updatedOddsCount,
         remainingMissing,
         warnings: preview.warnings,
         eventImageUpdate,
@@ -317,10 +323,11 @@ async function processEvent({ supabase, event, options, now }) {
       ...eventDetails,
       status: lineupAssessment
         ? 'lineup-updated'
-        : (context.existingRows.length > 0 ? 'filled-missing-values' : 'imported-new-card'),
+        : (context.existingRows.length > 0 ? 'refreshed-existing-card' : 'imported-new-card'),
       profileLimit,
       filledValueCount: newlyFilled.filledValueCount,
       newlyFilled,
+      updatedOddsCount,
       existingMissing: existingSummary,
       rowCount: preview.rowCount,
       fightCount: preview.fightCount,

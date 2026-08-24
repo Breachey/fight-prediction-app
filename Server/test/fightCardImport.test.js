@@ -277,6 +277,81 @@ test('buildFightCardPreview accepts mononymous fighters but still blocks a fully
   );
 });
 
+test('buildFightCardPreview preserves existing profile data while refreshing odds', async () => {
+  const existingFightCardRows = [
+    {
+      FightId: 9001,
+      FighterId: 101,
+      Corner: 'Red',
+      odds: '+120',
+      Streak: '5',
+      style: 'Wrestling',
+      Height_in: '72',
+      KO_TKO_Wins: '6',
+    },
+    {
+      FightId: 9001,
+      FighterId: 102,
+      Corner: 'Blue',
+      odds: '-140',
+      Streak: '-1',
+      style: 'Boxing',
+    },
+  ];
+  const rows = [
+    {
+      __rowNumber: 2,
+      Event: 'UFC Test',
+      EventId: '1313',
+      FightId: '9001',
+      FighterId: '101',
+      Corner: 'Red',
+      FirstName: 'Red',
+      LastName: 'Fighter',
+      odds: '-125',
+      Streak: '2',
+      style: 'Kickboxing',
+      Height_in: '73',
+      KO_TKO_Wins: '9',
+    },
+    {
+      __rowNumber: 3,
+      Event: 'UFC Test',
+      EventId: '1313',
+      FightId: '9001',
+      FighterId: '102',
+      Corner: 'Blue',
+      FirstName: 'Blue',
+      LastName: 'Fighter',
+      odds: '',
+      Streak: '3',
+      style: 'Karate',
+    },
+  ];
+
+  const preview = await buildFightCardPreview({
+    eventId: 1313,
+    csvPath: '/tmp/preserve-existing.csv',
+    headers: [],
+    rows,
+    headerErrors: [],
+    eventRecord: { id: 1313, name: 'UFC Test' },
+    existingFightCardRows,
+    existingFightResults: [],
+    scraperOutput: {},
+  });
+
+  assert.equal(preview.changedFightCard, false);
+  assert.equal(preview.rows[0].odds, '-125');
+  assert.equal(preview.rows[0].Streak, '5');
+  assert.equal(preview.rows[0].style, 'Wrestling');
+  assert.equal(preview.rows[0].Height_in, '72');
+  assert.equal(preview.rows[0].KO_TKO_Wins, '6');
+  assert.equal(preview.rows[1].odds, '-140');
+  assert.equal(preview.rows[1].Streak, '-1');
+  assert.equal(preview.rows[1].style, 'Boxing');
+});
+
 test('syncFighterStyleFromFightCardRows does not recycle fight-card stats into fighters', async () => {
   const fighterRows = [];
   const fakeSupabase = {
