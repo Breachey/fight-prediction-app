@@ -206,7 +206,7 @@ test('buildFightCardPreview distinguishes cached Tapology data from no Tapology 
   });
 
   assert(preview.warnings.includes('Using cached Tapology data for 2/2 row(s).'));
-  assert(preview.warnings.includes('Live Tapology refresh failed; preview is using cached or partial Tapology data.'));
+  assert(preview.warnings.includes('Tapology fallback was unavailable; validated primary fighter sources were used.'));
   assert(
     !preview.warnings.some((warning) => warning.startsWith('No Tapology fighter profiles were matched')),
     'cache-backed previews should not use the no Tapology matches warning'

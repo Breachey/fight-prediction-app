@@ -1,5 +1,6 @@
 // Map of country names to ISO codes
 const countryCodeMap = {
+  'USA': 'US',
   'United States': 'US',
   'Brazil': 'BR',
   'Russia': 'RU',
@@ -18,6 +19,7 @@ const countryCodeMap = {
   'Sweden': 'SE',
   'Ukraine': 'UA',
   'Kazakhstan': 'KZ',
+  'Kyrgyzstan': 'KG',
   'South Korea': 'KR',
   'Spain': 'ES',
   'Thailand': 'TH',
@@ -115,4 +117,4 @@ export const formatStreak = (streak) => {
     return `${absStreak} Loss${absStreak !== 1 ? 'es' : ''}`;
   }
   return 'No Streak';
-}; 
+};

@@ -97,7 +97,13 @@ function transformFighterData(fighter) {
     image: fighter?.ImageURL,
     rank: fighter?.Rank !== undefined && fighter?.Rank !== null ? fighter.Rank : null,
     odds: formatOdds(fighter?.odds),
-    country: fighter?.FightingOutOf_Country || 'N/A',
+    country: fighter?.FightingOutOf_Country || fighter?.Born_Country || 'N/A',
+    fightingOutOfCity: fighter?.FightingOutOf_City || null,
+    fightingOutOfState: fighter?.FightingOutOf_State || null,
+    fightingOutOfCountry: fighter?.FightingOutOf_Country || null,
+    bornCity: fighter?.Born_City || null,
+    bornState: fighter?.Born_State || null,
+    bornCountry: fighter?.Born_Country || null,
     age: fighter?.Age !== undefined ? fighter.Age : null,
     weight: fighter?.Weight_lbs || null,
     height: fighter?.Height_in || null,
@@ -117,11 +123,16 @@ function buildFightStructureData(fighter) {
   const titleFightName = typeof fighter?.TitleFightName === 'string'
     ? fighter.TitleFightName.trim()
     : '';
+  const refereeName = [fighter?.Referee_FirstName, fighter?.Referee_LastName]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter(Boolean)
+    .join(' ');
 
   return {
     scheduled_rounds: Number.isFinite(roundsValue) ? roundsValue : null,
     is_title_fight: fighter?.IsTitleFight === true || fighter?.IsTitleFight === 'true',
     title_fight_name: titleFightName || null,
+    referee: refereeName || null,
   };
 }
 
@@ -185,6 +196,12 @@ function buildFightResponse({
     fighter1_style: red.style,
     fighter1_image: red.image,
     fighter1_country: red.country,
+    fighter1_fighting_out_of_city: red.fightingOutOfCity,
+    fighter1_fighting_out_of_state: red.fightingOutOfState,
+    fighter1_fighting_out_of_country: red.fightingOutOfCountry,
+    fighter1_born_city: red.bornCity,
+    fighter1_born_state: red.bornState,
+    fighter1_born_country: red.bornCountry,
     fighter1_age: red.age,
     fighter1_rank: red.rank,
     fighter1_odds: red.odds,
@@ -208,6 +225,12 @@ function buildFightResponse({
     fighter2_style: blue.style,
     fighter2_image: blue.image,
     fighter2_country: blue.country,
+    fighter2_fighting_out_of_city: blue.fightingOutOfCity,
+    fighter2_fighting_out_of_state: blue.fightingOutOfState,
+    fighter2_fighting_out_of_country: blue.fightingOutOfCountry,
+    fighter2_born_city: blue.bornCity,
+    fighter2_born_state: blue.bornState,
+    fighter2_born_country: blue.bornCountry,
     fighter2_age: blue.age,
     fighter2_rank: blue.rank,
     fighter2_odds: blue.odds,

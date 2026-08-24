@@ -1,5 +1,5 @@
-const VERIFIED_STREAK_SOURCES = new Set(['manual', 'tapology_live', 'fight_results']);
-const ANCHOR_STREAK_SOURCES = new Set(['manual', 'tapology_live']);
+const VERIFIED_STREAK_SOURCES = new Set(['manual', 'tapology_live', 'sherdog_live', 'fight_results']);
+const ANCHOR_STREAK_SOURCES = new Set(['manual', 'tapology_live', 'sherdog_live']);
 
 function normalizeInteger(value) {
   if (value === null || value === undefined || value === '') {

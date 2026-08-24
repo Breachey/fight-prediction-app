@@ -26,6 +26,11 @@ const redFighter = {
   Rank: 4,
   odds: 150,
   FightingOutOf_Country: 'USA',
+  FightingOutOf_City: 'Albuquerque',
+  FightingOutOf_State: 'New Mexico',
+  Born_City: 'Kingston',
+  Born_State: null,
+  Born_Country: 'Jamaica',
   Age: 30,
   Weight_lbs: 155,
   Height_in: 70,
@@ -41,6 +46,8 @@ const redFighter = {
   FightOrder: 3,
   FightStatus: 'Upcoming',
   PossibleRounds: '5',
+  Referee_FirstName: 'Jason',
+  Referee_LastName: 'Herzog',
   IsTitleFight: 'true',
   TitleFightName: 'Interim Belt',
 };
@@ -112,6 +119,13 @@ test('buildFightResponse keeps fight metadata and title round fields', () => {
   assert.equal(response.event_date, '2026-03-28');
   assert.equal(response.fighter1_record, '12-3-1 (1NC)');
   assert.equal(response.fighter1_style, 'Kickboxing');
+  assert.equal(response.fighter1_country, 'USA');
+  assert.equal(response.fighter1_fighting_out_of_city, 'Albuquerque');
+  assert.equal(response.fighter1_fighting_out_of_state, 'New Mexico');
+  assert.equal(response.fighter1_fighting_out_of_country, 'USA');
+  assert.equal(response.fighter1_born_city, 'Kingston');
+  assert.equal(response.fighter1_born_state, null);
+  assert.equal(response.fighter1_born_country, 'Jamaica');
   assert.equal(response.fighter2_style, 'Wrestling');
   assert.equal(response.winner, 2);
   assert.equal(response.is_completed, true);
@@ -119,8 +133,27 @@ test('buildFightResponse keeps fight metadata and title round fields', () => {
   assert.equal(response.card_tier, 'Prelims');
   assert.equal(response.weightclass, 'Lightweight Bangers');
   assert.equal(response.scheduled_rounds, 5);
+  assert.equal(response.referee, 'Jason Herzog');
   assert.equal(response.is_title_fight, true);
   assert.equal(response.title_fight_name, 'Interim Belt');
+});
+
+test('buildFightResponse omits an unassigned referee and falls back to birth country', () => {
+  const fighterWithoutAssignment = {
+    ...redFighter,
+    FightingOutOf_Country: null,
+    Referee_FirstName: null,
+    Referee_LastName: null,
+  };
+  const response = buildFightResponse({
+    fightId: 123,
+    eventId: 99,
+    redFighter: fighterWithoutAssignment,
+    blueFighter,
+  });
+
+  assert.equal(response.fighter1_country, 'Jamaica');
+  assert.equal(response.referee, null);
 });
 
 test('buildFightResponse preserves completed neutral outcomes without a winner', () => {

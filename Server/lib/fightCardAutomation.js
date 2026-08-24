@@ -14,6 +14,11 @@ const AUTOMATION_FILL_FIELDS = [
   'Decision_Wins',
   'Decision_Losses',
 ];
+const AUTOMATION_REFRESH_FIELDS = [
+  ...AUTOMATION_FILL_FIELDS,
+  'Referee_FirstName',
+  'Referee_LastName',
+];
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
@@ -225,7 +230,7 @@ function mergeScrapedRowsWithStoredValues(scrapedRows, existingRows) {
     }
 
     const merged = { ...row };
-    for (const field of AUTOMATION_FILL_FIELDS) {
+    for (const field of AUTOMATION_REFRESH_FIELDS) {
       if (hasValue(existing[field])) {
         merged[field] = existing[field];
       }
@@ -263,7 +268,7 @@ function summarizeFilledFightCardData(existingRows, nextRows) {
     (existingRows || []).map((row) => [fightCardRowKey(row), row])
   );
   const nextByKey = new Map((nextRows || []).map((row) => [fightCardRowKey(row), row]));
-  const byField = Object.fromEntries(AUTOMATION_FILL_FIELDS.map((field) => [field, 0]));
+  const byField = Object.fromEntries(AUTOMATION_REFRESH_FIELDS.map((field) => [field, 0]));
   let newRowCount = 0;
 
   for (const [key, next] of nextByKey.entries()) {
@@ -272,7 +277,7 @@ function summarizeFilledFightCardData(existingRows, nextRows) {
       newRowCount += 1;
     }
 
-    for (const field of AUTOMATION_FILL_FIELDS) {
+    for (const field of AUTOMATION_REFRESH_FIELDS) {
       if ((!existing || !hasValue(existing[field])) && hasValue(next[field])) {
         byField[field] += 1;
       }
@@ -296,6 +301,7 @@ function hasEventStarted(rows, now = new Date()) {
 
 module.exports = {
   AUTOMATION_FILL_FIELDS,
+  AUTOMATION_REFRESH_FIELDS,
   assessLineupChange,
   countFilledFightCardValues,
   hasEventStarted,

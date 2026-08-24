@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { API_URL } from './config';
+import { isValidPhoneNumber, normalizePhoneNumber } from './utils/phoneNumber';
 import './UserAuth.css';
 
 function UserAuth({ onAuthenticate }) {
@@ -12,10 +13,20 @@ function UserAuth({ onAuthenticate }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    setPhoneNumber(normalizedPhoneNumber);
+
+    if (!isValidPhoneNumber(normalizedPhoneNumber)) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const endpoint = isRegistering ? '/register' : '/login';
-      const body = isRegistering ? { phoneNumber, username } : { phoneNumber };
+      const body = isRegistering
+        ? { phoneNumber: normalizedPhoneNumber, username }
+        : { phoneNumber: normalizedPhoneNumber };
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -44,13 +55,12 @@ function UserAuth({ onAuthenticate }) {
           <span>Phone number</span>
           <input
             type="tel"
-            inputMode="numeric"
+            inputMode="tel"
             autoComplete="tel"
             value={phoneNumber}
-            onChange={(event) => setPhoneNumber(event.target.value)}
-            placeholder="10-digit number"
-            pattern="[0-9]{10}"
-            title="Please enter a valid 10-digit phone number"
+            onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+            placeholder="333-333-4444"
+            title="Enter a 10-digit phone number with or without formatting"
             required
           />
         </label>

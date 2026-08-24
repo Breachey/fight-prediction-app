@@ -30,6 +30,14 @@ const {
   toDateOnly,
 } = require('./lib/fighterStreaks');
 const {
+  completeFightCardPreviewProgress,
+  createFightCardPreviewProgress,
+  failFightCardPreviewProgress,
+  getFightCardPreviewProgress,
+  normalizeProgressToken,
+  updateFightCardPreviewProgress,
+} = require('./lib/fightCardPreviewProgress');
+const {
   buildFightResponse,
   buildWeightclassMap,
   normalizeWeightclass,
@@ -53,6 +61,7 @@ const {
   findLatestCompletedFightId,
 } = require('./lib/eventLeaderboardDeltas');
 const { scorePredictionOutcome } = require('./lib/predictionScoring');
+const { isValidPhoneNumber, normalizePhoneNumber } = require('./lib/phoneNumber');
 const {
   runUfcEventDiscovery,
 } = require('./lib/ufcEventDiscovery');
@@ -432,10 +441,11 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 ];
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
-const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, IsTitleFight, TitleFightName';
+const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, Born_City, Born_State, Born_Country, FightingOutOf_City, FightingOutOf_State, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, Referee_FirstName, Referee_LastName, IsTitleFight, TitleFightName';
 const ADMIN_FIGHTER_STAT_FIELDS = [
   'odds',
   'TapologyFighterURL',
+  'Rank',
   'style',
   'Streak',
   'KO_TKO_Wins',
@@ -464,8 +474,10 @@ const FIGHT_CARD_STAT_SELECT = [
   'FirstName',
   'LastName',
   'Nickname',
+  'UFC_Profile',
   'Record_Wins',
   'Record_Losses',
+  'Rank',
   'odds',
   'Streak',
   'style',
@@ -527,6 +539,7 @@ function normalizeAdminStatValue(field, value) {
 function toFighterProfileColumn(field) {
   return {
     TapologyFighterURL: 'tapology_fighter_url',
+    Rank: 'rank',
     style: 'style',
     Streak: 'streak',
     KO_TKO_Wins: 'ko_tko_wins',
@@ -567,11 +580,12 @@ function parseTapologyProfileScraperOutput(stdout) {
     }
   }
 
-  throw new Error('Tapology scraper did not return JSON.');
+  throw new Error('Fighter profile scraper did not return JSON.');
 }
 
 function runTapologyFighterProfileScraper({
   tapologyFighterUrl,
+  ufcProfileUrl = '',
   fighterName = '',
   recordWins = null,
   recordLosses = null,
@@ -587,6 +601,10 @@ function runTapologyFighterProfileScraper({
 
   if (fighterName) {
     args.push('--fighter-name', fighterName);
+  }
+
+  if (ufcProfileUrl) {
+    args.push('--ufc-url', ufcProfileUrl);
   }
 
   if (recordWins !== null && recordWins !== undefined) {
@@ -629,7 +647,7 @@ function runTapologyFighterProfileScraper({
       clearTimeout(timeoutId);
 
       if (timedOut) {
-        reject(new Error('Tapology fighter profile scrape timed out.'));
+        reject(new Error('Fighter profile scrape timed out.'));
         return;
       }
 
@@ -835,7 +853,7 @@ async function persistVerifiedStreakAnchor({ row, eventId, streak, source }) {
     last_name: row.LastName ?? null,
     normalized_name: normalizeFighterNameForLookup(row.FirstName, row.LastName) || null,
     ...anchor,
-    stats_source: source === 'manual' ? 'manual_streak' : 'tapology_live',
+    stats_source: source === 'manual' ? 'manual_streak' : source,
     stats_confidence: source === 'manual' ? 'manual_streak' : 'live-profile-streak',
     stats_as_of_event_id: Number.isFinite(Number(eventId)) ? Number(eventId) : null,
     stats_as_of_event_date: toDateOnly(row?.StartTime),
@@ -850,31 +868,6 @@ async function persistVerifiedStreakAnchor({ row, eventId, streak, source }) {
   }
 
   return buildStreakVerificationSummary(payload, anchorRow);
-}
-
-async function persistManualStreakAnchors({ eventId, preview, manualRowUpdates }) {
-  const rowsByKey = new Map(
-    (preview?.rows || []).map((row) => [buildFightCardPreviewRowKey(row), row])
-  );
-  const verified = {};
-
-  for (const [rowKey, values] of Object.entries(manualRowUpdates || {})) {
-    if (!values || !Object.prototype.hasOwnProperty.call(values, 'Streak')) {
-      continue;
-    }
-    const row = rowsByKey.get(rowKey);
-    if (!row || values.Streak === null || values.Streak === '') {
-      continue;
-    }
-    verified[Number(row.FighterId)] = await persistVerifiedStreakAnchor({
-      row: { ...row, Streak: values.Streak },
-      eventId,
-      streak: values.Streak,
-      source: 'manual',
-    });
-  }
-
-  return verified;
 }
 
 async function updateFighterStreaksForFightResult({
@@ -1139,6 +1132,11 @@ function buildFightCardPatchFromTapologyProfile(row, profile) {
 
 function tapologyStatsConfidence(source) {
   return {
+    sherdog: 'identity-and-record-validated',
+    sherdog_ufccom: 'validated-multi-source',
+    sherdog_ufccom_wikipedia: 'validated-multi-source',
+    sherdog_tapology: 'validated-with-tapology-fallback',
+    sherdog_ufccom_tapology: 'validated-with-tapology-fallback',
     tapology_single_profile: 'single-profile-scrape',
     tapology_wikipedia_merged: 'partial-profile-merged',
     tapology_partial_profile: 'partial-profile-scrape',
@@ -1170,8 +1168,8 @@ function buildTapologyScrapeDiagnostics(scrapeResult, profile, updatedFields) {
   let streakDetail = rawDiagnostics.streak_detail;
   if (!streakDetail && fieldsMissing.includes('Streak')) {
     streakDetail = tapologyFetchStatus === 'failed'
-      ? 'Streak is missing because Tapology could not be fetched; the fallback source does not expose current MMA streak.'
-      : 'Tapology did not expose a recognized Current MMA Streak value.';
+      ? 'Streak is missing because no live source returned a validated current streak.'
+      : 'No source exposed a recognized current MMA streak value.';
   }
 
   return {
@@ -1212,6 +1210,7 @@ async function persistScrapedTapologyFighterProfile({
   statsSource,
   statsConfidence,
   verifyLiveStreak = false,
+  streakSource = 'tapology_live',
 }) {
   const fighterId = Number(row?.FighterId);
   if (!Number.isFinite(fighterId)) {
@@ -1239,7 +1238,12 @@ async function persistScrapedTapologyFighterProfile({
     last_failure_at: null,
     last_error: null,
   };
-  const fightersPayload = compactNonNullPayload(baseProfilePayload);
+  const fightersPayload = compactNonNullPayload({
+    ...baseProfilePayload,
+    stats_source: statsSource,
+    stats_confidence: statsConfidence,
+    stats_as_of_event_id: Number.isFinite(Number(eventId)) ? Number(eventId) : null,
+  });
 
   const { error: fightersError } = await supabase
     .from('fighters')
@@ -1268,7 +1272,7 @@ async function persistScrapedTapologyFighterProfile({
         row: { ...row, Streak: scrapedStreak },
         eventId,
         streak: scrapedStreak,
-        source: 'tapology_live',
+        source: streakSource,
       })
     : null;
 
@@ -1969,9 +1973,7 @@ async function logAdminAction(req, details) {
 app.post('/register', authRateLimit, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const phoneNumber = typeof req.body?.phoneNumber === 'string'
-      ? req.body.phoneNumber.trim()
-      : '';
+    const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
     const username = typeof req.body?.username === 'string'
       ? req.body.username.trim()
       : '';
@@ -1981,7 +1983,7 @@ app.post('/register', authRateLimit, async (req, res) => {
       return res.status(400).json({ error: 'Phone number and username are required' });
     }
 
-    if (phoneNumber.length !== 10 || !/^\d+$/.test(phoneNumber)) {
+    if (!isValidPhoneNumber(phoneNumber)) {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
 
@@ -2066,16 +2068,14 @@ app.post('/register', authRateLimit, async (req, res) => {
 app.post('/login', authRateLimit, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const phoneNumber = typeof req.body?.phoneNumber === 'string'
-      ? req.body.phoneNumber.trim()
-      : '';
+    const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
 
     // Validate input
     if (!phoneNumber) {
       return res.status(400).json({ error: 'Phone number is required' });
     }
 
-    if (phoneNumber.length !== 10 || !/^\d+$/.test(phoneNumber)) {
+    if (!isValidPhoneNumber(phoneNumber)) {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
 
@@ -4136,15 +4136,41 @@ app.get('/events/:id/start-time', async (req, res) => {
   }
 });
 
+app.get('/admin/events/:id/fight-card/preview-progress/:progressToken', requireAdminSession, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const eventId = Number(req.params.id);
+  const progressToken = normalizeProgressToken(req.params.progressToken);
+  if (Number.isNaN(eventId) || !progressToken) {
+    return res.status(400).json({ error: 'Invalid event id or preview progress token' });
+  }
+  const progress = getFightCardPreviewProgress(progressToken, eventId);
+  if (!progress) {
+    return res.status(404).json({ error: 'Preview progress was not found or has expired' });
+  }
+  return res.json(progress);
+});
+
 app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
   let scraperOutput = null;
+  let previewProgressToken = '';
 
   try {
     const eventId = Number(req.params.id);
     if (Number.isNaN(eventId)) {
       return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    previewProgressToken = normalizeProgressToken(req.body?.progressToken);
+    if (previewProgressToken) {
+      createFightCardPreviewProgress({ token: previewProgressToken, eventId });
+      updateFightCardPreviewProgress(previewProgressToken, {
+        phase: 'database',
+        label: 'Loading existing fight card',
+        detail: 'Checking stored fighters and completed results…',
+        percent: 3,
+      });
     }
 
     await cleanupExpiredFightCardPreviews();
@@ -4166,11 +4192,13 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
 
     if (eventError) {
       console.error('Error fetching event for fight-card preview:', eventError);
+      failFightCardPreviewProgress(previewProgressToken, 'Failed to load event metadata');
       return res.status(500).json({ error: 'Failed to load event metadata' });
     }
 
     if (existingFightCardError) {
       console.error('Error fetching existing fight-card rows for preview:', existingFightCardError);
+      failFightCardPreviewProgress(previewProgressToken, 'Failed to load existing fight-card rows');
       return res.status(500).json({ error: 'Failed to load existing fight-card rows' });
     }
 
@@ -4187,6 +4215,7 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
 
       if (error) {
         console.error('Error fetching existing fight results for preview:', error);
+        failFightCardPreviewProgress(previewProgressToken, 'Failed to load existing fight results');
         return res.status(500).json({ error: 'Failed to load existing fight results' });
       }
 
@@ -4196,8 +4225,15 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
     scraperOutput = await runFightCardScraper({
       eventId,
       repoRoot: REPO_ROOT,
+      onProgress: (progress) => updateFightCardPreviewProgress(previewProgressToken, progress),
     });
 
+    updateFightCardPreviewProgress(previewProgressToken, {
+      phase: 'validation',
+      label: 'Validating scraped rows',
+      detail: 'Checking required fields, fight pairings, and card changes…',
+      percent: 97,
+    });
     const parsedCsv = await parseFightCardCsvFile(scraperOutput.csvPath);
     const preview = await buildFightCardPreview({
       eventId,
@@ -4215,6 +4251,10 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
     const { rows, ...previewSummary } = preview;
 
     if (preview.blockers.length > 0) {
+      completeFightCardPreviewProgress(previewProgressToken, {
+        label: 'Preview needs attention',
+        detail: `${preview.blockers.length} blocker${preview.blockers.length === 1 ? '' : 's'} found`,
+      });
       await logAdminAction(req, {
         action: 'fight_card.preview',
         status: 'error',
@@ -4242,6 +4282,10 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
       scratchDir: scraperOutput.scratchDir,
     });
 
+    completeFightCardPreviewProgress(previewProgressToken, {
+      detail: `${preview.fightCount} fights and ${preview.rowCount} fighter rows are ready`,
+    });
+
     await logAdminAction(req, {
       action: 'fight_card.preview',
       status: 'success',
@@ -4266,6 +4310,7 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
       expiresAt: storedPreview.expiresAt,
     });
   } catch (error) {
+    failFightCardPreviewProgress(previewProgressToken, error);
     if (scraperOutput?.scratchDir) {
       await removePreviewAssets(scraperOutput.scratchDir);
     }
@@ -4313,16 +4358,6 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/progress', requireA
       preview: result.preview,
       manualRowUpdates: req.body?.manualRowUpdates,
     });
-    const verifiedStreaks = await persistManualStreakAnchors({
-      eventId,
-      preview: result.preview,
-      manualRowUpdates: req.body?.manualRowUpdates,
-    });
-    result.preview.streakVerificationByFighterId = {
-      ...(result.preview.streakVerificationByFighterId || {}),
-      ...verifiedStreaks,
-    };
-
     const { rows, scratchDir, ...previewSummary } = result.preview;
     await logAdminAction(req, {
       action: 'fight_card.preview.save_progress',
@@ -4334,14 +4369,12 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/progress', requireA
         applied_manual_update_count: result.appliedManualUpdateCount,
         updated_fight_card_rows: persistence.updatedFightCardRows,
         updated_fighters: persistence.updatedFighters,
-        verified_streaks: Object.keys(verifiedStreaks).length,
       },
     });
 
     return res.json({
       ...previewSummary,
       appliedManualUpdateCount: result.appliedManualUpdateCount,
-      verifiedStreakCount: Object.keys(verifiedStreaks).length,
       ...persistence,
     });
   } catch (error) {
@@ -4433,7 +4466,10 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/verify-streak', req
   }
 });
 
-app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', requireAdminSession, async (req, res) => {
+app.post([
+  '/admin/events/:id/fight-card/preview/:previewToken/scrape-profile',
+  '/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology',
+], requireAdminSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
   try {
@@ -4466,15 +4502,9 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
     }
 
     const tapologyFighterUrl = requestedTapologyUrl.value || row.TapologyFighterURL || '';
-    if (!tapologyFighterUrl) {
-      return res.status(409).json({
-        error: 'No Tapology fighter URL is available for this preview row.',
-        details: 'Paste the Tapology fighter profile URL into this row, then click Scrape again.',
-      });
-    }
-
     const scrapeResult = await runTapologyFighterProfileScraper({
       tapologyFighterUrl,
+      ufcProfileUrl: row.UFC_Profile || '',
       fighterName: [row.FirstName, row.LastName].filter(Boolean).join(' '),
       recordWins: row.Record_Wins,
       recordLosses: row.Record_Losses,
@@ -4485,7 +4515,7 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
     const statsConfidence = tapologyStatsConfidence(statsSource);
     const patch = {
       ...buildFightCardPatchFromTapologyProfile(row, profile),
-      TapologyFighterURL: tapologyFighterUrl,
+      ...(tapologyFighterUrl ? { TapologyFighterURL: tapologyFighterUrl } : {}),
     };
     const profilePersistence = await persistScrapedTapologyFighterProfile({
       row: { ...row, ...patch },
@@ -4494,7 +4524,8 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
       profile,
       statsSource,
       statsConfidence,
-      verifyLiveStreak: scrapeResult?.diagnostics?.tapology_fetch_status === 'success',
+      verifyLiveStreak: ['sherdog_live', 'tapology_live'].includes(scrapeResult?.diagnostics?.streak_source),
+      streakSource: scrapeResult?.diagnostics?.streak_source || 'tapology_live',
     });
     const progress = saveFightCardPreviewProgress(previewToken, eventId, {
       [rowKey]: patch,
@@ -4554,7 +4585,7 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
       ...fightCardPersistence,
     });
   } catch (error) {
-    console.error('Error scraping Tapology stats for fight-card preview:', error);
+    console.error('Error scraping fighter stats for fight-card preview:', error);
     const scrapeDiagnostics = buildFailedTapologyScrapeDiagnostics(error);
     await logAdminAction(req, {
       action: 'fight_card.preview.scrape_tapology_fighter',
@@ -4569,7 +4600,7 @@ app.post('/admin/events/:id/fight-card/preview/:previewToken/scrape-tapology', r
       },
     });
     return res.status(500).json({
-      error: 'Failed to scrape Tapology fighter stats for preview',
+      error: 'Failed to scrape fighter stats for preview',
       details: error.message,
       scrapeDiagnostics,
     });
@@ -4807,7 +4838,10 @@ app.get('/admin/events/:id/fight-card/stats', requireAdminSession, async (req, r
   }
 });
 
-app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdminSession, async (req, res) => {
+app.post([
+  '/admin/events/:id/fight-card/stats/:rowId/scrape-profile',
+  '/admin/events/:id/fight-card/stats/:rowId/scrape-tapology',
+], requireAdminSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
   try {
@@ -4845,15 +4879,9 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       row,
       requestedTapologyUrl.value || ''
     );
-    if (!tapologyFighterUrl) {
-      return res.status(409).json({
-        error: 'No Tapology fighter URL is available for this fighter yet.',
-        details: 'Paste the Tapology fighter profile URL into this row, then click Scrape Tapology again.',
-      });
-    }
-
     const scrapeResult = await runTapologyFighterProfileScraper({
       tapologyFighterUrl,
+      ufcProfileUrl: row.UFC_Profile || '',
       fighterName: [row.FirstName, row.LastName].filter(Boolean).join(' '),
       recordWins: row.Record_Wins,
       recordLosses: row.Record_Losses,
@@ -4866,7 +4894,9 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
     const patch = buildFightCardPatchFromTapologyProfile(row, profile);
     const fightCardPatch = {
       ...patch,
-      TapologyFighterURL: row.TapologyFighterURL || tapologyFighterUrl,
+      ...(row.TapologyFighterURL || tapologyFighterUrl
+        ? { TapologyFighterURL: row.TapologyFighterURL || tapologyFighterUrl }
+        : {}),
       TapologyMatchConfidence: statsConfidence,
     };
 
@@ -4889,7 +4919,8 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       profile,
       statsSource,
       statsConfidence,
-      verifyLiveStreak: scrapeResult?.diagnostics?.tapology_fetch_status === 'success',
+      verifyLiveStreak: ['sherdog_live', 'tapology_live'].includes(scrapeResult?.diagnostics?.streak_source),
+      streakSource: scrapeResult?.diagnostics?.streak_source || 'tapology_live',
     });
     const updatedFields = Object.keys(patch);
     const scrapeDiagnostics = buildTapologyScrapeDiagnostics(
@@ -4929,7 +4960,7 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       streakVerification: profilePersistence.streakVerification,
     });
   } catch (error) {
-    console.error('Error scraping Tapology fighter stats:', error);
+    console.error('Error scraping fighter stats:', error);
     const scrapeDiagnostics = buildFailedTapologyScrapeDiagnostics(error);
     await logAdminAction(req, {
       action: 'fight_card.scrape_tapology_fighter',
@@ -4944,7 +4975,7 @@ app.post('/admin/events/:id/fight-card/stats/:rowId/scrape-tapology', requireAdm
       },
     });
     return res.status(500).json({
-      error: 'Failed to scrape Tapology fighter stats',
+      error: 'Failed to scrape fighter stats',
       details: error.message,
       scrapeDiagnostics,
     });
@@ -5279,16 +5310,6 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       supabase,
       fightCardRows: preview.rows,
     });
-    const verifiedStreaks = await persistManualStreakAnchors({
-      eventId,
-      preview,
-      manualRowUpdates,
-    });
-    preview.streakVerificationByFighterId = {
-      ...(preview.streakVerificationByFighterId || {}),
-      ...verifiedStreaks,
-    };
-
     const importedPreview = markFightCardPreviewImported(previewToken, eventId, preview);
     if (!importedPreview) {
       throw new Error('Fight-card preview expired before the imported editor could be retained.');
@@ -5311,7 +5332,6 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
         warnings: preview.warnings,
         fighter_style_sync: fighterStyleSync,
         applied_manual_update_count: appliedManualUpdateCount,
-        verified_streak_count: Object.keys(verifiedStreaks).length,
         editor_retained: true,
       },
     });
@@ -5325,7 +5345,6 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       eventImageUpdate,
       fighterStyleSync,
       appliedManualUpdateCount,
-      verifiedStreakCount: Object.keys(verifiedStreaks).length,
       fightCardPreview,
     });
   } catch (error) {
