@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.27.2 - 2026-08-24
+
+### Fixed
+
+- Left-aligned long birthplace and fighting-out-of locations on mobile so wrapped city, region, and country text stays aligned with its label.
+
+## 0.27.1 - 2026-08-24
+
+### Changed
+
+- Returned recent form and last-fight recency to each fighter's individual expanded details.
+- Replaced the method donut and percentage lanes with a directly labeled wins-versus-losses chart that reflows for narrow fighter cards.
+- Added a sticky red-corner/blue-corner identity header to the matchup performance comparison.
+
+## 0.27.0 - 2026-08-24
+
+### Changed
+
+- Replaced per-fighter filled bars with a shared matchup comparison using paired red/blue dot plots on explicit stat scales.
+- Added a six-axis style-profile radar for matchups where both fighters have complete UFC career metrics, while keeping incomplete data out of the polygon.
+- Moved recent form into a balanced fight-level comparison and kept responsive chart labels readable without horizontal overflow.
+
+## 0.26.1 - 2026-08-24
+
+### Fixed
+
+- Preserved fighter comparison metrics when fight-card imports replace existing rows, using the canonical fighter profile as a fallback and backfilling missing stored snapshots.
+
+## 0.26.0 - 2026-08-24
+
+### Added
+
+- Added validated UFC career striking, grappling, defense, knockdown, and fight-time metrics plus Sherdog recent form and last-fight date to automatic and manual fighter scrapes.
+- Added compact red/blue matchup-scale bars, percentage tracks, recent-form markers, and fight-shape summaries to expanded fighter stats.
+
+### Changed
+
+- Updated existing-card refreshes to fill missing comparison metrics while preserving stored fighter data and continuing to refresh odds.
+- Restyled the method breakdown with the approved brand palette and lighter-weight surfaces.
+
 ## 0.25.1 - 2026-08-24
 
 ### Fixed

@@ -263,6 +263,18 @@ test('summarizeMissingFightCardData counts zero as a populated stat', () => {
     Submission_Losses: 0,
     Decision_Wins: 0,
     Decision_Losses: 0,
+    SigStrLandedPerMin: 0,
+    SigStrAbsorbedPerMin: 0,
+    SigStrikeAccuracyPct: 0,
+    SigStrikeDefensePct: 0,
+    TakedownAvgPer15: 0,
+    TakedownAccuracyPct: 0,
+    TakedownDefensePct: 0,
+    SubmissionAvgPer15: 0,
+    KnockdownAvgPer15: 0,
+    AverageFightTimeSeconds: 0,
+    RecentForm: 'W,L,W,L,W',
+    LastFightDate: '2026-07-11',
   }]);
 
   assert.equal(summary.missingValueCount, 0);

@@ -41,6 +41,18 @@ const redFighter = {
   Submission_Losses: 0,
   Decision_Wins: 6,
   Decision_Losses: 2,
+  SigStrLandedPerMin: 4.41,
+  SigStrAbsorbedPerMin: 3.4,
+  SigStrikeAccuracyPct: 43,
+  SigStrikeDefensePct: 59,
+  TakedownAvgPer15: 0.71,
+  TakedownAccuracyPct: 10,
+  TakedownDefensePct: 80,
+  SubmissionAvgPer15: 0,
+  KnockdownAvgPer15: 0.53,
+  AverageFightTimeSeconds: 811,
+  RecentForm: 'W,L,W,W,L',
+  LastFightDate: '2026-07-11',
   CardSegment: 'Prelims1',
   FighterWeightClass: 'Lightweight',
   FightOrder: 3,
@@ -126,6 +138,12 @@ test('buildFightResponse keeps fight metadata and title round fields', () => {
   assert.equal(response.fighter1_born_city, 'Kingston');
   assert.equal(response.fighter1_born_state, null);
   assert.equal(response.fighter1_born_country, 'Jamaica');
+  assert.equal(response.fighter1_sig_str_landed_per_min, 4.41);
+  assert.equal(response.fighter1_sig_strike_defense_pct, 59);
+  assert.equal(response.fighter1_takedown_defense_pct, 80);
+  assert.equal(response.fighter1_average_fight_time_seconds, 811);
+  assert.equal(response.fighter1_recent_form, 'W,L,W,W,L');
+  assert.equal(response.fighter1_last_fight_date, '2026-07-11');
   assert.equal(response.fighter2_style, 'Wrestling');
   assert.equal(response.winner, 2);
   assert.equal(response.is_completed, true);

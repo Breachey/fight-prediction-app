@@ -18,6 +18,7 @@ from scrape_full_ufc_event_with_tapology import (
 )
 from fighter_profile_sources import (
     METHOD_FIELDS as VALIDATED_METHOD_FIELDS,
+    PROFILE_FIELDS as VALIDATED_PROFILE_FIELDS,
     build_session as build_profile_source_session,
     scrape_fighter_sources,
 )
@@ -31,7 +32,7 @@ METHOD_FIELDS = [
     "Decision_Wins",
     "Decision_Losses",
 ]
-PROFILE_FIELDS = ["Streak", "style", *METHOD_FIELDS]
+PROFILE_FIELDS = VALIDATED_PROFILE_FIELDS
 
 
 class FighterProfileScrapeError(RuntimeError):

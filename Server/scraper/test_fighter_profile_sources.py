@@ -26,13 +26,18 @@ class FighterProfileSourceTests(unittest.TestCase):
           <div class="meter-title">KO/TKO</div><div class="meter"><span class="pl">1</span></div>
           <div class="meter-title">Submissions</div><div class="meter"><span class="pl">0</span></div>
           <div class="meter-title">Decisions</div><div class="meter"><span class="pl">1</span></div></div>
-        <table class="new_table fighter"><tr><td>NC</td></tr><tr><td>win</td></tr><tr><td>win</td></tr><tr><td>loss</td></tr></table>
+        <table class="new_table fighter">
+          <tr><td>NC</td><td>Opponent</td><td>UFC Test Aug / 17 / 2026</td></tr>
+          <tr><td>win</td></tr><tr><td>win</td></tr><tr><td>loss</td></tr>
+        </table>
         """
         profile = parse_sherdog_profile(html, "https://www.sherdog.com/fighter/test-1")
         self.assertEqual(profile["Record_Wins"], 10)
         self.assertEqual(profile["Other_Wins"], 1)
         self.assertEqual(profile["Decision_Losses"], 1)
         self.assertEqual(profile["Streak"], "2")
+        self.assertEqual(profile["RecentForm"], "NC,W,W,L")
+        self.assertEqual(profile["LastFightDate"], "2026-08-17")
 
     def test_ufc_parser_reads_official_win_methods_style_image_and_rank(self):
         html = """
@@ -44,12 +49,34 @@ class FighterProfileSourceTests(unittest.TestCase):
         <div class="c-stat-3bar__group"><span class="c-stat-3bar__label">SUB</span><span class="c-stat-3bar__value">3</span></div>
         <div class="c-stat-3bar__group"><span class="c-stat-3bar__label">DEC</span><span class="c-stat-3bar__value">3</span></div>
         <div class="c-bio__field"><span class="c-bio__label">Fighting style</span><span class="c-bio__text">Wrestler</span></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">4.41</div><div class="c-stat-compare__label">Sig. Str. Landed</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">3.40</div><div class="c-stat-compare__label">Sig. Str. Absorbed</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">0.71</div><div class="c-stat-compare__label">Takedown avg</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">0.00</div><div class="c-stat-compare__label">Submission avg</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">59 %</div><div class="c-stat-compare__label">Sig. Str. Defense</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">80 %</div><div class="c-stat-compare__label">Takedown Defense</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">0.53</div><div class="c-stat-compare__label">Knockdown Avg</div></div>
+        <div class="c-stat-compare__group"><div class="c-stat-compare__number">13:31</div><div class="c-stat-compare__label">Average fight time</div></div>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Sig. Strikes Landed</dt><dd class="c-overlap__stats-value">1,489</dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Sig. Strikes Attempted</dt><dd class="c-overlap__stats-value">3,432</dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Landed</dt><dd class="c-overlap__stats-value">4</dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Attempted</dt><dd class="c-overlap__stats-value">42</dd></dl>
         """
         profile = parse_ufc_profile(html, "https://www.ufc.com/athlete/test-fighter")
         self.assertEqual(profile["KO_TKO_Wins"], 4)
         self.assertEqual(profile["style"], "Wrestler")
         self.assertEqual(profile["Rank"], "3")
         self.assertEqual(profile["ImageURL"], "https://example.test/fighter.jpg")
+        self.assertEqual(profile["SigStrLandedPerMin"], 4.41)
+        self.assertEqual(profile["SigStrAbsorbedPerMin"], 3.4)
+        self.assertEqual(profile["SigStrikeAccuracyPct"], 43)
+        self.assertEqual(profile["SigStrikeDefensePct"], 59.0)
+        self.assertEqual(profile["TakedownAvgPer15"], 0.71)
+        self.assertEqual(profile["TakedownAccuracyPct"], 10)
+        self.assertEqual(profile["TakedownDefensePct"], 80.0)
+        self.assertEqual(profile["SubmissionAvgPer15"], 0.0)
+        self.assertEqual(profile["KnockdownAvgPer15"], 0.53)
+        self.assertEqual(profile["AverageFightTimeSeconds"], 811)
 
     def test_wikipedia_parser_stays_inside_mma_record(self):
         html = """

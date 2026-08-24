@@ -441,7 +441,21 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 ];
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
-const FIGHT_CARD_FIGHT_SELECT = 'FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, Born_City, Born_State, Born_Country, FightingOutOf_City, FightingOutOf_State, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, Referee_FirstName, Referee_LastName, IsTitleFight, TitleFightName';
+const FIGHTER_COMPARISON_STAT_FIELDS = [
+  'SigStrLandedPerMin',
+  'SigStrAbsorbedPerMin',
+  'SigStrikeAccuracyPct',
+  'SigStrikeDefensePct',
+  'TakedownAvgPer15',
+  'TakedownAccuracyPct',
+  'TakedownDefensePct',
+  'SubmissionAvgPer15',
+  'KnockdownAvgPer15',
+  'AverageFightTimeSeconds',
+  'RecentForm',
+  'LastFightDate',
+];
+const FIGHT_CARD_FIGHT_SELECT = `FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, Born_City, Born_State, Born_Country, FightingOutOf_City, FightingOutOf_State, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, ${FIGHTER_COMPARISON_STAT_FIELDS.join(', ')}, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, Referee_FirstName, Referee_LastName, IsTitleFight, TitleFightName`;
 const ADMIN_FIGHTER_STAT_FIELDS = [
   'odds',
   'TapologyFighterURL',
@@ -459,6 +473,7 @@ const ADMIN_INTEGER_FIGHTER_STAT_FIELDS = new Set(
   ADMIN_FIGHTER_STAT_FIELDS.filter((field) => !['odds', 'style', 'TapologyFighterURL', 'Streak'].includes(field))
 );
 const ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS = new Set(['Streak']);
+const COMPARISON_DECIMAL_FIELDS = new Set(FIGHTER_COMPARISON_STAT_FIELDS.slice(0, 9));
 const FIGHTER_PROFILE_EDIT_COLUMNS = new Set(
   ADMIN_FIGHTER_STAT_FIELDS.map(toFighterProfileColumn).filter(Boolean)
 );
@@ -487,6 +502,7 @@ const FIGHT_CARD_STAT_SELECT = [
   'Submission_Losses',
   'Decision_Wins',
   'Decision_Losses',
+  ...FIGHTER_COMPARISON_STAT_FIELDS,
   'TapologyFighterURL',
   'TapologyMatchConfidence',
 ].join(',');
@@ -536,6 +552,39 @@ function normalizeAdminStatValue(field, value) {
   return { ok: true, value: Number.parseInt(trimmed, 10) };
 }
 
+function normalizeFightCardStatValue(field, value) {
+  if (ADMIN_FIGHTER_STAT_FIELDS.includes(field)) {
+    return normalizeAdminStatValue(field, value);
+  }
+  if (!FIGHTER_COMPARISON_STAT_FIELDS.includes(field)) {
+    return { ok: false, error: `Unsupported field: ${field}` };
+  }
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return { ok: true, value: null };
+  }
+
+  const trimmed = String(value).trim();
+  if (COMPARISON_DECIMAL_FIELDS.has(field)) {
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed >= 0
+      ? { ok: true, value: parsed }
+      : { ok: false, error: `${field} must be a non-negative number` };
+  }
+  if (field === 'AverageFightTimeSeconds') {
+    return /^\d+$/.test(trimmed)
+      ? { ok: true, value: Number.parseInt(trimmed, 10) }
+      : { ok: false, error: `${field} must be a non-negative whole number` };
+  }
+  if (field === 'LastFightDate') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+      ? { ok: true, value: trimmed }
+      : { ok: false, error: `${field} must use YYYY-MM-DD` };
+  }
+  return /^(?:W|L|D|NC)(?:,(?:W|L|D|NC)){0,4}$/.test(trimmed)
+    ? { ok: true, value: trimmed }
+    : { ok: false, error: `${field} must contain up to five comma-separated W, L, D, or NC results` };
+}
+
 function toFighterProfileColumn(field) {
   return {
     TapologyFighterURL: 'tapology_fighter_url',
@@ -548,6 +597,18 @@ function toFighterProfileColumn(field) {
     Submission_Losses: 'submission_losses',
     Decision_Wins: 'decision_wins',
     Decision_Losses: 'decision_losses',
+    SigStrLandedPerMin: 'sig_str_landed_per_min',
+    SigStrAbsorbedPerMin: 'sig_str_absorbed_per_min',
+    SigStrikeAccuracyPct: 'sig_strike_accuracy_pct',
+    SigStrikeDefensePct: 'sig_strike_defense_pct',
+    TakedownAvgPer15: 'takedown_avg_per_15',
+    TakedownAccuracyPct: 'takedown_accuracy_pct',
+    TakedownDefensePct: 'takedown_defense_pct',
+    SubmissionAvgPer15: 'submission_avg_per_15',
+    KnockdownAvgPer15: 'knockdown_avg_per_15',
+    AverageFightTimeSeconds: 'average_fight_time_seconds',
+    RecentForm: 'recent_form',
+    LastFightDate: 'last_fight_date',
   }[field];
 }
 
@@ -1115,13 +1176,13 @@ async function resolveTapologyFighterUrlForStatRow(row, overrideUrl = '') {
 function buildFightCardPatchFromTapologyProfile(row, profile) {
   const patch = {};
 
-  for (const field of ADMIN_FIGHTER_STAT_FIELDS) {
-    const normalized = normalizeAdminStatValue(field, profile?.[field]);
+  for (const field of [...ADMIN_FIGHTER_STAT_FIELDS, ...FIGHTER_COMPARISON_STAT_FIELDS]) {
+    const normalized = normalizeFightCardStatValue(field, profile?.[field]);
     if (!normalized.ok || normalized.value === null) {
       continue;
     }
 
-    const existingValue = normalizeAdminStatValue(field, row?.[field]);
+    const existingValue = normalizeFightCardStatValue(field, row?.[field]);
     if (!existingValue.ok || existingValue.value !== normalized.value) {
       patch[field] = normalized.value;
     }
@@ -1155,6 +1216,7 @@ function buildTapologyScrapeDiagnostics(scrapeResult, profile, updatedFields) {
     'Submission_Losses',
     'Decision_Wins',
     'Decision_Losses',
+    ...FIGHTER_COMPARISON_STAT_FIELDS,
   ];
   const fieldsFound = rawDiagnostics.fields_found || profileFields.filter(
     (field) => profile?.[field] !== null && profile?.[field] !== undefined && profile?.[field] !== ''
@@ -1234,6 +1296,18 @@ async function persistScrapedTapologyFighterProfile({
     submission_losses: normalizeAdminStatValue('Submission_Losses', profile.Submission_Losses).value,
     decision_wins: normalizeAdminStatValue('Decision_Wins', profile.Decision_Wins).value,
     decision_losses: normalizeAdminStatValue('Decision_Losses', profile.Decision_Losses).value,
+    sig_str_landed_per_min: normalizeFightCardStatValue('SigStrLandedPerMin', profile.SigStrLandedPerMin).value,
+    sig_str_absorbed_per_min: normalizeFightCardStatValue('SigStrAbsorbedPerMin', profile.SigStrAbsorbedPerMin).value,
+    sig_strike_accuracy_pct: normalizeFightCardStatValue('SigStrikeAccuracyPct', profile.SigStrikeAccuracyPct).value,
+    sig_strike_defense_pct: normalizeFightCardStatValue('SigStrikeDefensePct', profile.SigStrikeDefensePct).value,
+    takedown_avg_per_15: normalizeFightCardStatValue('TakedownAvgPer15', profile.TakedownAvgPer15).value,
+    takedown_accuracy_pct: normalizeFightCardStatValue('TakedownAccuracyPct', profile.TakedownAccuracyPct).value,
+    takedown_defense_pct: normalizeFightCardStatValue('TakedownDefensePct', profile.TakedownDefensePct).value,
+    submission_avg_per_15: normalizeFightCardStatValue('SubmissionAvgPer15', profile.SubmissionAvgPer15).value,
+    knockdown_avg_per_15: normalizeFightCardStatValue('KnockdownAvgPer15', profile.KnockdownAvgPer15).value,
+    average_fight_time_seconds: normalizeFightCardStatValue('AverageFightTimeSeconds', profile.AverageFightTimeSeconds).value,
+    recent_form: normalizeFightCardStatValue('RecentForm', profile.RecentForm).value,
+    last_fight_date: normalizeFightCardStatValue('LastFightDate', profile.LastFightDate).value,
     last_success_at: nowIso,
     last_failure_at: null,
     last_error: null,
@@ -1329,7 +1403,7 @@ async function persistImportedFightCardPreviewUpdates({
 
     const patch = {};
     for (const [field, rawValue] of Object.entries(requestedValues)) {
-      const normalized = normalizeAdminStatValue(field, rawValue);
+      const normalized = normalizeFightCardStatValue(field, rawValue);
       if (!normalized.ok) {
         throw new Error(normalized.error);
       }

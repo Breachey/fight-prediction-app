@@ -67,6 +67,18 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
   'Submission_Losses',
   'Decision_Wins',
   'Decision_Losses',
+  'SigStrLandedPerMin',
+  'SigStrAbsorbedPerMin',
+  'SigStrikeAccuracyPct',
+  'SigStrikeDefensePct',
+  'TakedownAvgPer15',
+  'TakedownAccuracyPct',
+  'TakedownDefensePct',
+  'SubmissionAvgPer15',
+  'KnockdownAvgPer15',
+  'AverageFightTimeSeconds',
+  'RecentForm',
+  'LastFightDate',
   'TapologyEventURL',
   'TapologyFighterURL',
   'TapologyMatchConfidence',
@@ -75,7 +87,7 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
 const FIGHT_CARD_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const PREVIEW_STORE = new Map();
 const HEADER_SET = new Set(EXPECTED_FIGHT_CARD_HEADERS);
-const INTEGER_FIELDS = new Set(['PossibleRounds', 'Rank']);
+const INTEGER_FIELDS = new Set(['PossibleRounds', 'Rank', 'AverageFightTimeSeconds']);
 const BOOLEAN_FIELDS = new Set(['IsTitleFight']);
 const COMPLETENESS_FIELDS = [
   'style',

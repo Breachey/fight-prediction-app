@@ -5,6 +5,14 @@ import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSessi
 import { fetchWithUserSession } from './utils/userSession';
 import { getInitialFightTargetId, getNextUnvotedFightId } from './utils/fightNavigation';
 import {
+  formatAverageFightTime,
+  formatLastFightRecency,
+  getMetricScalePosition,
+  getMetricScaleRatio,
+  parseFighterMetric,
+  parseRecentForm,
+} from './utils/fighterStats';
+import {
   haveFightCardsChanged,
   haveFightResultsChanged,
   shouldPollFightCard,
@@ -121,20 +129,17 @@ const FINISH_METHOD_BREAKDOWN = [
   {
     label: 'KO/TKO',
     winsKey: 'ko_tko_wins',
-    lossesKey: 'ko_tko_losses',
-    color: 'rgba(251, 146, 60, 0.96)'
+    lossesKey: 'ko_tko_losses'
   },
   {
     label: 'Submission',
     winsKey: 'submission_wins',
-    lossesKey: 'submission_losses',
-    color: 'rgba(56, 189, 248, 0.96)'
+    lossesKey: 'submission_losses'
   },
   {
     label: 'Decision',
     winsKey: 'decision_wins',
-    lossesKey: 'decision_losses',
-    color: 'rgba(192, 132, 252, 0.96)'
+    lossesKey: 'decision_losses'
   }
 ];
 
@@ -156,48 +161,12 @@ function hasMethodValue(value) {
   return value !== null && value !== undefined && value !== '';
 }
 
-function getMethodWidth(count, total) {
-  if (!total || count <= 0) {
+function getMethodWidth(count, maximum) {
+  if (!maximum || count <= 0) {
     return 0;
   }
 
-  return Math.min((count / total) * 100, 100);
-}
-
-function getMethodPercentLabel(count, total) {
-  if (!total) {
-    return '--';
-  }
-
-  return `${Math.round((count / total) * 100)}%`;
-}
-
-function getMethodChartBackground(rows, totalFights) {
-  if (!totalFights) {
-    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
-  }
-
-  let currentAngle = 0;
-  const segments = rows
-    .map((row) => {
-      const totalByMethod = row.wins + row.losses;
-
-      if (!totalByMethod) {
-        return null;
-      }
-
-      const startAngle = currentAngle;
-      currentAngle += (totalByMethod / totalFights) * 360;
-
-      return `${row.color} ${startAngle}deg ${currentAngle}deg`;
-    })
-    .filter(Boolean);
-
-  if (segments.length === 0) {
-    return 'conic-gradient(from -90deg, rgba(255, 255, 255, 0.16) 0deg 360deg)';
-  }
-
-  return `conic-gradient(from -90deg, ${segments.join(', ')})`;
+  return Math.min((count / maximum) * 100, 100);
 }
 
 function getFightFormatDetails(fight) {
@@ -234,6 +203,8 @@ function formatFighterLocation(...parts) {
 
 function FighterDetailSections({ fight, fighterKey }) {
   const value = (suffix) => fight?.[`${fighterKey}_${suffix}`];
+  const recentForm = parseRecentForm(value('recent_form'));
+  const recency = formatLastFightRecency(value('last_fight_date'));
   const bornLocation = formatFighterLocation(
     value('born_city'),
     value('born_state'),
@@ -287,6 +258,23 @@ function FighterDetailSections({ fight, fighterKey }) {
         </div>
       </section>
 
+      <section className="expanded-stat-group">
+        <h4 className="expanded-stat-group-title">Recent form</h4>
+        <div className="fighter-recent-form">
+          <div
+            className="fighter-recent-form-results"
+            aria-label={`${value('name') || fight?.[`${fighterKey}_name`] || 'Fighter'} recent form: ${recentForm.join(', ') || 'unavailable'}`}
+          >
+            {recentForm.length > 0 ? recentForm.map((result, index) => (
+              <span key={`${result}-${index}`} className={`performance-result performance-result--${result.toLowerCase()}`}>
+                {result}
+              </span>
+            )) : <span className="fighter-recent-form-empty">Form unavailable</span>}
+          </div>
+          <span className="performance-recency">{recency}</span>
+        </div>
+      </section>
+
       <section className="expanded-stat-group expanded-stat-group--background">
         <h4 className="expanded-stat-group-title">Background</h4>
         <div className="stat-row stat-row--location">
@@ -302,6 +290,251 @@ function FighterDetailSections({ fight, fighterKey }) {
   );
 }
 
+const PERFORMANCE_GROUPS = [
+  {
+    label: 'Striking',
+    metrics: [
+      { label: 'Landed / min', suffix: 'sig_str_landed_per_min', maximum: 8, format: 'rate' },
+      { label: 'Absorbed / min', suffix: 'sig_str_absorbed_per_min', maximum: 8, format: 'rate', note: 'lower is better' },
+      { label: 'Accuracy', suffix: 'sig_strike_accuracy_pct', maximum: 100, format: 'percent' },
+      { label: 'Defense', suffix: 'sig_strike_defense_pct', maximum: 100, format: 'percent' },
+    ],
+  },
+  {
+    label: 'Grappling',
+    metrics: [
+      { label: 'Takedowns / 15', suffix: 'takedown_avg_per_15', maximum: 6, format: 'rate' },
+      { label: 'TD accuracy', suffix: 'takedown_accuracy_pct', maximum: 100, format: 'percent' },
+      { label: 'TD defense', suffix: 'takedown_defense_pct', maximum: 100, format: 'percent' },
+      { label: 'Sub attempts / 15', suffix: 'submission_avg_per_15', maximum: 3, format: 'rate' },
+    ],
+  },
+  {
+    label: 'Power & pace',
+    metrics: [
+      { label: 'Knockdowns / 15', suffix: 'knockdown_avg_per_15', maximum: 3, format: 'rate' },
+      { label: 'Avg fight time', suffix: 'average_fight_time_seconds', maximum: 1500, format: 'time' },
+    ],
+  },
+];
+
+const RADAR_METRICS = [
+  { label: 'Output', suffix: 'sig_str_landed_per_min', maximum: 8 },
+  { label: 'Accuracy', suffix: 'sig_strike_accuracy_pct', maximum: 100 },
+  { label: 'Str. defense', suffix: 'sig_strike_defense_pct', maximum: 100 },
+  { label: 'TD defense', suffix: 'takedown_defense_pct', maximum: 100 },
+  { label: 'Takedowns', suffix: 'takedown_avg_per_15', maximum: 6 },
+  { label: 'Sub threat', suffix: 'submission_avg_per_15', maximum: 3 },
+];
+
+function formatPerformanceMetric(value, format) {
+  const metric = parseFighterMetric(value);
+  if (metric === null) return '—';
+  if (format === 'percent') return `${Math.round(metric)}%`;
+  if (format === 'time') return formatAverageFightTime(metric);
+  return metric.toFixed(2);
+}
+
+function PerformanceMetricRow({ fight, metric }) {
+  const redValue = fight?.[`fighter1_${metric.suffix}`];
+  const blueValue = fight?.[`fighter2_${metric.suffix}`];
+  const redPosition = getMetricScalePosition(redValue, metric.maximum);
+  const bluePosition = getMetricScalePosition(blueValue, metric.maximum);
+  if (redPosition === null && bluePosition === null) return null;
+
+  const connectorStart = redPosition !== null && bluePosition !== null
+    ? Math.min(redPosition, bluePosition)
+    : null;
+  const connectorWidth = redPosition !== null && bluePosition !== null
+    ? Math.abs(redPosition - bluePosition)
+    : null;
+  const maximumLabel = metric.format === 'percent'
+    ? '100%'
+    : metric.format === 'time'
+      ? '25:00'
+      : `${metric.maximum}`;
+  const redFormatted = formatPerformanceMetric(redValue, metric.format);
+  const blueFormatted = formatPerformanceMetric(blueValue, metric.format);
+
+  return (
+    <div className="matchup-metric">
+      <div className="matchup-metric-heading">
+        <strong className="matchup-value matchup-value--red">{redFormatted}</strong>
+        <span>
+          {metric.label}
+          {metric.note && <small>{metric.note}</small>}
+        </span>
+        <strong className="matchup-value matchup-value--blue">{blueFormatted}</strong>
+      </div>
+      <div
+        className="matchup-dot-plot"
+        role="img"
+        aria-label={`${metric.label}: ${fight.fighter1_name} ${redFormatted}, ${fight.fighter2_name} ${blueFormatted}. Scale zero to ${maximumLabel}.`}
+      >
+        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--quarter" />
+        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--middle" />
+        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--three-quarter" />
+        {connectorStart !== null && (
+          <span
+            className="matchup-dot-connector"
+            style={{ left: `${connectorStart}%`, width: `${connectorWidth}%` }}
+          />
+        )}
+        {redPosition !== null && (
+          <span className="matchup-dot matchup-dot--red" style={{ left: `${redPosition}%` }} />
+        )}
+        {bluePosition !== null && (
+          <span className="matchup-dot matchup-dot--blue" style={{ left: `${bluePosition}%` }} />
+        )}
+      </div>
+      <div className="matchup-metric-scale" aria-hidden="true">
+        <span>0</span>
+        <span>{maximumLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function MatchupRadar({ fight }) {
+  const center = 150;
+  const centerY = 128;
+  const radius = 78;
+  const axisCount = RADAR_METRICS.length;
+  const fighterValues = ['fighter1', 'fighter2'].map((fighterKey) => (
+    RADAR_METRICS.map(({ suffix, maximum }) => (
+      getMetricScaleRatio(fight?.[`${fighterKey}_${suffix}`], maximum)
+    ))
+  ));
+  const hasCompleteRadar = fighterValues.every((values) => values.every((value) => value !== null));
+  if (!hasCompleteRadar) return null;
+
+  const pointFor = (index, ratio = 1, extraRadius = 0) => {
+    const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / axisCount);
+    const distance = (radius * ratio) + extraRadius;
+    return {
+      x: center + (Math.cos(angle) * distance),
+      y: centerY + (Math.sin(angle) * distance),
+      angle,
+    };
+  };
+  const polygon = (values) => values
+    .map((ratio, index) => {
+      const point = pointFor(index, ratio);
+      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+    })
+    .join(' ');
+  const grids = [0.25, 0.5, 0.75, 1].map((level) => (
+    RADAR_METRICS.map((_, index) => {
+      const point = pointFor(index, level);
+      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+    }).join(' ')
+  ));
+
+  return (
+    <figure className="matchup-radar">
+      <figcaption>
+        <strong>Style profile</strong>
+        <span>Normalized career dimensions</span>
+      </figcaption>
+      <svg viewBox="0 0 300 270" role="img" aria-labelledby={`radar-title-${fight.id} radar-desc-${fight.id}`}>
+        <title id={`radar-title-${fight.id}`}>{fight.fighter1_name} and {fight.fighter2_name} style profile</title>
+        <desc id={`radar-desc-${fight.id}`}>Radar comparison of striking output, accuracy, striking defense, takedown defense, takedown volume, and submission threat.</desc>
+        {grids.map((points, index) => (
+          <polygon key={points} className="matchup-radar-grid" points={points} data-outer={index === grids.length - 1 || undefined} />
+        ))}
+        {RADAR_METRICS.map((metric, index) => {
+          const axisPoint = pointFor(index);
+          const labelPoint = pointFor(index, 1, 20);
+          const cosine = Math.cos(labelPoint.angle);
+          const textAnchor = cosine > 0.35 ? 'start' : cosine < -0.35 ? 'end' : 'middle';
+          return (
+            <g key={metric.suffix}>
+              <line className="matchup-radar-axis" x1={center} y1={centerY} x2={axisPoint.x} y2={axisPoint.y} />
+              <text className="matchup-radar-label" x={labelPoint.x} y={labelPoint.y} textAnchor={textAnchor} dominantBaseline="middle">
+                {metric.label}
+              </text>
+            </g>
+          );
+        })}
+        <polygon className="matchup-radar-area matchup-radar-area--red" points={polygon(fighterValues[0])} />
+        <polygon className="matchup-radar-area matchup-radar-area--blue" points={polygon(fighterValues[1])} />
+        {fighterValues.map((values, fighterIndex) => values.map((ratio, metricIndex) => {
+          const point = pointFor(metricIndex, ratio);
+          return (
+            <circle
+              key={`${fighterIndex}-${metricIndex}`}
+              className={`matchup-radar-point matchup-radar-point--${fighterIndex === 0 ? 'red' : 'blue'}`}
+              cx={point.x}
+              cy={point.y}
+              r="3"
+            />
+          );
+        }))}
+      </svg>
+      <p>Shape only—each axis keeps its own UFC stat scale.</p>
+    </figure>
+  );
+}
+
+function FightPerformanceComparison({ fight }) {
+  const metricSuffixes = PERFORMANCE_GROUPS.flatMap(({ metrics }) => metrics.map(({ suffix }) => suffix));
+  const hasPerformanceData = ['fighter1', 'fighter2'].some((fighterKey) => (
+    metricSuffixes.some((suffix) => parseFighterMetric(fight?.[`${fighterKey}_${suffix}`]) !== null)
+  ));
+  if (!hasPerformanceData) return null;
+
+  const hasRadar = RADAR_METRICS.every(({ suffix }) => (
+    parseFighterMetric(fight?.[`fighter1_${suffix}`]) !== null
+    && parseFighterMetric(fight?.[`fighter2_${suffix}`]) !== null
+  ));
+
+  return (
+    <section className="fight-performance-comparison" aria-labelledby={`performance-title-${fight.id}`}>
+      <div className="matchup-performance-header">
+        <div>
+          <h4 id={`performance-title-${fight.id}`}>Performance comparison</h4>
+          <span>UFC career stats</span>
+        </div>
+      </div>
+
+      <div className="matchup-sticky-identities" aria-label={`${fight.fighter1_name} in the red corner versus ${fight.fighter2_name} in the blue corner`}>
+        <div className="matchup-identity matchup-identity--red">
+          <span><i className="matchup-legend-dot matchup-legend-dot--red" aria-hidden="true" />Red corner</span>
+          <strong>{fight.fighter1_name}</strong>
+        </div>
+        <span className="matchup-identity-vs" aria-hidden="true">VS</span>
+        <div className="matchup-identity matchup-identity--blue">
+          <span>Blue corner<i className="matchup-legend-dot matchup-legend-dot--blue" aria-hidden="true" /></span>
+          <strong>{fight.fighter2_name}</strong>
+        </div>
+      </div>
+
+      <div className={`matchup-performance-body${hasRadar ? '' : ' matchup-performance-body--without-radar'}`}>
+        {hasRadar && <MatchupRadar fight={fight} />}
+        <div className="matchup-metric-groups">
+          {PERFORMANCE_GROUPS.map((group) => {
+            const visibleMetrics = group.metrics.filter(({ suffix }) => (
+              parseFighterMetric(fight?.[`fighter1_${suffix}`]) !== null
+              || parseFighterMetric(fight?.[`fighter2_${suffix}`]) !== null
+            ));
+            if (visibleMetrics.length === 0) return null;
+            return (
+              <section className="matchup-metric-group" key={group.label}>
+                <h5>{group.label}</h5>
+                <div className="matchup-metric-grid">
+                  {visibleMetrics.map((metric) => (
+                    <PerformanceMetricRow key={metric.suffix} fight={fight} metric={metric} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FinishMethodBreakdown({ fight, fighterKey }) {
   const recordTotals = parseRecordTotals(fight?.[`${fighterKey}_record`]);
   const hasAnyMethodData = FINISH_METHOD_BREAKDOWN.some(({ winsKey, lossesKey }) => (
@@ -311,7 +544,7 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
 
   if (!hasAnyMethodData) {
     return (
-      <div className="finish-method-breakdown finish-method-breakdown--empty">
+      <div className={`finish-method-breakdown finish-method-breakdown--${fighterKey} finish-method-breakdown--empty`}>
         <div className="finish-method-breakdown-header">
           <span className="finish-method-breakdown-title">Method Breakdown</span>
           <span className="finish-method-breakdown-empty-copy">Unavailable</span>
@@ -320,64 +553,39 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
     );
   }
 
-  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey, color }) => ({
+  const rows = FINISH_METHOD_BREAKDOWN.map(({ label, winsKey, lossesKey }) => ({
     label,
     wins: parseMethodCount(fight?.[`${fighterKey}_${winsKey}`]),
-    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`]),
-    color
+    losses: parseMethodCount(fight?.[`${fighterKey}_${lossesKey}`])
   }));
 
   const fallbackWins = rows.reduce((total, row) => total + row.wins, 0);
   const fallbackLosses = rows.reduce((total, row) => total + row.losses, 0);
   const totalWins = recordTotals.wins || fallbackWins;
   const totalLosses = recordTotals.losses || fallbackLosses;
-  const totalFights = totalWins + totalLosses;
-  const chartBackground = getMethodChartBackground(rows, totalFights);
+  const maximumMethodCount = Math.max(1, ...rows.flatMap((row) => [row.wins, row.losses]));
 
   return (
-    <div className="finish-method-breakdown">
+    <div className={`finish-method-breakdown finish-method-breakdown--${fighterKey}`}>
       <div className="finish-method-breakdown-header">
-        <span className="finish-method-breakdown-title">Method Breakdown</span>
+        <span className="finish-method-breakdown-title">Fight outcomes by method</span>
         <span className="finish-method-breakdown-summary">
-          {totalWins}W • {totalLosses}L
+          {totalWins} wins · {totalLosses} losses
         </span>
       </div>
-      <div className="finish-method-chart-panel">
-        <div
-          className="finish-method-chart"
-          role="img"
-          aria-label={`Fight endings: ${rows.map((row) => `${row.label} ${row.wins + row.losses}`).join(', ')}`}
-          style={{ background: chartBackground }}
-        >
-          <div className="finish-method-chart-center">
-            <span className="finish-method-chart-total">{totalFights}</span>
-            <span className="finish-method-chart-caption">Fights</span>
-          </div>
+      <div
+        className="finish-method-chart"
+        role="img"
+        aria-label={rows.map((row) => `${row.label}: ${row.wins} wins and ${row.losses} losses`).join('. ')}
+      >
+        <div className="finish-method-chart-head" aria-hidden="true">
+          <span>Wins</span>
+          <span>Method</span>
+          <span>Losses</span>
         </div>
-        <div className="finish-method-chart-legend">
-          {rows.map((row) => {
-            const totalByMethod = row.wins + row.losses;
-
-            return (
-              <div key={row.label} className="finish-method-chart-legend-item">
-                <span
-                  className="finish-method-chart-legend-swatch"
-                  aria-hidden="true"
-                  style={{ backgroundColor: row.color }}
-                />
-                <span className="finish-method-chart-legend-label">{row.label}</span>
-                <span className="finish-method-chart-legend-value">
-                  {totalByMethod} • {getMethodPercentLabel(totalByMethod, totalFights)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="finish-method-breakdown-list">
         {rows.map((row) => {
-          const winWidth = getMethodWidth(row.wins, totalWins);
-          const lossWidth = getMethodWidth(row.losses, totalLosses);
+          const winWidth = getMethodWidth(row.wins, maximumMethodCount);
+          const lossWidth = getMethodWidth(row.losses, maximumMethodCount);
 
           return (
             <div
@@ -385,31 +593,18 @@ function FinishMethodBreakdown({ fight, fighterKey }) {
               className="finish-method-row"
               aria-label={`${row.label}: ${row.wins} wins and ${row.losses} losses by this method`}
             >
-              <div className="finish-method-row-top">
-                <span className="finish-method-name">{row.label}</span>
-                <span className="finish-method-counts">{row.wins}W • {row.losses}L</span>
+              <div className="finish-method-side finish-method-side--wins" aria-hidden="true">
+                <strong>{row.wins}</strong>
+                <div className="finish-method-track">
+                  <span className="finish-method-fill finish-method-fill--win" style={{ width: `${winWidth}%` }} />
+                </div>
               </div>
-              <div className="finish-method-lanes">
-                <div className="finish-method-lane">
-                  <span className="finish-method-lane-label finish-method-lane-label--win">W</span>
-                  <div className="finish-method-track" aria-hidden="true">
-                    <div
-                      className="finish-method-fill finish-method-fill--win"
-                      style={{ width: `${winWidth}%` }}
-                    />
-                  </div>
-                  <span className="finish-method-percent">{getMethodPercentLabel(row.wins, totalWins)}</span>
+              <span className="finish-method-name" aria-hidden="true">{row.label}</span>
+              <div className="finish-method-side finish-method-side--losses" aria-hidden="true">
+                <div className="finish-method-track">
+                  <span className="finish-method-fill finish-method-fill--loss" style={{ width: `${lossWidth}%` }} />
                 </div>
-                <div className="finish-method-lane">
-                  <span className="finish-method-lane-label finish-method-lane-label--loss">L</span>
-                  <div className="finish-method-track" aria-hidden="true">
-                    <div
-                      className="finish-method-fill finish-method-fill--loss"
-                      style={{ width: `${lossWidth}%` }}
-                    />
-                  </div>
-                  <span className="finish-method-percent">{getMethodPercentLabel(row.losses, totalLosses)}</span>
-                </div>
+                <strong>{row.losses}</strong>
               </div>
             </div>
           );
@@ -1800,6 +1995,10 @@ function Fights({
               )}
             </div>
           </div>
+
+          {expandedFightStats[fight.id] && (
+            <FightPerformanceComparison fight={fight} />
+          )}
 
           {/* Add the single expand button after the fighters container */}
           <button 

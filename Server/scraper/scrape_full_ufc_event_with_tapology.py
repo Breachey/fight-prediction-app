@@ -51,6 +51,10 @@ SUPABASE_FIGHTER_PROFILE_SELECT = (
     "fighter_id,mma_id,first_name,last_name,normalized_name,tapology_fighter_url,"
     "rank,streak,style,ko_tko_wins,ko_tko_losses,submission_wins,"
     "submission_losses,decision_wins,decision_losses,stats_confidence,"
+    "sig_str_landed_per_min,sig_str_absorbed_per_min,sig_strike_accuracy_pct,"
+    "sig_strike_defense_pct,takedown_avg_per_15,takedown_accuracy_pct,"
+    "takedown_defense_pct,submission_avg_per_15,knockdown_avg_per_15,"
+    "average_fight_time_seconds,recent_form,last_fight_date,"
     "stats_source,streak_source,streak_verified_at,streak_needs_review,"
     "streak_record_wins,streak_record_losses,last_success_at,last_failure_at,last_error"
 )
@@ -62,6 +66,10 @@ SUPABASE_TAPOLOGY_FIGHTER_SELECT = (
     "fighter_id,mma_id,first_name,last_name,normalized_name,tapology_fighter_url,"
     "rank,streak,style,ko_tko_wins,ko_tko_losses,submission_wins,"
     "submission_losses,decision_wins,decision_losses,match_confidence,"
+    "sig_str_landed_per_min,sig_str_absorbed_per_min,sig_strike_accuracy_pct,"
+    "sig_strike_defense_pct,takedown_avg_per_15,takedown_accuracy_pct,"
+    "takedown_defense_pct,submission_avg_per_15,knockdown_avg_per_15,"
+    "average_fight_time_seconds,recent_form,last_fight_date,"
     "source,last_success_at,last_failure_at,last_error"
 )
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +93,18 @@ TAPOLOGY_ENRICHMENT_FIELDS = [
     "Submission_Losses",
     "Decision_Wins",
     "Decision_Losses",
+    "SigStrLandedPerMin",
+    "SigStrAbsorbedPerMin",
+    "SigStrikeAccuracyPct",
+    "SigStrikeDefensePct",
+    "TakedownAvgPer15",
+    "TakedownAccuracyPct",
+    "TakedownDefensePct",
+    "SubmissionAvgPer15",
+    "KnockdownAvgPer15",
+    "AverageFightTimeSeconds",
+    "RecentForm",
+    "LastFightDate",
 ]
 KNOWN_FIGHTER_NAME_VARIANTS = {
     "patricio pitbull": {"patricio freire"},
@@ -153,6 +173,18 @@ CSV_HEADERS = [
     "Submission_Losses",
     "Decision_Wins",
     "Decision_Losses",
+    "SigStrLandedPerMin",
+    "SigStrAbsorbedPerMin",
+    "SigStrikeAccuracyPct",
+    "SigStrikeDefensePct",
+    "TakedownAvgPer15",
+    "TakedownAccuracyPct",
+    "TakedownDefensePct",
+    "SubmissionAvgPer15",
+    "KnockdownAvgPer15",
+    "AverageFightTimeSeconds",
+    "RecentForm",
+    "LastFightDate",
     "TapologyEventURL",
     "TapologyFighterURL",
     "TapologyMatchConfidence",
@@ -455,6 +487,20 @@ def parse_optional_int(value: object) -> Optional[int]:
     return int(normalized)
 
 
+def parse_optional_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    try:
+        parsed = float(normalized)
+    except ValueError:
+        return None
+    return parsed if parsed == parsed and abs(parsed) != float("inf") else None
+
+
 def cache_value_to_csv(value: object) -> str:
     if value is None:
         return ""
@@ -499,6 +545,18 @@ def normalize_tapology_cache_fighter(row: Dict[str, object]) -> Dict[str, str]:
         "Submission_Losses": cache_value_to_csv(row.get("submission_losses")),
         "Decision_Wins": cache_value_to_csv(row.get("decision_wins")),
         "Decision_Losses": cache_value_to_csv(row.get("decision_losses")),
+        "SigStrLandedPerMin": cache_value_to_csv(row.get("sig_str_landed_per_min")),
+        "SigStrAbsorbedPerMin": cache_value_to_csv(row.get("sig_str_absorbed_per_min")),
+        "SigStrikeAccuracyPct": cache_value_to_csv(row.get("sig_strike_accuracy_pct")),
+        "SigStrikeDefensePct": cache_value_to_csv(row.get("sig_strike_defense_pct")),
+        "TakedownAvgPer15": cache_value_to_csv(row.get("takedown_avg_per_15")),
+        "TakedownAccuracyPct": cache_value_to_csv(row.get("takedown_accuracy_pct")),
+        "TakedownDefensePct": cache_value_to_csv(row.get("takedown_defense_pct")),
+        "SubmissionAvgPer15": cache_value_to_csv(row.get("submission_avg_per_15")),
+        "KnockdownAvgPer15": cache_value_to_csv(row.get("knockdown_avg_per_15")),
+        "AverageFightTimeSeconds": cache_value_to_csv(row.get("average_fight_time_seconds")),
+        "RecentForm": cache_value_to_csv(row.get("recent_form")),
+        "LastFightDate": cache_value_to_csv(row.get("last_fight_date")),
         "_TapologyLastAttemptAt": last_attempt_at,
     }
 
@@ -757,6 +815,18 @@ def build_tapology_fighter_cache_payload(
         "submission_losses": parse_optional_int(fighter_data.get("Submission_Losses")),
         "decision_wins": parse_optional_int(fighter_data.get("Decision_Wins")),
         "decision_losses": parse_optional_int(fighter_data.get("Decision_Losses")),
+        "sig_str_landed_per_min": parse_optional_float(fighter_data.get("SigStrLandedPerMin")),
+        "sig_str_absorbed_per_min": parse_optional_float(fighter_data.get("SigStrAbsorbedPerMin")),
+        "sig_strike_accuracy_pct": parse_optional_float(fighter_data.get("SigStrikeAccuracyPct")),
+        "sig_strike_defense_pct": parse_optional_float(fighter_data.get("SigStrikeDefensePct")),
+        "takedown_avg_per_15": parse_optional_float(fighter_data.get("TakedownAvgPer15")),
+        "takedown_accuracy_pct": parse_optional_float(fighter_data.get("TakedownAccuracyPct")),
+        "takedown_defense_pct": parse_optional_float(fighter_data.get("TakedownDefensePct")),
+        "submission_avg_per_15": parse_optional_float(fighter_data.get("SubmissionAvgPer15")),
+        "knockdown_avg_per_15": parse_optional_float(fighter_data.get("KnockdownAvgPer15")),
+        "average_fight_time_seconds": parse_optional_int(fighter_data.get("AverageFightTimeSeconds")),
+        "recent_form": cache_value_to_csv(fighter_data.get("RecentForm")) or None,
+        "last_fight_date": cache_value_to_csv(fighter_data.get("LastFightDate")) or None,
         "match_confidence": cache_value_to_csv(fighter_data.get("TapologyMatchConfidence")) or None,
         "source": source,
         "last_success_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -813,6 +883,8 @@ def upsert_tapology_fighter_cache(
                 or payload.get("ko_tko_wins") is not None
                 or payload.get("submission_wins") is not None
                 or payload.get("decision_wins") is not None
+                or payload.get("sig_str_landed_per_min") is not None
+                or payload.get("recent_form")
             ):
                 payloads.append(payload)
 
@@ -884,6 +956,18 @@ def upsert_tapology_fighter_cache(
             "submission_losses": payload.get("submission_losses"),
             "decision_wins": payload.get("decision_wins"),
             "decision_losses": payload.get("decision_losses"),
+            "sig_str_landed_per_min": payload.get("sig_str_landed_per_min"),
+            "sig_str_absorbed_per_min": payload.get("sig_str_absorbed_per_min"),
+            "sig_strike_accuracy_pct": payload.get("sig_strike_accuracy_pct"),
+            "sig_strike_defense_pct": payload.get("sig_strike_defense_pct"),
+            "takedown_avg_per_15": payload.get("takedown_avg_per_15"),
+            "takedown_accuracy_pct": payload.get("takedown_accuracy_pct"),
+            "takedown_defense_pct": payload.get("takedown_defense_pct"),
+            "submission_avg_per_15": payload.get("submission_avg_per_15"),
+            "knockdown_avg_per_15": payload.get("knockdown_avg_per_15"),
+            "average_fight_time_seconds": payload.get("average_fight_time_seconds"),
+            "recent_form": payload.get("recent_form"),
+            "last_fight_date": payload.get("last_fight_date"),
             "last_failure_at": payload.get("last_failure_at"),
             "last_error": payload.get("last_error"),
         }
@@ -2908,6 +2992,18 @@ def build_row(
         "Submission_Losses": tapology_fighter.get("Submission_Losses", ""),
         "Decision_Wins": tapology_fighter.get("Decision_Wins", ""),
         "Decision_Losses": tapology_fighter.get("Decision_Losses", ""),
+        "SigStrLandedPerMin": tapology_fighter.get("SigStrLandedPerMin", ""),
+        "SigStrAbsorbedPerMin": tapology_fighter.get("SigStrAbsorbedPerMin", ""),
+        "SigStrikeAccuracyPct": tapology_fighter.get("SigStrikeAccuracyPct", ""),
+        "SigStrikeDefensePct": tapology_fighter.get("SigStrikeDefensePct", ""),
+        "TakedownAvgPer15": tapology_fighter.get("TakedownAvgPer15", ""),
+        "TakedownAccuracyPct": tapology_fighter.get("TakedownAccuracyPct", ""),
+        "TakedownDefensePct": tapology_fighter.get("TakedownDefensePct", ""),
+        "SubmissionAvgPer15": tapology_fighter.get("SubmissionAvgPer15", ""),
+        "KnockdownAvgPer15": tapology_fighter.get("KnockdownAvgPer15", ""),
+        "AverageFightTimeSeconds": tapology_fighter.get("AverageFightTimeSeconds", ""),
+        "RecentForm": tapology_fighter.get("RecentForm", ""),
+        "LastFightDate": tapology_fighter.get("LastFightDate", ""),
         "TapologyEventURL": tapology_event.get("TapologyEventURL", ""),
         "TapologyFighterURL": tapology_fighter.get("TapologyFighterURL", ""),
         "TapologyMatchConfidence": tapology_fighter.get(

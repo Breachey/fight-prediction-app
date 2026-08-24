@@ -33,6 +33,18 @@ const AUTOMATION_FILL_FIELDS = [
   'Submission_Losses',
   'Decision_Wins',
   'Decision_Losses',
+  'SigStrLandedPerMin',
+  'SigStrAbsorbedPerMin',
+  'SigStrikeAccuracyPct',
+  'SigStrikeDefensePct',
+  'TakedownAvgPer15',
+  'TakedownAccuracyPct',
+  'TakedownDefensePct',
+  'SubmissionAvgPer15',
+  'KnockdownAvgPer15',
+  'AverageFightTimeSeconds',
+  'RecentForm',
+  'LastFightDate',
 ];
 const AUTOMATION_REFRESH_FIELDS = [
   ...AUTOMATION_FILL_FIELDS,
