@@ -2,6 +2,26 @@ const path = require('path');
 
 const AUTOMATION_FILL_FIELDS = [
   'odds',
+  'MMAId',
+  'Nickname',
+  'DOB',
+  'Age',
+  'Stance',
+  'Weight_lbs',
+  'Height_in',
+  'Reach_in',
+  'UFC_Profile',
+  'Record_Wins',
+  'Record_Losses',
+  'Record_Draws',
+  'Record_NoContests',
+  'Born_City',
+  'Born_State',
+  'Born_Country',
+  'FightingOutOf_City',
+  'FightingOutOf_State',
+  'FightingOutOf_Country',
+  'ImageURL',
   'TapologyFighterURL',
   'TapologyMatchConfidence',
   'Rank',
@@ -231,12 +251,32 @@ function mergeScrapedRowsWithStoredValues(scrapedRows, existingRows) {
 
     const merged = { ...row };
     for (const field of AUTOMATION_REFRESH_FIELDS) {
-      if (hasValue(existing[field])) {
+      if (field !== 'odds' && hasValue(existing[field])) {
         merged[field] = existing[field];
       }
     }
+    if (!hasValue(merged.odds) && hasValue(existing.odds)) {
+      merged.odds = existing.odds;
+    }
     return merged;
   });
+}
+
+function countUpdatedFightCardOdds(existingRows, nextRows) {
+  const existingByKey = new Map(
+    (existingRows || []).map((row) => [fightCardRowKey(row), row])
+  );
+
+  return (nextRows || []).reduce((count, row) => {
+    const existing = existingByKey.get(fightCardRowKey(row));
+    if (!existing || !hasValue(row.odds)) {
+      return count;
+    }
+
+    return String(existing.odds || '').trim() === String(row.odds).trim()
+      ? count
+      : count + 1;
+  }, 0);
 }
 
 function summarizeMissingFightCardData(rows) {
@@ -304,6 +344,7 @@ module.exports = {
   AUTOMATION_REFRESH_FIELDS,
   assessLineupChange,
   countFilledFightCardValues,
+  countUpdatedFightCardOdds,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   resolveAutomationReportPath,

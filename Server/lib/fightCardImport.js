@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { parseScraperProgressLine } = require('./fightCardPreviewProgress');
+const { mergeScrapedRowsWithStoredValues } = require('./fightCardAutomation');
 
 const EXPECTED_FIGHT_CARD_HEADERS = [
   'id',
@@ -1099,7 +1100,9 @@ async function buildFightCardPreview({
   const blockers = [...headerErrors];
   const warnings = [];
   const rawRows = rows || [];
-  const sanitizedRows = rawRows.map(sanitizeRowForDatabase);
+  const scrapedRows = rawRows.map(sanitizeRowForDatabase);
+  const existingRows = existingFightCardRows || [];
+  const sanitizedRows = mergeScrapedRowsWithStoredValues(scrapedRows, existingRows);
   const fightMap = new Map();
   const eventFieldKeys = [
     'Event',
@@ -1194,7 +1197,6 @@ async function buildFightCardPreview({
     }
   });
 
-  const existingRows = existingFightCardRows || [];
   const existingResults = existingFightResults || [];
   const changedFightCard = compareFightCardShape(
     existingRows,
@@ -1222,11 +1224,11 @@ async function buildFightCardPreview({
   const fieldCompleteness = Object.fromEntries(
     COMPLETENESS_FIELDS.map((field) => [
       field,
-      rawRows.reduce((count, row) => count + (normalizeText(row[field]) ? 0 : 1), 0),
+      sanitizedRows.reduce((count, row) => count + (normalizeText(row[field]) ? 0 : 1), 0),
     ])
   );
-  const fieldCompletenessSummary = buildFieldCompletenessSummary(rawRows, fieldCompleteness);
-  const cachedTapologyRowCount = rawRows.reduce(
+  const fieldCompletenessSummary = buildFieldCompletenessSummary(sanitizedRows, fieldCompleteness);
+  const cachedTapologyRowCount = sanitizedRows.reduce(
     (count, row) => count + (isCachedTapologyConfidence(row.TapologyMatchConfidence) ? 1 : 0),
     0
   );

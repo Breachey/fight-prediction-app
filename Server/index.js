@@ -4186,7 +4186,7 @@ app.post('/admin/events/:id/fight-card/preview', requireAdminSession, async (req
         .maybeSingle(),
       supabase
         .from('ufc_full_fight_card')
-        .select('FightId, FighterId, Corner')
+        .select('*')
         .eq('EventId', eventId),
     ]);
 

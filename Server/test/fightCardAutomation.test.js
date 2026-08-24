@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   assessLineupChange,
   countFilledFightCardValues,
+  countUpdatedFightCardOdds,
   hasEventStarted,
   mergeScrapedRowsWithStoredValues,
   resolveAutomationReportPath,
@@ -93,7 +94,7 @@ test('selectDueEvents allows an explicit future event but never a completed even
   assert.deepEqual(selectDueEvents({ events, explicitEventId: 1319 }), []);
 });
 
-test('mergeScrapedRowsWithStoredValues only fills blanks on an existing card', () => {
+test('mergeScrapedRowsWithStoredValues refreshes odds and only fills other blanks', () => {
   const existing = [{
     FightId: 10,
     FighterId: 100,
@@ -115,11 +116,54 @@ test('mergeScrapedRowsWithStoredValues only fills blanks on an existing card', (
 
   const [merged] = mergeScrapedRowsWithStoredValues(scraped, existing);
 
-  assert.equal(merged.odds, '+120');
+  assert.equal(merged.odds, '-150');
   assert.equal(merged.Streak, '-1');
   assert.equal(merged.style, 'Boxing');
   assert.equal(merged.KO_TKO_Wins, '8');
   assert.equal(countFilledFightCardValues(existing, [merged]), 2);
+  assert.equal(countUpdatedFightCardOdds(existing, [merged]), 1);
+});
+
+test('mergeScrapedRowsWithStoredValues keeps stored odds when a refresh returns blank', () => {
+  const existing = [{
+    FightId: 10,
+    FighterId: 100,
+    Corner: 'Red',
+    odds: '+120',
+    Height_in: '72',
+  }];
+  const [merged] = mergeScrapedRowsWithStoredValues([{
+    FightId: '10',
+    FighterId: '100',
+    Corner: 'Red',
+    odds: null,
+    Height_in: '73',
+  }], existing);
+
+  assert.equal(merged.odds, '+120');
+  assert.equal(merged.Height_in, '72');
+  assert.equal(countUpdatedFightCardOdds(existing, [merged]), 0);
+});
+
+test('mergeScrapedRowsWithStoredValues drops cancelled rows and keeps replacements new', () => {
+  const existing = [
+    { FightId: 10, FighterId: 100, Corner: 'Red', Streak: '4' },
+    { FightId: 10, FighterId: 101, Corner: 'Blue', Streak: '2' },
+    { FightId: 11, FighterId: 102, Corner: 'Red', Streak: '3' },
+    { FightId: 11, FighterId: 103, Corner: 'Blue', Streak: '-1' },
+  ];
+  const merged = mergeScrapedRowsWithStoredValues([
+    { FightId: 10, FighterId: 100, Corner: 'Red', Streak: '9' },
+    { FightId: 10, FighterId: 101, Corner: 'Blue', Streak: '8' },
+    { FightId: 12, FighterId: 104, Corner: 'Red', Streak: '1' },
+    { FightId: 12, FighterId: 105, Corner: 'Blue', Streak: '5' },
+  ], existing);
+
+  assert.deepEqual(merged.map((row) => row.FightId), [10, 10, 12, 12]);
+  assert.equal(merged[0].Streak, '4');
+  assert.equal(merged[1].Streak, '2');
+  assert.equal(merged[2].Streak, '1');
+  assert.equal(merged[3].Streak, '5');
 });
 
 test('automation detects and preserves newly assigned referees', () => {
@@ -188,6 +232,26 @@ test('summarizeFilledFightCardData reports new values by field and new fighter r
 test('summarizeMissingFightCardData counts zero as a populated stat', () => {
   const summary = summarizeMissingFightCardData([{
     odds: '-110',
+    MMAId: 100,
+    Nickname: 'The Example',
+    DOB: '1990-01-01',
+    Age: 36,
+    Stance: 'Orthodox',
+    Weight_lbs: 170,
+    Height_in: 72,
+    Reach_in: 74,
+    UFC_Profile: 'https://www.ufc.com/athlete/example',
+    Record_Wins: 10,
+    Record_Losses: 2,
+    Record_Draws: 0,
+    Record_NoContests: 0,
+    Born_City: 'Denver',
+    Born_State: 'Colorado',
+    Born_Country: 'United States',
+    FightingOutOf_City: 'Denver',
+    FightingOutOf_State: 'Colorado',
+    FightingOutOf_Country: 'United States',
+    ImageURL: 'https://example.com/fighter.jpg',
     TapologyFighterURL: 'https://www.tapology.com/fightcenter/fighters/test',
     TapologyMatchConfidence: 'cache',
     Rank: 'NR',

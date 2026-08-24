@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.25.1 - 2026-08-24
+
+### Fixed
+
+- Made manual and automatic existing-card refreshes update newly scraped odds while preserving previously populated fighter data and filling only missing values.
+- Centralized existing-card merge behavior so lineup removals and replacements use the newly scraped card without erasing unchanged fighters' stored enrichment.
+
 ## 0.25.0 - 2026-08-24
 
 ### Changed
