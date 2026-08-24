@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { parseScraperProgressLine } = require('./fightCardPreviewProgress');
 
 const EXPECTED_FIGHT_CARD_HEADERS = [
   'id',
@@ -23,6 +24,8 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
   'FightOrder',
   'FightStatus',
   'PossibleRounds',
+  'Referee_FirstName',
+  'Referee_LastName',
   'IsTitleFight',
   'TitleFightName',
   'CardSegment',
@@ -71,7 +74,7 @@ const EXPECTED_FIGHT_CARD_HEADERS = [
 const FIGHT_CARD_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const PREVIEW_STORE = new Map();
 const HEADER_SET = new Set(EXPECTED_FIGHT_CARD_HEADERS);
-const INTEGER_FIELDS = new Set(['PossibleRounds']);
+const INTEGER_FIELDS = new Set(['PossibleRounds', 'Rank']);
 const BOOLEAN_FIELDS = new Set(['IsTitleFight']);
 const COMPLETENESS_FIELDS = [
   'style',
@@ -98,6 +101,7 @@ const METHOD_STAT_FIELDS = [
 const MANUAL_PREVIEW_EDIT_FIELDS = [
   'odds',
   'TapologyFighterURL',
+  'Rank',
   'style',
   'Streak',
   ...METHOD_STAT_FIELDS,
@@ -192,8 +196,12 @@ function buildEditableFightCardPreviewRows(rows) {
         firstName: row.FirstName || null,
         lastName: row.LastName || null,
         nickname: row.Nickname || null,
+        UFC_Profile: row.UFC_Profile || null,
+        Record_Wins: row.Record_Wins ?? null,
+        Record_Losses: row.Record_Losses ?? null,
         odds: row.odds || null,
         TapologyFighterURL: row.TapologyFighterURL || null,
+        Rank: row.Rank ?? null,
         Streak: row.Streak ?? null,
         style: row.style || null,
         ...Object.fromEntries(METHOD_STAT_FIELDS.map((field) => [field, row[field] ?? null])),
@@ -579,6 +587,7 @@ function buildFieldCompletenessSummary(rawRows, fieldCompleteness) {
     tapologyConfidence: buildMetric('TapologyMatchConfidence'),
     streak: buildMetric('Streak'),
     finishBreakdown: buildMetric('KO_TKO_Wins'),
+    fighterProfiles: buildMetric('KO_TKO_Wins'),
   };
 }
 
@@ -741,6 +750,7 @@ async function runFightCardScraper({
   imageDelaySeconds = '0.25',
   tapologyDelaySeconds = process.env.TAPOLOGY_DELAY_SECONDS || '1.25',
   tapologyProfileLimit = process.env.TAPOLOGY_PREVIEW_PROFILE_LIMIT || '4',
+  onProgress = null,
 }) {
   const scratchDir = await fs.mkdtemp(path.join(os.tmpdir(), `fight-card-${eventId}-`));
   const scraperRoot = path.join(repoRoot, 'Server', 'scraper');
@@ -765,7 +775,7 @@ async function runFightCardScraper({
   ];
 
   return new Promise((resolve, reject) => {
-    const child = spawn('python3', args, {
+    const child = spawn('python3', ['-u', ...args], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -773,6 +783,17 @@ async function runFightCardScraper({
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let progressLineBuffer = '';
+
+    const emitProgressLine = (line) => {
+      const progress = parseScraperProgressLine(line);
+      if (!progress || typeof onProgress !== 'function') return;
+      try {
+        onProgress(progress);
+      } catch (error) {
+        // Progress reporting must never interrupt the underlying scrape.
+      }
+    };
 
     const timeoutId = setTimeout(() => {
       timedOut = true;
@@ -780,7 +801,12 @@ async function runFightCardScraper({
     }, timeoutMs);
 
     child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
+      const text = chunk.toString();
+      stdout += text;
+      progressLineBuffer += text;
+      const lines = progressLineBuffer.split(/\r?\n/);
+      progressLineBuffer = lines.pop() || '';
+      lines.forEach(emitProgressLine);
     });
 
     child.stderr.on('data', (chunk) => {
@@ -795,6 +821,7 @@ async function runFightCardScraper({
 
     child.on('close', async (code) => {
       clearTimeout(timeoutId);
+      if (progressLineBuffer) emitProgressLine(progressLineBuffer);
 
       if (timedOut) {
         await removePreviewAssets(scratchDir);
@@ -879,9 +906,9 @@ function buildImportedFightCardEditorPreview({ eventId, eventRecord, rows }) {
   if (summary.fieldCompleteness.odds > 0) {
     warnings.push(`odds is blank on ${summary.fieldCompleteness.odds} row(s).`);
   }
-  if (summary.fieldCompletenessSummary.tapologyProfiles.missing > 0) {
+  if (summary.fieldCompletenessSummary.fighterProfiles.missing > 0) {
     warnings.push(
-      `Tapology data is missing for ${summary.fieldCompletenessSummary.tapologyProfiles.missing} row(s).`
+      `Fighter method data is missing for ${summary.fieldCompletenessSummary.fighterProfiles.missing} row(s).`
     );
   }
 
@@ -1208,10 +1235,10 @@ async function buildFightCardPreview({
   if (
     rawRows.length >= 6 &&
     fieldCompletenessSummary.odds.populated <= MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS &&
-    fieldCompletenessSummary.tapologyProfiles.populated <= MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS
+    fieldCompletenessSummary.fighterProfiles.populated <= MIN_SUSPICIOUSLY_SPARSE_POPULATED_ROWS
   ) {
     blockers.push(
-      `This preview only scraped odds for ${fieldCompletenessSummary.odds.populated}/${rawRows.length} rows and Tapology profiles for ${fieldCompletenessSummary.tapologyProfiles.populated}/${rawRows.length} rows. Discard it and run a fresh preview before importing.`
+      `This preview only scraped odds for ${fieldCompletenessSummary.odds.populated}/${rawRows.length} rows and fighter profiles for ${fieldCompletenessSummary.fighterProfiles.populated}/${rawRows.length} rows. Discard it and run a fresh preview before importing.`
     );
   }
 
@@ -1230,12 +1257,12 @@ async function buildFightCardPreview({
   }
 
   if (liveTapologyRefreshFailed) {
-    warnings.push('Live Tapology refresh failed; preview is using cached or partial Tapology data.');
+    warnings.push('Tapology fallback was unavailable; validated primary fighter sources were used.');
   }
 
-  if (fieldCompletenessSummary.tapologyProfiles.missing > 0 && rawRows.length > 0) {
+  if (fieldCompletenessSummary.fighterProfiles.missing > 0 && rawRows.length > 0) {
     warnings.push(
-      `Tapology data is missing for ${fieldCompletenessSummary.tapologyProfiles.missing} row(s).`
+      `Fighter method data is missing for ${fieldCompletenessSummary.fighterProfiles.missing} row(s).`
     );
   }
 
@@ -1246,12 +1273,11 @@ async function buildFightCardPreview({
   }
 
   if (
-    fieldCompletenessSummary.tapologyProfiles.populated === 0
-    && cachedTapologyRowCount === 0
+    fieldCompletenessSummary.fighterProfiles.populated === 0
     && rawRows.length > 0
   ) {
     warnings.push(
-      `No Tapology fighter profiles were matched for this preview (${fieldCompletenessSummary.tapologyProfiles.populated}/${rawRows.length}). Refresh the preview before importing if Tapology data should already be available.`
+      `No fighter method profiles were matched for this preview (${fieldCompletenessSummary.fighterProfiles.populated}/${rawRows.length}). Refresh the preview before importing.`
     );
   }
 

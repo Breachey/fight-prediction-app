@@ -52,6 +52,13 @@ class TapologyFighterProfileTests(unittest.TestCase):
             "streak_needs_review": True,
         }))
 
+    def test_sherdog_streaks_are_reusable_on_future_previews(self):
+        self.assertTrue(cached_streak_is_current({
+            "streak_source": "sherdog_live",
+            "streak_verified_at": "2026-08-01T00:00:00Z",
+            "streak_needs_review": False,
+        }))
+
 
 if __name__ == "__main__":
     unittest.main()

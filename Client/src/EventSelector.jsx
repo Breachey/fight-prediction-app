@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, Save, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Save } from 'lucide-react';
 import './EventSelector.css';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
@@ -137,6 +137,11 @@ const getEditablePreviewFighterName = (row) => (
 );
 
 const SCRAPE_SOURCE_LABELS = {
+  sherdog: 'Sherdog',
+  sherdog_ufccom: 'Sherdog + UFC.com',
+  sherdog_ufccom_wikipedia: 'Sherdog + UFC.com + Wikipedia',
+  sherdog_tapology: 'Sherdog + Tapology fallback',
+  sherdog_ufccom_tapology: 'Sherdog + UFC.com + Tapology fallback',
   tapology_single_profile: 'Tapology profile',
   tapology_wikipedia_merged: 'Tapology + Wikipedia',
   tapology_partial_profile: 'Partial Tapology profile',
@@ -222,31 +227,14 @@ const countManualPreviewValues = (editableRows, edits) => (
 
 const countMissingEditablePreviewValues = (editableRows) => (
   (editableRows || []).reduce((count, row) => count + FIGHT_CARD_EDITOR_FIELDS.reduce(
-    (fieldCount, [field]) => fieldCount + (
-      normalizeStatEditorValue(row[field]).trim()
-      && (field !== 'Streak' || row?.StreakVerification?.verified)
-        ? 0
-        : 1
-    ),
+    (fieldCount, [field]) => fieldCount + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
     0
   ), 0)
 );
 
 const rowHasMissingEditorValues = (row) => FIGHT_CARD_EDITOR_FIELDS.some(
   ([field]) => !normalizeStatEditorValue(row?.[field]).trim()
-    || (field === 'Streak' && !row?.StreakVerification?.verified)
 );
-
-const STREAK_SOURCE_LABELS = {
-  manual: 'Manual',
-  tapology_live: 'Live Tapology',
-  fight_results: 'Fight results',
-};
-
-const getStreakVerificationLabel = (verification) => {
-  if (!verification?.verified) return 'Streak needs verification';
-  return `Streak verified · ${STREAK_SOURCE_LABELS[verification.source] || 'Verified source'}`;
-};
 
 const getEditorValue = (edits, rowId, row, field) => (
   Object.prototype.hasOwnProperty.call(edits?.[rowId] || {}, field)
@@ -326,6 +314,7 @@ function EventSelector({
   const [finalizingEventId, setFinalizingEventId] = useState(null);
   const [finalizeFeedback, setFinalizeFeedback] = useState(null);
   const [previewingEventId, setPreviewingEventId] = useState(null);
+  const [fightCardScrapeProgress, setFightCardScrapeProgress] = useState(null);
   const [importingEventId, setImportingEventId] = useState(null);
   const [refreshingOddsEventId, setRefreshingOddsEventId] = useState(null);
   const [discoveringUfcEvents, setDiscoveringUfcEvents] = useState(false);
@@ -646,16 +635,6 @@ function EventSelector({
       return [];
     }
 
-    const streakTotal = Number(summary.streak?.total) || 0;
-    const streakVerified = Object.values(fightCardPreview?.streakVerificationByFighterId || {})
-      .filter((verification) => verification?.verified).length;
-    const verifiedStreakMetric = {
-      field: 'Streak',
-      populated: streakVerified,
-      missing: Math.max(streakTotal - streakVerified, 0),
-      total: streakTotal,
-    };
-
     return [
       {
         key: 'odds',
@@ -663,14 +642,14 @@ function EventSelector({
         tone: getCompletenessTone(summary.odds),
       },
       {
-        key: 'tapology',
-        label: formatCompletenessLabel('Tapology', summary.tapologyProfiles),
-        tone: getCompletenessTone(summary.tapologyProfiles),
+        key: 'fighter-profiles',
+        label: formatCompletenessLabel('Profile Stats', summary.fighterProfiles || summary.finishBreakdown),
+        tone: getCompletenessTone(summary.fighterProfiles || summary.finishBreakdown),
       },
       {
         key: 'streak',
-        label: formatCompletenessLabel('Verified Streak', verifiedStreakMetric),
-        tone: getCompletenessTone(verifiedStreakMetric),
+        label: formatCompletenessLabel('Streak', summary.streak),
+        tone: getCompletenessTone(summary.streak),
       },
       {
         key: 'finish',
@@ -685,12 +664,7 @@ function EventSelector({
     ];
   }, [fightCardPreview]);
   const editablePreviewRows = useMemo(
-    () => (fightCardPreview?.editableRows || []).map((row) => ({
-      ...row,
-      StreakVerification: fightCardPreview?.streakVerificationByFighterId?.[row.fighterId]
-        || fightCardPreview?.streakVerificationByFighterId?.[String(row.fighterId)]
-        || null,
-    })),
+    () => fightCardPreview?.editableRows || [],
     [fightCardPreview]
   );
   const manualPreviewUpdates = useMemo(
@@ -715,7 +689,7 @@ function EventSelector({
       const tapologyUrl = normalizeStatEditorValue(
         getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'TapologyFighterURL')
       ).trim();
-      return Boolean(tapologyUrl) && isValidStatEditorValue('url', tapologyUrl);
+      return !tapologyUrl || isValidStatEditorValue('url', tapologyUrl);
     })
   ), [editablePreviewRows, fightCardPreviewEdits]);
   const visiblePreviewRows = useMemo(() => (
@@ -849,6 +823,43 @@ function EventSelector({
     setFightCardPreviewEdits({});
     setPreviewEditorFilter('missing');
     setPreviewingEventId(event.id);
+    setFightCardScrapeProgress({
+      eventId: event.id,
+      status: 'running',
+      phase: 'starting',
+      label: 'Starting fight-card refresh',
+      detail: 'Preparing the preview workspace…',
+      percent: 1,
+      current: null,
+      total: null,
+    });
+
+    const progressToken = typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `preview_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let keepPolling = true;
+    let pollTimer = null;
+
+    const pollProgress = async () => {
+      if (!keepPolling) return;
+      try {
+        const progressResponse = await fetchWithAdminSession(
+          `${API_URL}/admin/events/${event.id}/fight-card/preview-progress/${progressToken}`,
+          { method: 'GET' }
+        );
+        if (progressResponse.ok) {
+          const progressPayload = await progressResponse.json().catch(() => ({}));
+          setFightCardScrapeProgress(progressPayload);
+        }
+      } catch (error) {
+        // The primary preview request remains authoritative if a progress poll is missed.
+      }
+      if (keepPolling) {
+        pollTimer = window.setTimeout(pollProgress, 600);
+      }
+    };
+
+    void pollProgress();
 
     try {
       const response = await fetchWithAdminSession(
@@ -857,7 +868,8 @@ function EventSelector({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({ progressToken })
         }
       );
 
@@ -867,6 +879,16 @@ function EventSelector({
       }
 
       setFightCardPreview(payload);
+      setFightCardScrapeProgress({
+        eventId: event.id,
+        status: 'complete',
+        phase: 'complete',
+        label: payload.blockers?.length ? 'Preview needs attention' : 'Fight-card preview ready',
+        detail: `${payload.fightCount} fights and ${payload.rowCount} fighter rows processed`,
+        percent: 100,
+        current: payload.rowCount,
+        total: payload.rowCount,
+      });
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: payload.blockers?.length ? 'error' : 'success',
@@ -875,11 +897,20 @@ function EventSelector({
           : `Preview ready: ${payload.fightCount} fights and ${payload.rowCount} fighter rows.`
       });
     } catch (err) {
+      setFightCardScrapeProgress((current) => ({
+        ...(current || {}),
+        status: 'failed',
+        phase: 'failed',
+        label: 'Fight-card refresh failed',
+        detail: err.message || 'Failed to preview fight card',
+      }));
       setFightCardFeedback({
         type: 'error',
         message: err.message || 'Failed to preview fight card'
       });
     } finally {
+      keepPolling = false;
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
       setPreviewingEventId(null);
     }
   };
@@ -931,7 +962,7 @@ function EventSelector({
       setPreviewEditorFilter('all');
       setFightCardFeedback({
         type: 'success',
-        message: `Imported ${payload.rowCount} fighter rows across ${payload.fightCount} fights. The editor remains open for saved changes and Tapology refreshes.`
+        message: `Imported ${payload.rowCount} fighter rows across ${payload.fightCount} fights. The editor remains open for saved changes and fighter-source refreshes.`
       });
     } catch (err) {
       setFightCardFeedback({
@@ -1183,57 +1214,6 @@ function EventSelector({
     }
   };
 
-  const handleVerifyFightStatsStreak = async (event, row) => {
-    if (!event?.id || !row?.id) return;
-    const streak = normalizeStatEditorValue(
-      getEditorValue(fightStatsEdits, row.id, row, 'Streak')
-    ).trim();
-    if (!streak || !isValidStatEditorValue('signed-number', streak)) return;
-
-    setFightCardFeedback(null);
-    setSavingFightStatsEventId(event.id);
-    setSavingFightStatsRowId(row.id);
-    try {
-      const response = await fetchWithAdminSession(
-        `${API_URL}/admin/events/${event.id}/fight-card/stats/${row.id}/verify-streak`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streak }),
-        }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to verify fighter streak'));
-      }
-
-      const reloadResponse = await fetchWithAdminSession(
-        `${API_URL}/admin/events/${event.id}/fight-card/stats`,
-        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-      );
-      const reloadPayload = await reloadResponse.json().catch(() => ({}));
-      if (!reloadResponse.ok) {
-        throw new Error(buildApiErrorMessage(reloadPayload, 'Verified streak, but failed to reload rows'));
-      }
-      setFightStatsRows(reloadPayload.rows || []);
-      setFightStatsEdits((current) => omitEditFields(current, { [row.id]: ['Streak'] }));
-      invalidateEventCaches(event.id);
-      onFightCardImportComplete?.(event.id);
-      setFightCardFeedback({
-        type: 'success',
-        message: `Verified ${[row.FirstName, row.LastName].filter(Boolean).join(' ') || 'fighter'} at ${streak > 0 ? `+${streak}` : streak}.`,
-      });
-    } catch (err) {
-      setFightCardFeedback({
-        type: 'error',
-        message: err.message || 'Failed to verify fighter streak',
-      });
-    } finally {
-      setSavingFightStatsEventId(null);
-      setSavingFightStatsRowId(null);
-    }
-  };
-
   const handleScrapeTapologyFighterStats = async (event, row) => {
     if (!event?.id || !row?.id) return;
 
@@ -1243,7 +1223,7 @@ function EventSelector({
 
     try {
       const response = await fetchWithAdminSession(
-        `${API_URL}/admin/events/${event.id}/fight-card/stats/${row.id}/scrape-tapology`,
+        `${API_URL}/admin/events/${event.id}/fight-card/stats/${row.id}/scrape-profile`,
         {
           method: 'POST',
           headers: {
@@ -1258,7 +1238,7 @@ function EventSelector({
       );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to scrape Tapology stats'));
+        throw new Error(buildApiErrorMessage(payload, 'Failed to scrape fighter stats'));
       }
 
       const reloadResponse = await fetchWithAdminSession(`${API_URL}/admin/events/${event.id}/fight-card/stats`, {
@@ -1277,9 +1257,7 @@ function EventSelector({
       invalidateEventCaches(event.id);
       onFightCardImportComplete?.(event.id);
       await loadFightCardScrapeLog(event, { silent: true });
-      const sourceLabel = payload.statsSource === 'wikipedia_record_breakdown'
-        ? 'validated Wikipedia fallback'
-        : 'Tapology';
+      const sourceLabel = SCRAPE_SOURCE_LABELS[payload.statsSource] || 'validated fighter sources';
       setFightCardFeedback({
         type: 'success',
         message: payload.updatedFields?.length
@@ -1290,7 +1268,7 @@ function EventSelector({
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: 'error',
-        message: err.message || 'Failed to scrape Tapology stats'
+        message: err.message || 'Failed to scrape fighter stats'
       });
     } finally {
       setScrapingTapologyRowId(null);
@@ -1308,7 +1286,7 @@ function EventSelector({
       getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'TapologyFighterURL')
     ).trim();
     const response = await fetchWithAdminSession(
-      `${API_URL}/admin/events/${event.id}/fight-card/preview/${fightCardPreview.previewToken}/scrape-tapology`,
+      `${API_URL}/admin/events/${event.id}/fight-card/preview/${fightCardPreview.previewToken}/scrape-profile`,
       {
         method: 'POST',
         headers: {
@@ -1322,7 +1300,7 @@ function EventSelector({
     );
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(buildApiErrorMessage(payload, 'Failed to scrape Tapology stats'));
+      throw new Error(buildApiErrorMessage(payload, 'Failed to scrape fighter stats'));
     }
     return payload;
   };
@@ -1340,9 +1318,7 @@ function EventSelector({
       setFightCardPreviewEdits((current) => omitEditFields(current, {
         [row.rowKey]: ['TapologyFighterURL', ...(payload.updatedFields || [])],
       }));
-      const sourceLabel = payload.statsSource === 'wikipedia_record_breakdown'
-        ? 'validated Wikipedia fallback'
-        : 'Tapology';
+      const sourceLabel = SCRAPE_SOURCE_LABELS[payload.statsSource] || 'validated fighter sources';
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: 'success',
@@ -1354,7 +1330,7 @@ function EventSelector({
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: 'error',
-        message: err.message || 'Failed to scrape Tapology stats'
+        message: err.message || 'Failed to scrape fighter stats'
       });
     } finally {
       setScrapingPreviewTapologyRowKeys([]);
@@ -1434,13 +1410,13 @@ function EventSelector({
         : '';
       setFightCardFeedback({
         type: successCount > 0 ? 'success' : 'error',
-        message: `Tapology lookup completed for ${successCount}/${rowsToScrape.length} fighter${rowsToScrape.length === 1 ? '' : 's'}.${failureSuffix}${savedSuffix}`
+        message: `Fighter-source lookup completed for ${successCount}/${rowsToScrape.length} fighter${rowsToScrape.length === 1 ? '' : 's'}.${failureSuffix}${savedSuffix}`
       });
     } catch (err) {
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: 'error',
-        message: err.message || 'Failed to scrape preview fighters from Tapology'
+        message: err.message || 'Failed to scrape preview fighters'
       });
     } finally {
       setScrapingPreviewTapologyRowKeys([]);
@@ -1489,46 +1465,6 @@ function EventSelector({
       setFightCardFeedback({
         type: 'error',
         message: err.message || 'Failed to save preview progress'
-      });
-    } finally {
-      setSavingPreviewProgressRowKey(null);
-    }
-  };
-
-  const handleVerifyPreviewStreak = async (event, row) => {
-    if (!event?.id || !row?.rowKey || !fightCardPreview?.previewToken) return;
-    const streak = normalizeStatEditorValue(
-      getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'Streak')
-    ).trim();
-    if (!streak || !isValidStatEditorValue('signed-number', streak)) return;
-
-    setFightCardFeedback(null);
-    setSavingPreviewProgressRowKey(row.rowKey);
-    try {
-      const response = await fetchWithAdminSession(
-        `${API_URL}/admin/events/${event.id}/fight-card/preview/${fightCardPreview.previewToken}/verify-streak`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rowKey: row.rowKey, streak }),
-        }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to verify fighter streak'));
-      }
-      setFightCardPreview(payload);
-      setFightCardPreviewEdits((current) => omitEditFields(current, {
-        [row.rowKey]: ['Streak'],
-      }));
-      setFightCardFeedback({
-        type: 'success',
-        message: `Verified ${getEditablePreviewFighterName(row)} at ${streak > 0 ? `+${streak}` : streak}.${payload.isImported ? ' The fight card was updated.' : ''}`,
-      });
-    } catch (err) {
-      setFightCardFeedback({
-        type: 'error',
-        message: err.message || 'Failed to verify fighter streak',
       });
     } finally {
       setSavingPreviewProgressRowKey(null);
@@ -1766,6 +1702,44 @@ function EventSelector({
                     </button>
                   )}
                 </div>
+                {fightCardScrapeProgress && (
+                  previewingEventId === selectedEvent.id
+                  || (
+                    fightCardScrapeProgress.status === 'failed'
+                    && Number(fightCardScrapeProgress.eventId) === Number(selectedEvent.id)
+                  )
+                ) && (
+                  <div
+                    className={`event-admin-scrape-progress event-admin-scrape-progress--${fightCardScrapeProgress.status || 'running'}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="event-admin-scrape-progress__heading">
+                      <span>{fightCardScrapeProgress.label || 'Refreshing fight card'}</span>
+                      <strong>{Math.max(0, Math.min(100, Number(fightCardScrapeProgress.percent) || 0))}%</strong>
+                    </div>
+                    <div
+                      className="event-admin-scrape-progress__track"
+                      role="progressbar"
+                      aria-label="Fight-card refresh progress"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow={Math.max(0, Math.min(100, Number(fightCardScrapeProgress.percent) || 0))}
+                    >
+                      <span style={{ width: `${Math.max(0, Math.min(100, Number(fightCardScrapeProgress.percent) || 0))}%` }} />
+                    </div>
+                    <div className="event-admin-scrape-progress__detail">
+                      <span>{fightCardScrapeProgress.detail || 'Working…'}</span>
+                      {Number.isFinite(Number(fightCardScrapeProgress.current))
+                        && Number.isFinite(Number(fightCardScrapeProgress.total))
+                        && Number(fightCardScrapeProgress.total) > 0 && (
+                          <small>
+                            {fightCardScrapeProgress.current}/{fightCardScrapeProgress.total}
+                          </small>
+                        )}
+                    </div>
+                  </div>
+                )}
                 <div className="event-admin-secondary-actions">
                   <button
                     className="event-admin-secondary-button"
@@ -1851,19 +1825,8 @@ function EventSelector({
                       <div className="event-admin-import-preview__edit-list">
                         {visibleFightStatsRows.map((row) => {
                           const rowUpdate = fightStatsUpdates.find((update) => String(update.id) === String(row.id));
-                          const streakVerification = row.StreakVerification;
-                          const editedStreak = normalizeStatEditorValue(
-                            getEditorValue(fightStatsEdits, row.id, row, 'Streak')
-                          ).trim();
-                          const canVerifyStreak = Boolean(editedStreak)
-                            && isValidStatEditorValue('signed-number', editedStreak);
                           const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                            (count, [field]) => count + (
-                              normalizeStatEditorValue(row[field]).trim()
-                              && (field !== 'Streak' || streakVerification?.verified)
-                                ? 0
-                                : 1
-                            ),
+                            (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
                             0
                           );
                           return (
@@ -1879,11 +1842,6 @@ function EventSelector({
                                 <div className="event-admin-stats-editor__row-status">
                                   {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
                                   {rowUpdate && <span>{Object.keys(rowUpdate.values).length} changed</span>}
-                                  <span className={streakVerification?.verified
-                                    ? 'event-admin-stats-editor__streak-status--verified'
-                                    : 'event-admin-stats-editor__streak-status--review'}>
-                                    {getStreakVerificationLabel(streakVerification)}
-                                  </span>
                                 </div>
                                 <div className="event-admin-stats-editor__row-actions">
                                   <button
@@ -1891,23 +1849,11 @@ function EventSelector({
                                     className="event-admin-stats-editor__scrape-button"
                                     onClick={() => handleScrapeTapologyFighterStats(selectedEvent, row)}
                                     disabled={isFightCardActionBusy}
-                                    title="Refresh this fighter from Tapology"
+                                    title="Refresh this fighter from Sherdog, UFC.com, Wikipedia, then Tapology fallback"
                                   >
                                     <RefreshCw size={14} aria-hidden="true" />
                                     {scrapingTapologyRowId === row.id ? 'Scraping...' : 'Scrape'}
                                   </button>
-                                  {!streakVerification?.verified && (
-                                    <button
-                                      type="button"
-                                      className="event-admin-stats-editor__row-save"
-                                      onClick={() => handleVerifyFightStatsStreak(selectedEvent, row)}
-                                      disabled={isFightCardActionBusy || !canVerifyStreak}
-                                      title="Confirm this streak as the trusted starting value"
-                                    >
-                                      <ShieldCheck size={14} aria-hidden="true" />
-                                      Verify Streak
-                                    </button>
-                                  )}
                                   <button
                                     type="button"
                                     className="event-admin-stats-editor__row-save"
@@ -2035,7 +1981,7 @@ function EventSelector({
                               className="event-admin-stats-editor__bulk-scrape"
                               onClick={() => handleScrapeAllPreviewTapologyFighters(selectedEvent)}
                               disabled={isFightCardActionBusy || scrapablePreviewRows.length === 0}
-                              title="Scrape every preview fighter with a valid Tapology URL"
+                              title="Scrape every preview fighter from the validated source chain"
                             >
                               <RefreshCw size={16} aria-hidden="true" />
                               {previewTapologyScrapeProgress
@@ -2060,25 +2006,14 @@ function EventSelector({
                         <div className="event-admin-import-preview__edit-list">
                           {visiblePreviewRows.map((row) => {
                             const rowPatch = manualPreviewUpdates[row.rowKey];
-                            const streakVerification = row.StreakVerification;
-                            const editedStreak = normalizeStatEditorValue(
-                              getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'Streak')
-                            ).trim();
-                            const canVerifyStreak = Boolean(editedStreak)
-                              && isValidStatEditorValue('signed-number', editedStreak);
                             const rowTapologyUrl = normalizeStatEditorValue(
                               getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'TapologyFighterURL')
                             ).trim();
-                            const canScrapeTapologyRow = Boolean(rowTapologyUrl)
-                              && isValidStatEditorValue('url', rowTapologyUrl);
+                            const canScrapeTapologyRow = !rowTapologyUrl
+                              || isValidStatEditorValue('url', rowTapologyUrl);
                             const isScrapingTapologyRow = scrapingPreviewTapologyRowKeys.includes(row.rowKey);
                             const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                              (count, [field]) => count + (
-                                normalizeStatEditorValue(row[field]).trim()
-                                && (field !== 'Streak' || streakVerification?.verified)
-                                  ? 0
-                                  : 1
-                              ),
+                              (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
                               0
                             );
                             return (
@@ -2089,11 +2024,6 @@ function EventSelector({
                                   <div className="event-admin-stats-editor__row-status">
                                     {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
                                     {rowPatch && <span>{Object.keys(rowPatch).length} changed</span>}
-                                    <span className={streakVerification?.verified
-                                      ? 'event-admin-stats-editor__streak-status--verified'
-                                      : 'event-admin-stats-editor__streak-status--review'}>
-                                      {getStreakVerificationLabel(streakVerification)}
-                                    </span>
                                   </div>
                                   <div className="event-admin-stats-editor__row-actions">
                                     <button
@@ -2102,24 +2032,12 @@ function EventSelector({
                                       onClick={() => handleScrapePreviewTapologyFighter(selectedEvent, row)}
                                       disabled={isFightCardActionBusy || !canScrapeTapologyRow}
                                       title={canScrapeTapologyRow
-                                        ? 'Scrape this fighter from the entered Tapology URL'
-                                        : 'Enter a valid Tapology fighter URL first'}
+                                        ? 'Scrape Sherdog, UFC.com, Wikipedia, then optional Tapology fallback'
+                                        : 'Fix or clear the optional Tapology fallback URL first'}
                                     >
                                       <RefreshCw size={14} aria-hidden="true" />
                                       {isScrapingTapologyRow ? 'Scraping...' : 'Scrape'}
                                     </button>
-                                    {!streakVerification?.verified && (
-                                      <button
-                                        type="button"
-                                        className="event-admin-stats-editor__row-save"
-                                        onClick={() => handleVerifyPreviewStreak(selectedEvent, row)}
-                                        disabled={isFightCardActionBusy || !canVerifyStreak}
-                                        title="Confirm this streak as the trusted starting value"
-                                      >
-                                        <ShieldCheck size={14} aria-hidden="true" />
-                                        Verify Streak
-                                      </button>
-                                    )}
                                     <button
                                       type="button"
                                       className="event-admin-stats-editor__row-save"
@@ -2174,7 +2092,7 @@ function EventSelector({
                     <div className="event-admin-import-preview__section event-admin-scrape-log">
                       <div className="event-admin-scrape-log__header">
                         <div>
-                          <div className="event-admin-import-preview__title">Tapology Scrape Log</div>
+                          <div className="event-admin-import-preview__title">Fighter Source Scrape Log</div>
                           <div className="event-admin-import-preview__meta">Newest attempts first</div>
                         </div>
                         <button
@@ -2182,8 +2100,8 @@ function EventSelector({
                           className="event-admin-scrape-log__refresh"
                           onClick={() => loadFightCardScrapeLog(selectedEvent)}
                           disabled={loadingFightCardScrapeLog}
-                          aria-label="Refresh Tapology scrape log"
-                          title="Refresh Tapology scrape log"
+                          aria-label="Refresh fighter source scrape log"
+                          title="Refresh fighter source scrape log"
                         >
                           <RefreshCw size={16} aria-hidden="true" />
                         </button>
@@ -2222,7 +2140,7 @@ function EventSelector({
                                 <div className="event-admin-scrape-log__streak">Streak: {entry.streakDetail}</div>
                               )}
                               {entry.tapologyError && (
-                                <div className="event-admin-scrape-log__error">Tapology: {entry.tapologyError}</div>
+                                <div className="event-admin-scrape-log__error">Source error: {entry.tapologyError}</div>
                               )}
                               {entry.fallbackError && (
                                 <div className="event-admin-scrape-log__error">Fallback: {entry.fallbackError}</div>
@@ -2235,7 +2153,7 @@ function EventSelector({
                         })}
                         {fightCardScrapeLog.length === 0 && (
                           <div className="event-admin-stats-editor__empty">
-                            {loadingFightCardScrapeLog ? 'Loading scrape attempts...' : 'No Tapology scrape attempts recorded for this event.'}
+                            {loadingFightCardScrapeLog ? 'Loading scrape attempts...' : 'No fighter source scrape attempts recorded for this event.'}
                           </div>
                         )}
                       </div>

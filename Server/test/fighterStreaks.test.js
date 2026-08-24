@@ -56,6 +56,20 @@ test('completed-event verification excludes that event from future replay', () =
   assert.equal(payload.streak_source, 'tapology_live');
 });
 
+test('record-validated Sherdog streaks create verified anchors', () => {
+  const payload = buildStreakAnchorPayload({
+    row: { Record_Wins: 26, Record_Losses: 10, StartTime: '2026-08-29T22:00:00Z' },
+    streak: 1,
+    source: 'sherdog_live',
+    eventId: 1326,
+    verifiedAt: '2026-08-23T12:00:00Z',
+  });
+
+  assert.equal(payload.streak_source, 'sherdog_live');
+  assert.equal(payload.streak_anchor_source, 'sherdog_live');
+  assert.equal(isVerifiedStreakProfile(payload), true);
+});
+
 test('result replay is chronological and idempotent from the anchor', () => {
   const profile = buildStreakAnchorPayload({
     row: { Record_Wins: 10, Record_Losses: 2, StartTime: '2026-08-15' },

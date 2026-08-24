@@ -803,6 +803,74 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+.event-admin-scrape-progress {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(252, 251, 253, 0.2);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 0, 0, 0.48);
+  color: #fcfbfd;
+}
+
+.event-admin-scrape-progress--failed {
+  border-color: rgba(233, 23, 13, 0.55);
+}
+
+.event-admin-scrape-progress__heading,
+.event-admin-scrape-progress__detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-admin-scrape-progress__heading span {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.event-admin-scrape-progress__heading strong,
+.event-admin-scrape-progress__detail small {
+  flex: 0 0 auto;
+  color: rgba(252, 251, 253, 0.72);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-admin-scrape-progress__track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(252, 251, 253, 0.12);
+}
+
+.event-admin-scrape-progress__track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #e9170d, #f99ead 52%, #2b31b2);
+  transition: width 180ms ease;
+}
+
+.event-admin-scrape-progress--failed .event-admin-scrape-progress__track span {
+  background: #e9170d;
+}
+
+.event-admin-scrape-progress__detail span {
+  min-width: 0;
+  color: rgba(252, 251, 253, 0.7);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-admin-scrape-progress__track span {
+    transition: none;
+  }
+}
+
 .event-admin-import-preview {
   display: flex;
   flex-direction: column;
@@ -1148,18 +1216,6 @@
   color: rgba(252, 251, 253, 0.76);
   font-size: 0.68rem;
   font-weight: 700;
-}
-
-.event-admin-stats-editor__row-status .event-admin-stats-editor__streak-status--verified {
-  border-color: rgba(252, 251, 253, 0.3);
-  background: rgba(252, 251, 253, 0.12);
-  color: #FCFBFD;
-}
-
-.event-admin-stats-editor__row-status .event-admin-stats-editor__streak-status--review {
-  border-color: rgba(233, 23, 13, 0.42);
-  background: rgba(233, 23, 13, 0.12);
-  color: #F99EAD;
 }
 
 .event-admin-stats-editor__scrape-button,

@@ -57,6 +57,40 @@ function FighterReminderOverlay({ fighterName, reminderType, animation }) {
   );
 }
 
+function FighterFlagBackground({ bornCountry, fightingOutOfCountry }) {
+  const born = typeof bornCountry === 'string' ? bornCountry.trim() : '';
+  const fightingOutOf = typeof fightingOutOfCountry === 'string'
+    ? fightingOutOfCountry.trim()
+    : '';
+  const hasBornCountry = born && born !== 'N/A';
+  const hasFightingOutOfCountry = fightingOutOf && fightingOutOf !== 'N/A';
+  const bornCountryCode = getCountryCode(born);
+  const fightingOutOfCountryCode = getCountryCode(fightingOutOf);
+  const hasSplitFlags = hasBornCountry
+    && hasFightingOutOfCountry
+    && bornCountryCode !== fightingOutOfCountryCode;
+
+  const renderFlag = (country, className) => (
+    <ReactCountryFlag
+      countryCode={getCountryCode(country)}
+      svg
+      className={`fighter-card-flag ${className}`}
+      aria-label={`${country} flag`}
+    />
+  );
+
+  return (
+    <div className={`fighter-card-flag-background${hasSplitFlags ? ' is-split' : ''}`}>
+      {hasSplitFlags ? (
+        <>
+          {renderFlag(born, 'fighter-card-flag--born')}
+          {renderFlag(fightingOutOf, 'fighter-card-flag--fighting-out-of')}
+        </>
+      ) : renderFlag(fightingOutOf || born || 'USA', 'fighter-card-flag--single')}
+    </div>
+  );
+}
+
 const BROKEN_HEART_MESSAGES = [
   "We'll remind you to never vote for this fool again.",
   "We'll remind you this dude did you dirty.",
@@ -181,6 +215,91 @@ function getFightFormatDetails(fight) {
   }
 
   return details.join(' • ');
+}
+
+function formatFighterLocation(...parts) {
+  const seen = new Set();
+  const locationParts = parts
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter((part) => {
+      if (!part || part === 'N/A') return false;
+      const normalized = part.toLocaleLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
+
+  return locationParts.join(', ') || 'N/A';
+}
+
+function FighterDetailSections({ fight, fighterKey }) {
+  const value = (suffix) => fight?.[`${fighterKey}_${suffix}`];
+  const bornLocation = formatFighterLocation(
+    value('born_city'),
+    value('born_state'),
+    value('born_country')
+  );
+  const fightingOutOfLocation = formatFighterLocation(
+    value('fighting_out_of_city'),
+    value('fighting_out_of_state'),
+    value('fighting_out_of_country') || value('country')
+  );
+
+  return (
+    <>
+      <section className="expanded-stat-group">
+        <h4 className="expanded-stat-group-title">Physical</h4>
+        <div className="expanded-stat-grid">
+          <div className="stat-row">
+            <span className="stat-label">Age</span>
+            <span>{value('age') || 'N/A'}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Height</span>
+            <span>{convertInchesToHeightString(value('height'))}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Reach</span>
+            <span>{value('reach') ? `${value('reach')}"` : 'N/A'}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Weight</span>
+            <span>{value('weight') ? `${value('weight')} lb` : 'N/A'}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="expanded-stat-group">
+        <h4 className="expanded-stat-group-title">Fight Profile</h4>
+        <div className="expanded-stat-grid">
+          <div className="stat-row">
+            <span className="stat-label">Stance</span>
+            <span>{value('stance') || 'N/A'}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Style</span>
+            <span>{value('style') || 'N/A'}</span>
+          </div>
+          <div className="stat-row">
+            <span className="stat-label">Streak</span>
+            <span>{value('streak') !== null ? formatStreak(value('streak')) : 'N/A'}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="expanded-stat-group expanded-stat-group--background">
+        <h4 className="expanded-stat-group-title">Background</h4>
+        <div className="stat-row stat-row--location">
+          <span className="stat-label">Born</span>
+          <span className="stat-value stat-value--location">{bornLocation}</span>
+        </div>
+        <div className="stat-row stat-row--location">
+          <span className="stat-label">Fights out of</span>
+          <span className="stat-value stat-value--location">{fightingOutOfLocation}</span>
+        </div>
+      </section>
+    </>
+  );
 }
 
 function FinishMethodBreakdown({ fight, fighterKey }) {
@@ -1378,7 +1497,7 @@ function Fights({
 
         {fights.map((fight) => {
           const fightFormatDetails = getFightFormatDetails(fight);
-          const hasFightMeta = fight.card_tier || fight.weightclass || fight.is_canceled || fightFormatDetails;
+          const hasFightMeta = fight.card_tier || fight.weightclass || fight.is_canceled || fightFormatDetails || fight.referee;
           const fightCardClassName = `fight-card ${fight.is_completed ? 'completed' : ''} ${fight.is_canceled ? 'canceled' : ''} ${fight.is_title_fight ? 'title-fight' : ''}`.trim();
           const neutralResultLabel = RESULT_TYPE_LABELS[fight.result_type] || null;
 
@@ -1427,10 +1546,16 @@ function Fights({
                   {fightFormatDetails && (
                     <p className="fight-format-details">{fightFormatDetails}</p>
                   )}
+                  {fight.referee && (
+                    <p className="fight-referee">Referee {fight.referee}</p>
+                  )}
                 </div>
               )}
               {!fight.weightclass && fightFormatDetails && (
                 <p className="fight-format-details">{fightFormatDetails}</p>
+              )}
+              {!fight.weightclass && fight.referee && (
+                <p className="fight-referee">Referee {fight.referee}</p>
               )}
               {fight.is_canceled && (
                 <div className="fight-canceled">
@@ -1458,23 +1583,10 @@ function Fights({
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id, fight.fighter1_name)}
             >
-              <div className="fighter-card-flag-background">
-                <ReactCountryFlag 
-                  countryCode={getCountryCode(fight.fighter1_country)} 
-                  svg 
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0.3,
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    borderRadius: '16px',
-                    filter: 'blur(2px) brightness(1.1)',
-                    objectFit: 'cover'
-                  }}
-                />
-              </div>
+              <FighterFlagBackground
+                bornCountry={fight.fighter1_born_country}
+                fightingOutOfCountry={fight.fighter1_country}
+              />
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter1_image}
@@ -1514,34 +1626,7 @@ function Fights({
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
-                  <div className="stat-row">
-                    <span className="stat-label">Age</span>
-                    <span>{fight.fighter1_age || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Weight</span>
-                    <span>{fight.fighter1_weight ? `${fight.fighter1_weight} lb` : 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Height</span>
-                    <span>{convertInchesToHeightString(fight.fighter1_height)}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Reach</span>
-                    <span>{fight.fighter1_reach ? `${fight.fighter1_reach}"` : 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Stance</span>
-                    <span>{fight.fighter1_stance || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Style</span>
-                    <span>{fight.fighter1_style || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Streak</span>
-                    <span>{fight.fighter1_streak !== null ? formatStreak(fight.fighter1_streak) : 'N/A'}</span>
-                  </div>
+                  <FighterDetailSections fight={fight} fighterKey="fighter1" />
                   <FinishMethodBreakdown fight={fight} fighterKey="fighter1" />
                   {(() => {
                     const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter1_id);
@@ -1616,23 +1701,10 @@ function Fights({
               }`}
               onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id, fight.fighter2_name)}
             >
-              <div className="fighter-card-flag-background">
-                <ReactCountryFlag 
-                  countryCode={getCountryCode(fight.fighter2_country)} 
-                  svg 
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0.3,
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    borderRadius: '16px',
-                    filter: 'blur(2px) brightness(1.1)',
-                    objectFit: 'cover'
-                  }}
-                />
-              </div>
+              <FighterFlagBackground
+                bornCountry={fight.fighter2_born_country}
+                fightingOutOfCountry={fight.fighter2_country}
+              />
               <div className="fighter-image-container">
                 <img
                   src={fight.fighter2_image}
@@ -1672,34 +1744,7 @@ function Fights({
               </div>
               {expandedFightStats[fight.id] && (
                 <div className="expanded-stats">
-                  <div className="stat-row">
-                    <span className="stat-label">Age</span>
-                    <span>{fight.fighter2_age || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Weight</span>
-                    <span>{fight.fighter2_weight ? `${fight.fighter2_weight} lb` : 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Height</span>
-                    <span>{convertInchesToHeightString(fight.fighter2_height)}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Reach</span>
-                    <span>{fight.fighter2_reach ? `${fight.fighter2_reach}"` : 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Stance</span>
-                    <span>{fight.fighter2_stance || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Style</span>
-                    <span>{fight.fighter2_style || 'N/A'}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Streak</span>
-                    <span>{fight.fighter2_streak !== null ? formatStreak(fight.fighter2_streak) : 'N/A'}</span>
-                  </div>
+                  <FighterDetailSections fight={fight} fighterKey="fighter2" />
                   <FinishMethodBreakdown fight={fight} fighterKey="fighter2" />
                   {(() => {
                     const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter2_id);

@@ -16,6 +16,13 @@ import requests
 from bs4 import BeautifulSoup
 import certifi
 
+from fighter_profile_sources import (
+    PROFILE_FIELDS as VALIDATED_PROFILE_FIELDS,
+    RateLimiter as ProfileSourceRateLimiter,
+    build_session as build_profile_source_session,
+    scrape_fighter_sources,
+)
+
 try:
     import cloudscraper
 except ImportError:
@@ -65,7 +72,7 @@ DEFAULT_TAPOLOGY_MAP = os.path.join(SCRIPT_DIR, "tapology_event_map.csv")
 DEFAULT_TAPOLOGY_CACHE_DIR = os.path.join(SCRIPT_DIR, "tapology_cache")
 DEFAULT_TAPOLOGY_DELAY_SECONDS = 1.25
 DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT = 4
-CURRENT_STREAK_SOURCES = {"manual", "tapology_live", "fight_results"}
+CURRENT_STREAK_SOURCES = {"manual", "tapology_live", "sherdog_live", "fight_results"}
 TAPOLOGY_ENRICHMENT_FIELDS = [
     "TapologyFighterURL",
     "TapologyMatchConfidence",
@@ -104,6 +111,8 @@ CSV_HEADERS = [
     "FightOrder",
     "FightStatus",
     "PossibleRounds",
+    "Referee_FirstName",
+    "Referee_LastName",
     "IsTitleFight",
     "TitleFightName",
     "CardSegment",
@@ -148,6 +157,25 @@ CSV_HEADERS = [
     "TapologyFighterURL",
     "TapologyMatchConfidence",
 ]
+
+
+def emit_scrape_progress(
+    phase: str,
+    label: str,
+    detail: str = "",
+    percent: Optional[float] = None,
+    current: Optional[int] = None,
+    total: Optional[int] = None,
+) -> None:
+    payload = {
+        "phase": phase,
+        "label": label,
+        "detail": detail,
+        "percent": percent,
+        "current": current,
+        "total": total,
+    }
+    print(f"FIGHT_PICKER_PROGRESS {json.dumps(payload, ensure_ascii=True)}", flush=True)
 
 
 def absolute_tapology_url(value: str) -> str:
@@ -293,6 +321,8 @@ def parse_env_file(path: str) -> Dict[str, str]:
 
 
 def load_supabase_credentials() -> Dict[str, str]:
+    if os.getenv("SUPABASE_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return {"url": "", "service_role_key": ""}
     credentials = {
         "url": os.getenv("SUPABASE_URL", "").strip(),
         "service_role_key": os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
@@ -764,6 +794,7 @@ def upsert_tapology_fighter_cache(
     enrichment: Dict[str, Dict[str, str]],
     timeout: float,
     source: str = "scraper",
+    write_tapology_cache: bool = True,
 ) -> None:
     payloads = []
     for fight in event.get("FightCard", []):
@@ -796,17 +827,18 @@ def upsert_tapology_fighter_cache(
             cache_payload["last_success_at"] = None
         tapology_cache_payloads.append(cache_payload)
 
-    try:
-        upserted_count = upsert_supabase_rows(
-            "tapology_fighter_cache",
-            tapology_cache_payloads,
-            "fighter_id",
-            timeout,
-        )
-        if upserted_count:
-            print(f"Upserted Tapology fighter cache for {upserted_count} fighter(s).")
-    except (requests.RequestException, ValueError) as err:
-        print(f"Tapology fighter cache upsert skipped: {err}")
+    if write_tapology_cache:
+        try:
+            upserted_count = upsert_supabase_rows(
+                "tapology_fighter_cache",
+                tapology_cache_payloads,
+                "fighter_id",
+                timeout,
+            )
+            if upserted_count:
+                print(f"Upserted Tapology fighter cache for {upserted_count} fighter(s).")
+        except (requests.RequestException, ValueError) as err:
+            print(f"Tapology fighter cache upsert skipped: {err}")
 
     event_date = str(event.get("StartTime", "")).split("T")[0] or None
     event_start = parse_start_time(event.get("StartTime"))
@@ -835,7 +867,7 @@ def upsert_tapology_fighter_cache(
         has_current_streak = (
             payload.get("streak") is not None
             and event_is_upcoming
-            and source in {"cached_profile_url", "live_profile"}
+            and source in {"cached_profile_url", "live_profile", "validated_fighter_sources"}
         )
         fighter_profile_payload = {
             "fighter_id": payload.get("fighter_id"),
@@ -858,8 +890,8 @@ def upsert_tapology_fighter_cache(
         if has_current_streak:
             fighter_profile_payload.update({
                 "streak": payload.get("streak"),
-                "streak_source": "tapology_live",
-                "streak_anchor_source": "tapology_live",
+                "streak_source": "sherdog_live" if source == "validated_fighter_sources" else "tapology_live",
+                "streak_anchor_source": "sherdog_live" if source == "validated_fighter_sources" else "tapology_live",
                 "streak_verified_at": payload.get("last_success_at"),
                 "streak_anchor_value": payload.get("streak"),
                 "streak_anchor_record_wins": record_wins,
@@ -2389,7 +2421,6 @@ def match_tapology_fighter(
 
 def should_fetch_tapology_profile(fighter_data: Dict[str, str]) -> bool:
     profile_fields = [
-        "Rank",
         "Streak",
         "KO_TKO_Wins",
         "KO_TKO_Losses",
@@ -2514,11 +2545,13 @@ def fetch_tapology_fighter_enrichment(
     tapology_delay_seconds: float,
     tapology_cache_lookup: Optional[Dict[str, Dict[str, Dict[str, object]]]] = None,
     tapology_profile_limit: int = DEFAULT_TAPOLOGY_PREVIEW_PROFILE_LIMIT,
+    initial_enrichment: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
-    enrichment = load_tapology_cache_fighter_enrichment(
+    cached_enrichment = load_tapology_cache_fighter_enrichment(
         event,
         tapology_cache_lookup or empty_tapology_cache_lookup(),
     )
+    enrichment = merge_tapology_enrichment(initial_enrichment or {}, cached_enrichment)
     tapology_event_url = tapology_event.get("TapologyEventURL", "")
     if not tapology_event_url:
         return merge_cached_tapology_fighter_enrichment(event, enrichment), {}
@@ -2637,6 +2670,107 @@ def metadata_filename(output_path: str) -> str:
     return f"{output_path}.meta.json"
 
 
+def fetch_validated_fighter_source_enrichment(
+    event: Dict,
+    ufc_session: requests.Session,
+    timeout: float,
+    sherdog_delay_seconds: float,
+    ufc_delay_seconds: float,
+) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
+    """Fetch the non-Tapology source chain once for every event fighter."""
+    enrichment: Dict[str, Dict[str, str]] = {}
+    ufc_profiles: Dict[str, Dict[str, str]] = {}
+    sherdog_limiter = ProfileSourceRateLimiter(sherdog_delay_seconds)
+    ufc_limiter = ProfileSourceRateLimiter(ufc_delay_seconds)
+    total = sum(len(fight.get("Fighters", [])) for fight in event.get("FightCard", []))
+    completed = 0
+
+    with build_profile_source_session() as sherdog_session:
+        for fight in event.get("FightCard", []):
+            for fighter in fight.get("Fighters", []):
+                completed += 1
+                fighter_name = fighter_full_name(fighter)
+                fighter_key = normalize_name(fighter_name)
+                record = fighter.get("Record", {}) or {}
+
+                def report_source_progress(source_name: str, source_status: str) -> None:
+                    source_offsets = {"sherdog": 0.15, "ufc.com": 0.5, "wikipedia": 0.8}
+                    source_labels = {
+                        ("sherdog", "starting"): "Checking Sherdog record and methods",
+                        ("sherdog", "complete"): "Sherdog record validated",
+                        ("sherdog", "unavailable"): "Sherdog unavailable; continuing",
+                        ("ufc.com", "starting"): "Checking official UFC profile",
+                        ("ufc.com", "complete"): "Official UFC profile validated",
+                        ("ufc.com", "unavailable"): "UFC.com profile unavailable; continuing",
+                        ("wikipedia", "starting"): "Checking Wikipedia backup",
+                        ("wikipedia", "complete"): "Wikipedia backup validated",
+                        ("wikipedia", "unavailable"): "Wikipedia backup unavailable",
+                        ("wikipedia", "not_needed"): "Wikipedia backup not needed",
+                    }
+                    fraction = ((completed - 1) + source_offsets.get(source_name, 0)) / max(total, 1)
+                    status_detail = fighter_name
+                    if source_status == "unavailable":
+                        status_detail = f"{fighter_name} · source unavailable, continuing"
+                    elif source_status == "not_needed":
+                        status_detail = f"{fighter_name} · backup not needed"
+                    emit_scrape_progress(
+                        phase="fighters",
+                        label=source_labels.get((source_name, source_status), "Checking fighter sources"),
+                        detail=status_detail,
+                        percent=15 + (65 * fraction),
+                        current=completed,
+                        total=total,
+                    )
+
+                result = scrape_fighter_sources(
+                    fighter_name=fighter_name,
+                    expected_wins=parse_optional_int(record.get("Wins")),
+                    expected_losses=parse_optional_int(record.get("Losses")),
+                    ufc_candidate_urls=build_ufc_profile_candidates(fighter.get("UFCLink"), fighter),
+                    timeout=timeout,
+                    sherdog_session=sherdog_session,
+                    ufc_session=ufc_session,
+                    sherdog_limiter=sherdog_limiter,
+                    ufc_limiter=ufc_limiter,
+                    on_progress=report_source_progress,
+                )
+                profile = {
+                    field: cache_value_to_csv(value)
+                    for field, value in (result.get("profile") or {}).items()
+                    if field in TAPOLOGY_ENRICHMENT_FIELDS
+                }
+                if profile:
+                    enrichment[fighter_key] = profile
+                official = result.get("ufc_profile") or {}
+                ufc_profiles[fighter_key] = {
+                    "ImageURL": cache_value_to_csv(official.get("ImageURL")),
+                    "UFCRank": cache_value_to_csv(official.get("Rank")),
+                }
+                diagnostics = result.get("diagnostics") or {}
+                print(
+                    f"Fighter sources {completed}/{total}: {fighter_name} "
+                    f"[{result.get('source', 'none')}] "
+                    f"{len(diagnostics.get('fields_found', []))}/{len(VALIDATED_PROFILE_FIELDS)} fields"
+                )
+                emit_scrape_progress(
+                    phase="fighters",
+                    label="Fighter profile complete",
+                    detail=f"{fighter_name} · {result.get('source', 'no validated source')}",
+                    percent=15 + (65 * completed / max(total, 1)),
+                    current=completed,
+                    total=total,
+                )
+
+    upsert_tapology_fighter_cache(
+        event=event,
+        enrichment=enrichment,
+        timeout=timeout,
+        source="validated_fighter_sources",
+        write_tapology_cache=False,
+    )
+    return enrichment, ufc_profiles
+
+
 def build_event_constants(event: Dict) -> Dict[str, Optional[str]]:
     organization = event.get("Organization", {})
     location = event.get("Location", {})
@@ -2717,6 +2851,7 @@ def build_row(
     record = fighter.get("Record", {})
     born = fighter.get("Born", {})
     fighting_out = fighter.get("FightingOutOf", {})
+    referee = fight.get("Referee", {}) or {}
     weight_classes = fighter.get("WeightClasses", [])
     possible_rounds = extract_possible_rounds(fight)
     is_title_fight, title_fight_name = extract_title_fight_details(fight)
@@ -2727,6 +2862,8 @@ def build_row(
         "FightOrder": fight.get("FightOrder"),
         "FightStatus": fight.get("Status"),
         "PossibleRounds": possible_rounds if possible_rounds is not None else "",
+        "Referee_FirstName": referee.get("FirstName"),
+        "Referee_LastName": referee.get("LastName"),
         "IsTitleFight": "true" if is_title_fight else "false",
         "TitleFightName": title_fight_name,
         "CardSegment": fight.get("CardSegment"),
@@ -2792,6 +2929,7 @@ def export_event(
     ufc_session: requests.Session,
     timeout: float,
     image_delay_seconds: float,
+    ufc_profiles: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> None:
     event_constants = build_event_constants(event)
 
@@ -2803,7 +2941,9 @@ def export_event(
             for fighter in fight.get("Fighters", []):
                 fighter_name_key = normalize_name(fighter_full_name(fighter))
                 fighter_enrichment = tapology_fighters.get(fighter_name_key, {})
-                ufc_profile = fetch_ufc_profile_details(ufc_session, fighter, timeout)
+                ufc_profile = (ufc_profiles or {}).get(fighter_name_key)
+                if ufc_profile is None:
+                    ufc_profile = fetch_ufc_profile_details(ufc_session, fighter, timeout)
                 row = build_row(
                     event_constants=event_constants,
                     fight=fight,
@@ -2852,6 +2992,18 @@ def parse_args() -> argparse.Namespace:
         help="Delay between UFC profile image requests.",
     )
     parser.add_argument(
+        "--sherdog-delay-seconds",
+        type=float,
+        default=float(os.getenv("SHERDOG_PROFILE_DELAY_SECONDS", "1.25")),
+        help="Minimum delay between Sherdog requests.",
+    )
+    parser.add_argument(
+        "--ufc-profile-delay-seconds",
+        type=float,
+        default=float(os.getenv("UFC_PROFILE_DELAY_SECONDS", "1.0")),
+        help="Minimum delay between UFC.com fighter profile requests.",
+    )
+    parser.add_argument(
         "--tapology-delay-seconds",
         type=float,
         default=DEFAULT_TAPOLOGY_DELAY_SECONDS,
@@ -2878,15 +3030,36 @@ def main() -> None:
     args = parse_args()
 
     with build_ufc_session() as ufc_session, build_tapology_session() as tapology_session:
+        emit_scrape_progress("event", "Loading UFC event", f"Event {args.event_id}", percent=5)
         try:
             event = fetch_ufc_event(args.event_id, session=ufc_session, timeout=args.timeout)
         except RuntimeError as err:
             print(str(err), file=sys.stderr)
             sys.exit(1)
 
+        emit_scrape_progress("odds", "Loading FightOdds prices", event.get("Name", ""), percent=9)
         odds_map = build_event_odds_map(event, session=ufc_session, timeout=args.timeout)
+        emit_scrape_progress(
+            "odds",
+            "Odds lookup complete",
+            f"Prices found for {len(odds_map)} fighters",
+            percent=14,
+        )
         fighter_style_lookup = fetch_fighter_style_lookup(timeout=args.timeout)
         tapology_cache_lookup = fetch_tapology_cache_lookup(timeout=args.timeout)
+        primary_fighters, ufc_profiles = fetch_validated_fighter_source_enrichment(
+            event=event,
+            ufc_session=ufc_session,
+            timeout=args.timeout,
+            sherdog_delay_seconds=args.sherdog_delay_seconds,
+            ufc_delay_seconds=args.ufc_profile_delay_seconds,
+        )
+        emit_scrape_progress(
+            "fallback",
+            "Checking Tapology fallback",
+            "Primary fighter sources are complete; checking optional cached gaps",
+            percent=84,
+        )
         tapology_event = resolve_tapology_event(
             tapology_session=tapology_session,
             event=event,
@@ -2902,11 +3075,18 @@ def main() -> None:
             tapology_delay_seconds=args.tapology_delay_seconds,
             tapology_cache_lookup=tapology_cache_lookup,
             tapology_profile_limit=args.tapology_profile_limit,
+            initial_enrichment=primary_fighters,
         )
         tapology_event = {
             **tapology_event,
             **tapology_event_metadata,
         }
+        emit_scrape_progress(
+            "export",
+            "Building fight-card file",
+            "Combining event, odds, and fighter profile data",
+            percent=93,
+        )
         output_path = output_filename(event, args.output_dir)
 
         export_event(
@@ -2919,6 +3099,7 @@ def main() -> None:
             ufc_session=ufc_session,
             timeout=args.timeout,
             image_delay_seconds=args.image_delay_seconds,
+            ufc_profiles=ufc_profiles,
         )
 
         with open(metadata_filename(output_path), "w", encoding="utf-8") as metadata_file:
@@ -2938,6 +3119,12 @@ def main() -> None:
                 indent=2,
             )
 
+    emit_scrape_progress(
+        "export",
+        "Scrape complete",
+        "Validating the generated preview file",
+        percent=96,
+    )
     print(f"Exported Tapology-ready fight card to {output_path}")
 
 

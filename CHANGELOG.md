@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.25.0 - 2026-08-24
+
+### Changed
+
+- Accepted populated streaks from the record-validated fighter source chain without requiring manual verification.
+- Removed streak verification badges and buttons from the manual fight-card preview and imported fight-card editor.
+
+## 0.24.0 - 2026-08-24
+
+### Added
+
+- Added live phase, source, fighter-count, and percentage progress to manual fight-card preview refreshes.
+- Added a short-lived admin progress endpoint so the preview UI can report scraper work without changing scheduled automation behavior.
+
+## 0.23.1 - 2026-08-23
+
+### Fixed
+
+- Accepted commonly formatted 10-digit phone numbers during login and registration while normalizing API lookups and stored values to digits only.
+
+## 0.23.0 - 2026-08-23
+
+### Added
+
+- Added validated Sherdog, UFC.com, and Wikipedia fighter enrichment to automatic fight-card scrapes and both manual fighter-stat editors.
+- Added Sherdog-backed verified streak anchors and an explicit database-free scraper mode for safe live trials.
+
+### Changed
+
+- Made Tapology an optional final fallback instead of a required fighter-stat source while retaining FightOdds as the primary odds provider.
+- Updated fight-card completeness checks and admin labels to measure populated fighter stats instead of requiring Tapology profile URLs.
+
+## 0.22.0 - 2026-08-21
+
+### Added
+
+- Added full born and fighting-out-of locations to expanded fighter details.
+
+### Changed
+
+- Grouped expanded fighter stats into Physical, Fight Profile, Background, and Method Breakdown sections for faster scanning.
+
+## 0.21.1 - 2026-08-21
+
+### Fixed
+
+- Made scheduled fight-card automation persist newly assigned referees even when no other fighter enrichment changed.
+
+## 0.21.0 - 2026-08-21
+
+### Added
+
+- Added assigned referees beneath each fight's scheduled round count, with no placeholder when the UFC feed has not assigned one.
+- Added diagonally split fighter-card flag backgrounds when birth country and fighting-out-of country differ.
+
+### Changed
+
+- Persisted UFC referee names during fight-card imports and exposed birth countries in fight responses.
+
 ## 0.20.0 - 2026-08-21
 
 ### Added

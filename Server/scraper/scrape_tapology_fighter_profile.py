@@ -10,10 +10,16 @@ from bs4 import BeautifulSoup
 
 from scrape_full_ufc_event_with_tapology import (
     DEFAULT_HEADERS,
+    build_ufc_profile_candidates,
     build_tapology_session,
     fetch_tapology_fighter_html,
     normalize_name,
     parse_tapology_fighter_profile,
+)
+from fighter_profile_sources import (
+    METHOD_FIELDS as VALIDATED_METHOD_FIELDS,
+    build_session as build_profile_source_session,
+    scrape_fighter_sources,
 )
 
 WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
@@ -36,9 +42,9 @@ class FighterProfileScrapeError(RuntimeError):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scrape one Tapology fighter profile and print parsed stats as JSON."
+        description="Scrape one fighter from Sherdog, UFC.com, Wikipedia, then optional Tapology."
     )
-    parser.add_argument("url", help="Tapology fighter profile URL.")
+    parser.add_argument("url", nargs="?", default="", help="Optional Tapology fallback profile URL.")
     parser.add_argument(
         "--timeout",
         type=float,
@@ -48,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fighter-name", default="", help="Expected fighter name.")
     parser.add_argument("--record-wins", type=int, default=None, help="Expected UFC API win total.")
     parser.add_argument("--record-losses", type=int, default=None, help="Expected UFC API loss total.")
+    parser.add_argument("--ufc-url", action="append", default=[], help="Candidate UFC.com profile URL.")
     return parser.parse_args()
 
 
@@ -305,84 +312,68 @@ def fetch_wikipedia_fallback(args: argparse.Namespace) -> Dict[str, str]:
 
 def main() -> None:
     args = parse_args()
+    if not args.fighter_name:
+        raise FighterProfileScrapeError(
+            "A fighter name is required for validated source matching.",
+            {"status": "failed", "source": "none", "fields_found": [], "fields_missing": PROFILE_FIELDS},
+        )
+
+    with build_profile_source_session() as sherdog_session, build_profile_source_session() as ufc_session:
+        validated = scrape_fighter_sources(
+            fighter_name=args.fighter_name,
+            expected_wins=args.record_wins,
+            expected_losses=args.record_losses,
+            ufc_candidate_urls=args.ufc_url or build_ufc_profile_candidates("", {
+                "FirstName": args.fighter_name.split(" ", 1)[0],
+                "LastName": args.fighter_name.split(" ", 1)[1] if " " in args.fighter_name else "",
+            }),
+            timeout=args.timeout,
+            sherdog_session=sherdog_session,
+            ufc_session=ufc_session,
+        )
+
     tapology_error = ""
     tapology_profile: Dict[str, str] = {}
-    tapology_fetch_status = "failed"
-    try:
-        with build_tapology_session() as tapology_session:
-            html = fetch_tapology_fighter_html(
-                tapology_session=tapology_session,
-                tapology_fighter_url=args.url,
-                timeout=args.timeout,
-            )
+    tapology_fetch_status = "not_requested"
+    profile = dict(validated.get("profile") or {})
+    if args.url and any(profile.get(field) in {None, ""} for field in PROFILE_FIELDS):
+        try:
+            with build_tapology_session() as tapology_session:
+                html = fetch_tapology_fighter_html(tapology_session, args.url, args.timeout)
+            tapology_profile = parse_tapology_fighter_profile(html)
+            tapology_fetch_status = "success"
+            profile = merge_profiles(profile, tapology_profile)
+        except Exception as error:
+            tapology_fetch_status = "failed"
+            tapology_error = str(error)
 
-        tapology_profile = parse_tapology_fighter_profile(html)
-        tapology_fetch_status = "success"
-        if not has_complete_method_breakdown(tapology_profile):
-            tapology_error = "Tapology profile did not expose a complete method breakdown."
-        else:
-            print(json.dumps({
-                "source": "tapology_single_profile",
-                "tapology_fighter_url": args.url,
-                "profile": tapology_profile,
-                "diagnostics": build_scrape_diagnostics(
-                    tapology_profile,
-                    "tapology_single_profile",
-                    tapology_fetch_status,
-                ),
-            }))
-            return
-    except Exception as error:
-        tapology_error = str(error)
+    fields_found = [field for field in PROFILE_FIELDS if profile.get(field) not in {None, ""}]
+    if not any(field in fields_found for field in VALIDATED_METHOD_FIELDS):
+        diagnostics = dict(validated.get("diagnostics") or {})
+        diagnostics.update({"status": "failed", "tapology_fetch_status": tapology_fetch_status, "tapology_error": tapology_error or None})
+        raise FighterProfileScrapeError("No validated fighter method statistics were found.", diagnostics)
 
-    try:
-        fallback = fetch_wikipedia_fallback(args)
-        source = "tapology_wikipedia_merged" if tapology_profile else fallback["source"]
-        profile = merge_profiles(tapology_profile, fallback["profile"])
-        print(json.dumps({
-            **fallback,
-            "source": source,
-            "profile": profile,
-            "tapology_fighter_url": args.url,
-            "tapology_error": tapology_error,
-            "diagnostics": build_scrape_diagnostics(
-                profile,
-                source,
-                tapology_fetch_status,
-                tapology_error=tapology_error,
-                warnings=fallback.get("validation_warnings", []),
-            ),
-        }))
-    except Exception as fallback_exception:
-        fallback_error = str(fallback_exception)
-        if tapology_profile:
-            source = "tapology_partial_profile"
-            print(json.dumps({
-                "source": source,
-                "tapology_fighter_url": args.url,
-                "tapology_error": tapology_error,
-                "profile": tapology_profile,
-                "diagnostics": build_scrape_diagnostics(
-                    tapology_profile,
-                    source,
-                    tapology_fetch_status,
-                    tapology_error=tapology_error,
-                    fallback_error=fallback_error,
-                ),
-            }))
-            return
-        diagnostics = build_scrape_diagnostics(
-            {},
-            "none",
-            tapology_fetch_status,
-            tapology_error=tapology_error,
-            fallback_error=fallback_error,
-        )
-        diagnostics["status"] = "failed"
-        raise FighterProfileScrapeError(
-            f"Tapology failed: {tapology_error}; Wikipedia fallback failed: {fallback_error}",
-            diagnostics,
-        ) from fallback_exception
+    source = str(validated.get("source") or "none")
+    if tapology_profile:
+        source = f"{source}_tapology" if source != "none" else "tapology_single_profile"
+    diagnostics = dict(validated.get("diagnostics") or {})
+    diagnostics.update({
+        "status": "complete" if all(profile.get(field) not in {None, ""} for field in VALIDATED_METHOD_FIELDS) else "partial",
+        "source": source,
+        "tapology_fetch_status": tapology_fetch_status,
+        "tapology_error": tapology_error or None,
+        "fields_found": fields_found,
+        "fields_missing": [field for field in PROFILE_FIELDS if field not in fields_found],
+        "streak_source": "sherdog_live" if validated.get("field_sources", {}).get("Streak") == "sherdog" else ("tapology_live" if tapology_profile.get("Streak") not in {None, ""} else None),
+    })
+    print(json.dumps({
+        **validated,
+        "source": source,
+        "profile": profile,
+        "tapology_fighter_url": args.url or None,
+        "tapology_error": tapology_error or None,
+        "diagnostics": diagnostics,
+    }))
 
 
 if __name__ == "__main__":

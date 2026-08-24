@@ -122,6 +122,38 @@ test('mergeScrapedRowsWithStoredValues only fills blanks on an existing card', (
   assert.equal(countFilledFightCardValues(existing, [merged]), 2);
 });
 
+test('automation detects and preserves newly assigned referees', () => {
+  const existing = [{
+    FightId: 10,
+    FighterId: 100,
+    Corner: 'Red',
+    Referee_FirstName: null,
+    Referee_LastName: null,
+  }];
+  const scraped = [{
+    FightId: '10',
+    FighterId: '100',
+    Corner: 'Red',
+    Referee_FirstName: 'Jason',
+    Referee_LastName: 'Herzog',
+  }];
+
+  const [merged] = mergeScrapedRowsWithStoredValues(scraped, existing);
+  const summary = summarizeFilledFightCardData(existing, [merged]);
+
+  assert.equal(merged.Referee_FirstName, 'Jason');
+  assert.equal(merged.Referee_LastName, 'Herzog');
+  assert.equal(summary.filledValueCount, 2);
+  assert.equal(summary.byField.Referee_FirstName, 1);
+  assert.equal(summary.byField.Referee_LastName, 1);
+
+  const [preserved] = mergeScrapedRowsWithStoredValues([
+    { ...scraped[0], Referee_FirstName: null, Referee_LastName: null },
+  ], [{ ...existing[0], Referee_FirstName: 'Jason', Referee_LastName: 'Herzog' }]);
+  assert.equal(preserved.Referee_FirstName, 'Jason');
+  assert.equal(preserved.Referee_LastName, 'Herzog');
+});
+
 test('summarizeFilledFightCardData reports new values by field and new fighter rows', () => {
   const existing = [{
     FightId: 10,
