@@ -12,6 +12,45 @@ export function getComparisonWidth(value, opponentValue, minimumMax = 1) {
   return Math.min(100, (parsed / maximum) * 100);
 }
 
+export function getMatchupComparison(redValue, blueValue, direction = 'higher') {
+  const red = parseFighterMetric(redValue);
+  const blue = parseFighterMetric(blueValue);
+  const comparable = red !== null && blue !== null;
+
+  if (!comparable) {
+    return {
+      comparable: false,
+      leader: null,
+      delta: null,
+      edgePosition: 50,
+    };
+  }
+
+  if (red === blue) {
+    return {
+      comparable: true,
+      leader: 'tie',
+      delta: 0,
+      edgePosition: 50,
+    };
+  }
+
+  const maximum = Math.max(red, blue);
+  const leader = direction === 'lower'
+    ? (red < blue ? 'red' : 'blue')
+    : (red > blue ? 'red' : 'blue');
+  const delta = Math.abs(red - blue);
+  const relativeEdge = maximum === 0 ? 0 : delta / maximum;
+  const edgeOffset = Math.min(40, relativeEdge * 40);
+
+  return {
+    comparable: true,
+    leader,
+    delta,
+    edgePosition: leader === 'red' ? 50 - edgeOffset : 50 + edgeOffset,
+  };
+}
+
 export function getMetricScaleRatio(value, maximum) {
   const parsed = parseFighterMetric(value);
   const parsedMaximum = parseFighterMetric(maximum);
