@@ -1626,12 +1626,18 @@ button.expand-stats-button:hover {
 
 .matchup-metric-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
+  grid-template-columns: 1fr;
+  gap: 0;
 }
 
 .matchup-metric {
   min-width: 0;
+  padding: 3px 0 11px;
+}
+
+.matchup-metric + .matchup-metric {
+  padding-top: 12px;
+  border-top: 1px solid rgba(252, 251, 253, 0.06);
 }
 
 .matchup-metric-heading {
@@ -1673,55 +1679,112 @@ button.expand-stats-button:hover {
   text-align: right;
 }
 
-.matchup-dot-plot {
+.matchup-edge {
+  display: grid;
+  grid-template-columns: 28px minmax(80px, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.matchup-edge-side {
+  color: rgba(252, 251, 253, 0.4);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.matchup-edge-side:last-child {
+  text-align: right;
+}
+
+.matchup-edge-axis {
   position: relative;
   height: 12px;
-  border-top: 1px solid rgba(252, 251, 253, 0.13);
-  border-bottom: 1px solid rgba(252, 251, 253, 0.13);
-  background: rgba(252, 251, 253, 0.025);
 }
 
-.matchup-dot-plot-tick {
+.matchup-edge-axis::before {
+  content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 5px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(233, 23, 13, 0.72),
+    rgba(252, 251, 253, 0.24) 46%,
+    rgba(252, 251, 253, 0.24) 54%,
+    rgba(43, 49, 178, 0.92)
+  );
+}
+
+.matchup-edge-axis::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 50%;
   width: 1px;
-  background: rgba(252, 251, 253, 0.08);
-}
-
-.matchup-dot-plot-tick--quarter { left: 25%; }
-.matchup-dot-plot-tick--middle { left: 50%; }
-.matchup-dot-plot-tick--three-quarter { left: 75%; }
-
-.matchup-dot-connector {
-  position: absolute;
-  top: 50%;
-  height: 2px;
+  height: 7px;
   background: rgba(252, 251, 253, 0.42);
-  transform: translateY(-50%);
 }
 
-.matchup-dot {
+.matchup-edge-dot {
   position: absolute;
-  top: 50%;
+  z-index: 1;
+  top: 1px;
   width: 9px;
   height: 9px;
   border: 2px solid #050000;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(252, 251, 253, 0.42);
-  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px currentColor;
+  transform: translateX(-50%);
 }
 
-.matchup-dot--red { background: var(--color-red); }
-.matchup-dot--blue { background: var(--color-blue); }
+.matchup-edge-dot--red {
+  color: var(--color-red);
+  background: var(--color-red);
+}
 
-.matchup-metric-scale {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 2px;
-  color: rgba(252, 251, 253, 0.36);
-  font-size: 0.53rem;
+.matchup-edge-dot--blue {
+  color: var(--color-blue);
+  background: var(--color-blue);
+}
+
+.matchup-edge-dot--tie {
+  color: rgba(252, 251, 253, 0.68);
+  background: #FCFBFD;
+}
+
+.matchup-edge-result {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 36px 0 34px;
+  color: rgba(252, 251, 253, 0.5);
+  font-size: 0.54rem;
   font-variant-numeric: tabular-nums;
+}
+
+.matchup-edge-result > span {
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+.matchup-edge-result--red > span {
+  grid-column: 1;
+  color: var(--color-pink);
+  text-align: left;
+}
+
+.matchup-edge-result--blue > span {
+  grid-column: 2;
+  color: color-mix(in srgb, var(--color-blue) 44%, var(--color-white));
+  text-align: right;
+}
+
+.matchup-metric--unavailable .matchup-edge-axis {
+  opacity: 0.34;
 }
 
 .finish-method-breakdown {

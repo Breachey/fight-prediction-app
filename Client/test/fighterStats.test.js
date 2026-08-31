@@ -4,6 +4,7 @@ import {
   formatAverageFightTime,
   formatLastFightRecency,
   getComparisonWidth,
+  getMatchupComparison,
   getMetricScalePosition,
   getMetricScaleRatio,
   parseRecentForm,
@@ -22,6 +23,27 @@ test('metric plot positions use explicit scales and keep dots inside the lane', 
   assert.equal(getMetricScalePosition(0, 100), 4);
   assert.equal(getMetricScalePosition(50, 100), 50);
   assert.equal(getMetricScalePosition(100, 100), 96);
+});
+
+test('matchup edge positions show the leading side and preserve lower-is-better meaning', () => {
+  assert.deepEqual(getMatchupComparison(4, 5), {
+    comparable: true,
+    leader: 'blue',
+    delta: 1,
+    edgePosition: 58,
+  });
+
+  const absorbed = getMatchupComparison(8.13, 5.18, 'lower');
+  assert.equal(absorbed.leader, 'blue');
+  assert.equal(Number(absorbed.delta.toFixed(2)), 2.95);
+  assert.ok(absorbed.edgePosition > 50);
+
+  assert.deepEqual(getMatchupComparison(null, 5), {
+    comparable: false,
+    leader: null,
+    delta: null,
+    edgePosition: 50,
+  });
 });
 
 test('fighter stat formatters keep compact display values', () => {

@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.28.3 - 2026-08-31
+
+### Fixed
+
+- Routed direct and refreshed client URLs through the SPA entry point so Stats, Highlights, Profile, and future client routes no longer return deployment 404s.
+
+## 0.28.2 - 2026-08-30
+
+### Added
+
+- Added the September 12 Noche UFC event to the production event schedule.
+
+## 0.28.1 - 2026-08-25
+
+### Changed
+
+- Simplified fighter stat comparisons to one red-to-blue edge line and winning-side marker while retaining both fighters' exact values and the precise advantage label.
+
+## 0.28.0 - 2026-08-25
+
+### Changed
+
+- Replaced matchup dot plots with diverging red/blue bars that make the stronger fighter's stat visibly longer.
+- Added directional edge indicators with exact rate, percentage-point, time, and lower-is-better differences.
+- Kept missing comparisons neutral and treated average fight time as a duration difference instead of an advantage.
+
 ## 0.27.2 - 2026-08-24
 
 ### Fixed

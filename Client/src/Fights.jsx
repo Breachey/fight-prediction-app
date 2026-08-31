@@ -7,7 +7,7 @@ import { getInitialFightTargetId, getNextUnvotedFightId } from './utils/fightNav
 import {
   formatAverageFightTime,
   formatLastFightRecency,
-  getMetricScalePosition,
+  getMatchupComparison,
   getMetricScaleRatio,
   parseFighterMetric,
   parseRecentForm,
@@ -294,26 +294,26 @@ const PERFORMANCE_GROUPS = [
   {
     label: 'Striking',
     metrics: [
-      { label: 'Landed / min', suffix: 'sig_str_landed_per_min', maximum: 8, format: 'rate' },
-      { label: 'Absorbed / min', suffix: 'sig_str_absorbed_per_min', maximum: 8, format: 'rate', note: 'lower is better' },
-      { label: 'Accuracy', suffix: 'sig_strike_accuracy_pct', maximum: 100, format: 'percent' },
-      { label: 'Defense', suffix: 'sig_strike_defense_pct', maximum: 100, format: 'percent' },
+      { label: 'Landed / min', suffix: 'sig_str_landed_per_min', maximum: 8, format: 'rate', direction: 'higher' },
+      { label: 'Absorbed / min', suffix: 'sig_str_absorbed_per_min', maximum: 8, format: 'rate', direction: 'lower', note: 'lower is better' },
+      { label: 'Accuracy', suffix: 'sig_strike_accuracy_pct', maximum: 100, format: 'percent', direction: 'higher' },
+      { label: 'Defense', suffix: 'sig_strike_defense_pct', maximum: 100, format: 'percent', direction: 'higher' },
     ],
   },
   {
     label: 'Grappling',
     metrics: [
-      { label: 'Takedowns / 15', suffix: 'takedown_avg_per_15', maximum: 6, format: 'rate' },
-      { label: 'TD accuracy', suffix: 'takedown_accuracy_pct', maximum: 100, format: 'percent' },
-      { label: 'TD defense', suffix: 'takedown_defense_pct', maximum: 100, format: 'percent' },
-      { label: 'Sub attempts / 15', suffix: 'submission_avg_per_15', maximum: 3, format: 'rate' },
+      { label: 'Takedowns / 15', suffix: 'takedown_avg_per_15', maximum: 6, format: 'rate', direction: 'higher' },
+      { label: 'TD accuracy', suffix: 'takedown_accuracy_pct', maximum: 100, format: 'percent', direction: 'higher' },
+      { label: 'TD defense', suffix: 'takedown_defense_pct', maximum: 100, format: 'percent', direction: 'higher' },
+      { label: 'Sub attempts / 15', suffix: 'submission_avg_per_15', maximum: 3, format: 'rate', direction: 'higher' },
     ],
   },
   {
     label: 'Power & pace',
     metrics: [
-      { label: 'Knockdowns / 15', suffix: 'knockdown_avg_per_15', maximum: 3, format: 'rate' },
-      { label: 'Avg fight time', suffix: 'average_fight_time_seconds', maximum: 1500, format: 'time' },
+      { label: 'Knockdowns / 15', suffix: 'knockdown_avg_per_15', maximum: 3, format: 'rate', direction: 'higher' },
+      { label: 'Avg fight time', suffix: 'average_fight_time_seconds', maximum: 1500, format: 'time', direction: 'neutral', note: 'duration, not advantage' },
     ],
   },
 ];
@@ -335,29 +335,48 @@ function formatPerformanceMetric(value, format) {
   return metric.toFixed(2);
 }
 
+function formatPerformanceDelta(delta, format) {
+  if (delta === null) return '';
+  if (format === 'percent') return `${Math.round(delta)} pts`;
+  if (format === 'time') return formatAverageFightTime(delta);
+  return delta.toFixed(2);
+}
+
 function PerformanceMetricRow({ fight, metric }) {
   const redValue = fight?.[`fighter1_${metric.suffix}`];
   const blueValue = fight?.[`fighter2_${metric.suffix}`];
-  const redPosition = getMetricScalePosition(redValue, metric.maximum);
-  const bluePosition = getMetricScalePosition(blueValue, metric.maximum);
-  if (redPosition === null && bluePosition === null) return null;
+  const redMetric = parseFighterMetric(redValue);
+  const blueMetric = parseFighterMetric(blueValue);
+  if (redMetric === null && blueMetric === null) return null;
 
-  const connectorStart = redPosition !== null && bluePosition !== null
-    ? Math.min(redPosition, bluePosition)
-    : null;
-  const connectorWidth = redPosition !== null && bluePosition !== null
-    ? Math.abs(redPosition - bluePosition)
-    : null;
-  const maximumLabel = metric.format === 'percent'
-    ? '100%'
-    : metric.format === 'time'
-      ? '25:00'
-      : `${metric.maximum}`;
+  const comparison = getMatchupComparison(redValue, blueValue, metric.direction);
   const redFormatted = formatPerformanceMetric(redValue, metric.format);
   const blueFormatted = formatPerformanceMetric(blueValue, metric.format);
+  const deltaFormatted = formatPerformanceDelta(comparison.delta, metric.format);
+  const leaderName = comparison.leader === 'red'
+    ? fight.fighter1_name
+    : fight.fighter2_name;
+  const edgeCopy = !comparison.comparable
+    ? 'No comparison'
+    : comparison.leader === 'tie'
+      ? 'Even'
+      : metric.direction === 'lower'
+        ? `${deltaFormatted} fewer`
+        : metric.direction === 'neutral'
+          ? `${deltaFormatted} longer`
+          : `+${deltaFormatted} edge`;
+  const accessibleComparison = !comparison.comparable
+    ? 'A direct comparison is unavailable.'
+    : comparison.leader === 'tie'
+      ? 'The fighters are even.'
+      : metric.direction === 'lower'
+        ? `${leaderName} has the advantage with ${deltaFormatted} fewer.`
+        : metric.direction === 'neutral'
+          ? `${leaderName} has a ${deltaFormatted} longer average; longer is not necessarily better.`
+          : `${leaderName} has a ${deltaFormatted} advantage.`;
 
   return (
-    <div className="matchup-metric">
+    <div className={`matchup-metric${comparison.comparable ? '' : ' matchup-metric--unavailable'}`}>
       <div className="matchup-metric-heading">
         <strong className="matchup-value matchup-value--red">{redFormatted}</strong>
         <span>
@@ -367,29 +386,23 @@ function PerformanceMetricRow({ fight, metric }) {
         <strong className="matchup-value matchup-value--blue">{blueFormatted}</strong>
       </div>
       <div
-        className="matchup-dot-plot"
+        className="matchup-edge"
         role="img"
-        aria-label={`${metric.label}: ${fight.fighter1_name} ${redFormatted}, ${fight.fighter2_name} ${blueFormatted}. Scale zero to ${maximumLabel}.`}
+        aria-label={`${metric.label}: ${fight.fighter1_name} ${redFormatted}, ${fight.fighter2_name} ${blueFormatted}. ${accessibleComparison}`}
       >
-        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--quarter" />
-        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--middle" />
-        <span className="matchup-dot-plot-tick matchup-dot-plot-tick--three-quarter" />
-        {connectorStart !== null && (
-          <span
-            className="matchup-dot-connector"
-            style={{ left: `${connectorStart}%`, width: `${connectorWidth}%` }}
-          />
-        )}
-        {redPosition !== null && (
-          <span className="matchup-dot matchup-dot--red" style={{ left: `${redPosition}%` }} />
-        )}
-        {bluePosition !== null && (
-          <span className="matchup-dot matchup-dot--blue" style={{ left: `${bluePosition}%` }} />
-        )}
+        <span className="matchup-edge-side">Red</span>
+        <span className="matchup-edge-axis">
+          {comparison.comparable && (
+            <span
+              className={`matchup-edge-dot matchup-edge-dot--${comparison.leader}`}
+              style={{ left: `${comparison.edgePosition}%` }}
+            />
+          )}
+        </span>
+        <span className="matchup-edge-side">Blue</span>
       </div>
-      <div className="matchup-metric-scale" aria-hidden="true">
-        <span>0</span>
-        <span>{maximumLabel}</span>
+      <div className={`matchup-edge-result matchup-edge-result--${comparison.leader || 'none'}`} aria-hidden="true">
+        <span>{edgeCopy}</span>
       </div>
     </div>
   );
