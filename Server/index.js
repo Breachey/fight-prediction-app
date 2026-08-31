@@ -52,6 +52,7 @@ const {
   normalizePropPixVote,
 } = require('./lib/propPix');
 const { createNotifications } = require('./lib/notifications');
+const { createAsyncTtlCache } = require('./lib/asyncTtlCache');
 const { buildPicksContextPayload } = require('./lib/picksContext');
 const { buildEventLiveState } = require('./lib/eventLiveState');
 const { buildEventRecap } = require('./lib/eventRecap');
@@ -119,6 +120,10 @@ const SHOULD_LOG_DEBUG = normalizeBooleanFlag(process.env.DEBUG_SERVER_LOGS);
 const ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES = normalizeBooleanFlag(
   process.env.ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES
 );
+const WEIGHTCLASS_CACHE_TTL_MS = 10 * 60 * 1000;
+const USER_PLAYERCARD_CACHE_TTL_MS = 2 * 60 * 1000;
+const weightclassCache = createAsyncTtlCache({ ttlMs: WEIGHTCLASS_CACHE_TTL_MS });
+const userPlayercardCache = createAsyncTtlCache({ ttlMs: USER_PLAYERCARD_CACHE_TTL_MS });
 
 // Enable gzip compression
 app.use(compression());
@@ -2117,6 +2122,7 @@ app.post('/register', authRateLimit, async (req, res) => {
       return res.status(500).json({ error: 'Failed to create user' });
     }
 
+    userPlayercardCache.invalidate();
     const responsePayload = await buildAuthenticatedUserResponse(newUser);
     if (responsePayload.admin_session_token) {
       await writeAdminAuditLog({
@@ -2260,16 +2266,17 @@ app.post('/session/logout', requireUserSession, async (req, res) => {
 // Helper function to get weightclass mapping
 async function getWeightclassMapping() {
   try {
-    const { data: weightclasses, error } = await supabase
-      .from('weightclasses')
-      .select('official_weightclass, gay_weightclass, weight_lbs');
-    
-    if (error) {
-      console.error('Error fetching weightclasses:', error);
-      return new Map(); // Return empty map on error
-    }
+    return await weightclassCache.get(async () => {
+      const { data: weightclasses, error } = await supabase
+        .from('weightclasses')
+        .select('official_weightclass, gay_weightclass, weight_lbs');
 
-    return buildWeightclassMap(weightclasses);
+      if (error) {
+        throw error;
+      }
+
+      return buildWeightclassMap(weightclasses);
+    });
   } catch (error) {
     console.error('Error in getWeightclassMapping:', error);
     return new Map();
@@ -2562,6 +2569,134 @@ app.get('/predictions/history', requireUserSession, async (req, res) => {
   }
 });
 
+async function addVoteMetadata(predictions) {
+  const userCache = await fetchUsersWithPlayercards();
+  const allUsers = userCache.users;
+  const userMaps = buildUserMaps(allUsers);
+  const filteredPredictions = (predictions || []).filter(
+    (prediction) => Boolean(resolveUserForRow(prediction, userMaps))
+  );
+
+  if (filteredPredictions.length === 0) {
+    return [];
+  }
+
+  const userIds = buildUserIdList(allUsers);
+  const { data: results, error: resultsError } = await supabase
+    .from('prediction_results')
+    .select('user_id, predicted_correctly, points')
+    .in('user_id', userIds);
+
+  if (resultsError) {
+    throw resultsError;
+  }
+
+  const userStats = {};
+  (results || []).forEach((result) => {
+    const userIdStr = String(result.user_id);
+    const user = userMaps.byId.get(userIdStr);
+    if (!userStats[userIdStr]) {
+      userStats[userIdStr] = {
+        user_id: userIdStr,
+        username: user?.username || 'Unknown',
+        total_predictions: 0,
+        correct_predictions: 0,
+        total_points: 0,
+      };
+    }
+    userStats[userIdStr].total_predictions += 1;
+    if (result.predicted_correctly) {
+      userStats[userIdStr].correct_predictions += 1;
+    }
+    userStats[userIdStr].total_points += result.points || 0;
+  });
+
+  const leaderboard = Object.values(userStats).sort((a, b) => (
+    b.total_points - a.total_points
+    || b.correct_predictions - a.correct_predictions
+    || ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions))
+  ));
+  const rankMap = new Map(leaderboard.map((user, index) => [String(user.user_id), index + 1]));
+
+  return filteredPredictions.map((prediction) => {
+    const predictionUser = resolveUserForRow(prediction, userMaps);
+    const predictionUserId = predictionUser ? String(predictionUser.user_id) : null;
+
+    return {
+      ...prediction,
+      user_id: predictionUserId || prediction.user_id || null,
+      username: predictionUser?.username || prediction.username || 'Unknown',
+      is_bot: Boolean(predictionUser?.is_bot),
+      playercard: predictionUser?.playercards || null,
+      avatar_config: predictionUser?.avatar_config || null,
+      rank: predictionUserId ? (rankMap.get(predictionUserId) || null) : null,
+    };
+  });
+}
+
+app.get('/fights/:fight_id/votes', requireUserSession, async (req, res) => {
+  const fightId = Number.parseInt(String(req.params.fight_id || ''), 10);
+  if (!Number.isFinite(fightId) || fightId <= 0) {
+    return res.status(400).json({ error: 'A valid fight id is required' });
+  }
+
+  try {
+    const [fightResult, viewerPredictionResult, completedFightResult, predictionsResult] = await Promise.all([
+      supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, FighterId, Corner')
+        .eq('FightId', fightId),
+      supabase
+        .from('predictions')
+        .select('fight_id')
+        .eq('fight_id', fightId)
+        .eq('user_id', req.authenticatedUser.user_id)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('fight_results')
+        .select('fight_id')
+        .eq('fight_id', fightId)
+        .eq('is_completed', true)
+        .maybeSingle(),
+      supabase
+        .from('predictions')
+        .select('fight_id, fighter_id, username, user_id')
+        .eq('fight_id', fightId),
+    ]);
+
+    const queryError = fightResult.error
+      || viewerPredictionResult.error
+      || completedFightResult.error
+      || predictionsResult.error;
+    if (queryError) {
+      console.error('Error fetching fight votes:', queryError);
+      return res.status(500).json({ error: 'Failed to fetch fight votes' });
+    }
+    if (!fightResult.data?.length) {
+      return res.status(404).json({ error: 'Fight not found' });
+    }
+    if (!viewerPredictionResult.data && !completedFightResult.data) {
+      return res.status(403).json({ error: 'Submit your pick before viewing individual votes' });
+    }
+
+    const redFighter = fightResult.data.find((fighter) => fighter.Corner === 'Red');
+    const blueFighter = fightResult.data.find((fighter) => fighter.Corner === 'Blue');
+    if (!redFighter || !blueFighter) {
+      return res.status(500).json({ error: 'Fight card is missing corner data' });
+    }
+
+    const votes = await addVoteMetadata(predictionsResult.data || []);
+    return res.json({
+      fighter1Votes: votes.filter((vote) => String(vote.fighter_id) === String(redFighter.FighterId)),
+      fighter2Votes: votes.filter((vote) => String(vote.fighter_id) === String(blueFighter.FighterId)),
+    });
+  } catch (error) {
+    console.error('Error in /fights/:fight_id/votes:', error);
+    return res.status(500).json({ error: 'Failed to fetch fight votes' });
+  }
+});
+
 app.get('/predictions/filter', requireUserSession, async (req, res) => {
   const { fight_id, fighter_id } = req.query;
 
@@ -2610,92 +2745,7 @@ app.get('/predictions/filter', requireUserSession, async (req, res) => {
       return res.status(500).json({ error: "Error fetching predictions" });
     }
 
-    // Get user information including is_bot status and playercard info
-    const users = await fetchAllUsers(`
-      user_id, 
-      username, 
-      is_bot, 
-      avatar_config,
-      selected_playercard_id,
-      playercards!selected_playercard_id (
-        id,
-        name,
-        image_url,
-        category
-      )
-    `);
-    const allUsers = users || [];
-    const userMaps = buildUserMaps(allUsers);
-    const filteredPredictions = (predictions || []).filter(
-      (prediction) => Boolean(resolveUserForRow(prediction, userMaps))
-    );
-
-    if (filteredPredictions.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    // Get leaderboard data for rankings
-    const userIds = buildUserIdList(allUsers);
-    const { data: results, error: resultsError } = await supabase
-      .from('prediction_results')
-      .select('user_id, predicted_correctly, points')
-      .in('user_id', userIds);
-    const filteredResults = results || [];
-
-    if (resultsError) {
-      console.error('Error fetching prediction results:', resultsError);
-      return res.status(500).json({ error: "Error fetching leaderboard data" });
-    }
-
-    // Process leaderboard data
-    const userStats = {};
-    filteredResults.forEach(result => {
-      const userIdStr = String(result.user_id);
-      const user = userMaps.byId.get(userIdStr);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: user?.username || 'Unknown',
-          is_bot: Boolean(user?.is_bot),
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      // Directly sum the points from the table
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Convert to array and sort to get rankings
-    const leaderboard = Object.values(userStats)
-      .sort((a, b) => 
-        b.total_points - a.total_points || // Sort by points first
-        b.correct_predictions - a.correct_predictions || // Then by correct predictions
-        ((b.correct_predictions / b.total_predictions) - (a.correct_predictions / a.total_predictions)) // Then by accuracy
-      );
-
-    const rankMap = new Map(leaderboard.map((user, index) => [String(user.user_id), index + 1]));
-
-    // Add is_bot status, playercard, and ranking to each prediction
-    const predictionsWithMetadata = filteredPredictions.map(prediction => {
-      const predictionUser = resolveUserForRow(prediction, userMaps);
-      const predictionUserId = predictionUser ? String(predictionUser.user_id) : null;
-
-      return {
-        ...prediction,
-        user_id: predictionUserId || prediction.user_id || null,
-        username: predictionUser?.username || prediction.username || 'Unknown',
-        is_bot: Boolean(predictionUser?.is_bot),
-        playercard: predictionUser?.playercards || null,
-        avatar_config: predictionUser?.avatar_config || null,
-        rank: predictionUserId ? (rankMap.get(predictionUserId) || null) : null
-      };
-    });
-
+    const predictionsWithMetadata = await addVoteMetadata(predictions || []);
     res.status(200).json(predictionsWithMetadata);
   } catch (err) {
     console.error('Server error:', err);
@@ -3283,28 +3333,30 @@ function determineReferenceEventId(events, results, requestedEventId) {
  * Fetches all users along with their playercard metadata and returns lookup maps.
  */
 async function fetchUsersWithPlayercards() {
-  const users = await fetchAllUsers(`
-    user_id,
-    username,
-    is_bot,
-    avatar_config,
-    selected_playercard_id,
-    playercards!selected_playercard_id (
-      id,
-      name,
-      image_url,
-      category
-    )
-  `);
-  const safeUsers = users || [];
+  return userPlayercardCache.get(async () => {
+    const users = await fetchAllUsers(`
+      user_id,
+      username,
+      is_bot,
+      avatar_config,
+      selected_playercard_id,
+      playercards!selected_playercard_id (
+        id,
+        name,
+        image_url,
+        category
+      )
+    `);
+    const safeUsers = users || [];
 
-  return {
-    users: safeUsers,
-    userIdToUsername: new Map(safeUsers.map(user => [String(user.user_id), user.username])),
-    userIdToIsBot: new Map(safeUsers.map(user => [String(user.user_id), user.is_bot])),
-    userIdToPlayercard: new Map(safeUsers.map(user => [String(user.user_id), user.playercards])),
-    userIdToAvatarConfig: new Map(safeUsers.map(user => [String(user.user_id), user.avatar_config || null]))
-  };
+    return {
+      users: safeUsers,
+      userIdToUsername: new Map(safeUsers.map(user => [String(user.user_id), user.username])),
+      userIdToIsBot: new Map(safeUsers.map(user => [String(user.user_id), user.is_bot])),
+      userIdToPlayercard: new Map(safeUsers.map(user => [String(user.user_id), user.playercards])),
+      userIdToAvatarConfig: new Map(safeUsers.map(user => [String(user.user_id), user.avatar_config || null]))
+    };
+  });
 }
 
 /**
@@ -8780,6 +8832,8 @@ app.post('/admin/set-user-type', requireAdminSession, async (req, res) => {
       });
     }
 
+    userPlayercardCache.invalidate();
+
     await logAdminAction(req, {
       action: 'user.role.update',
       status: 'success',
@@ -8901,6 +8955,7 @@ app.patch('/user/:user_id/avatar', requireUserSession, requireOwnUserId, async (
       return res.status(404).json({ error: 'User not found' });
     }
 
+    userPlayercardCache.invalidate();
     return res.json({
       message: 'Avatar updated successfully',
       avatar_config: user.avatar_config,
@@ -9057,6 +9112,7 @@ app.patch('/user/:user_id/playercard', requireUserSession, requireOwnUserId, asy
           
           if (verifyUser && verifyUser.selected_playercard_id == playercard_id) {
             debugLog('Update actually succeeded, using verification data');
+            userPlayercardCache.invalidate();
             return res.json({
               message: 'Playercard updated successfully',
               user: verifyUser
@@ -9073,7 +9129,8 @@ app.patch('/user/:user_id/playercard', requireUserSession, requireOwnUserId, asy
       
       const user = updatedUser[0];
       debugLog('Playercard update completed successfully');
-      
+
+      userPlayercardCache.invalidate();
       return res.json({
         message: 'Playercard updated successfully',
         user: user

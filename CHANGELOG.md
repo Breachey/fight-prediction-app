@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.28.8 - 2026-08-31
+
+### Added
+
+- Added one fight-votes endpoint that returns both corners with player-card and ranking metadata in a single request.
+
+### Changed
+
+- Joined users into session validation, limited session activity writes to once every 15 minutes, and added short-lived resilient caches for weight classes and user player-card metadata.
+
+### Fixed
+
+- Let profile and rivalry sections load, time out, fail, and retry independently so optional insights no longer block the basic profile.
+
+### Removed
+
+- Removed an unreliable VS Code workspace override for commit-message generation.
+
 ## 0.28.7 - 2026-08-31
 
 ### Added

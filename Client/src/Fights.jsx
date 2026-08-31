@@ -1229,6 +1229,32 @@ function Fights({
     }, 3000); // Show message for 3 seconds before starting fade
   };
 
+  const loadFightVotes = useCallback(async (fightId) => {
+    const response = await fetchWithUserSession(
+      `${API_URL}/fights/${encodeURIComponent(fightId)}/votes`
+    );
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.error || 'Failed to load votes');
+    }
+
+    const { fighter1Votes = [], fighter2Votes = [] } = await response.json();
+    setFightVotes((previous) => ({
+      ...previous,
+      [fightId]: { fighter1Votes, fighter2Votes },
+    }));
+
+    const fighter1Human = fighter1Votes.filter((vote) => !vote.is_bot).length;
+    const fighter2Human = fighter2Votes.filter((vote) => !vote.is_bot).length;
+    setVoteCounts((previous) => ({
+      ...previous,
+      [fightId]: {
+        fighter1: { total: fighter1Votes.length, human: fighter1Human },
+        fighter2: { total: fighter2Votes.length, human: fighter2Human },
+      },
+    }));
+  }, []);
+
   // Function to submit the selected vote for a fight
   const handleSubmitVote = async (fightId) => {
     if (!user_id) {
@@ -1317,37 +1343,7 @@ function Fights({
 
       // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
-        const fight = fights.find(f => f.id === fightId);
-        if (fight) {
-          const [fighter1Response, fighter2Response] = await Promise.all([
-            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-          ]);
-
-          const [fighter1Votes, fighter2Votes] = await Promise.all([
-            fighter1Response.json(),
-            fighter2Response.json()
-          ]);
-
-          setFightVotes(prev => ({
-            ...prev,
-            [fightId]: {
-              fighter1Votes,
-              fighter2Votes
-            }
-          }));
-
-          // Update vote counts from the fetched data
-          const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
-          const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
-          setVoteCounts(prev => ({
-            ...prev,
-            [fightId]: {
-              fighter1: { total: fighter1Votes.length, human: fighter1Human },
-              fighter2: { total: fighter2Votes.length, human: fighter2Human }
-            }
-          }));
-        }
+        await loadFightVotes(fightId);
       }
     } catch (err) {
       console.error('Error submitting prediction:', err);
@@ -1386,43 +1382,7 @@ function Fights({
     // Fetch votes if expanding and we don't have them yet
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
-        const [fighter1Response, fighter2Response] = await Promise.all([
-          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-        ]);
-
-        if (!fighter1Response.ok) {
-          console.error('Fighter 1 response error:', await fighter1Response.text());
-          throw new Error('Failed to fetch votes for fighter 1');
-        }
-        if (!fighter2Response.ok) {
-          console.error('Fighter 2 response error:', await fighter2Response.text());
-          throw new Error('Failed to fetch votes for fighter 2');
-        }
-
-        const [fighter1Votes, fighter2Votes] = await Promise.all([
-          fighter1Response.json(),
-          fighter2Response.json()
-        ]);
-
-        setFightVotes(prev => ({
-          ...prev,
-          [fightId]: {
-            fighter1Votes,
-            fighter2Votes
-          }
-        }));
-
-        // Update vote counts from the fetched data
-        const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
-        const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
-        setVoteCounts(prev => ({
-          ...prev,
-          [fightId]: {
-            fighter1: { total: fighter1Votes.length, human: fighter1Human },
-            fighter2: { total: fighter2Votes.length, human: fighter2Human }
-          }
-        }));
+        await loadFightVotes(fightId);
       } catch (err) {
         console.error('Error fetching votes:', err);
         setError('Failed to load votes');

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const AUTHORIZATION_HEADER = 'authorization';
 const DEFAULT_USER_SESSION_TTL_HOURS = 24 * 30;
+const USER_SESSION_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
 
 function getUserSessionTtlHours() {
   const parsed = Number.parseInt(process.env.USER_SESSION_TTL_HOURS || '', 10);
@@ -36,6 +37,18 @@ function readBearerToken(req) {
 
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   return match ? match[1].trim() : '';
+}
+
+function shouldTouchUserSession(lastUsedAt, nowMs = Date.now()) {
+  const lastUsedAtMs = Date.parse(lastUsedAt || '');
+  return !Number.isFinite(lastUsedAtMs) || nowMs - lastUsedAtMs >= USER_SESSION_TOUCH_INTERVAL_MS;
+}
+
+function getSessionUser(session) {
+  if (Array.isArray(session?.user)) {
+    return session.user[0] || null;
+  }
+  return session?.user || null;
 }
 
 async function issueUserSession({ supabase, user }) {
@@ -103,7 +116,18 @@ function createRequireUserSession(supabase) {
       const tokenHash = hashUserSessionToken(token);
       const { data: session, error: sessionError } = await supabase
         .from('user_sessions')
-        .select('token_hash, user_id, expires_at, revoked_at')
+        .select(`
+          token_hash,
+          user_id,
+          expires_at,
+          revoked_at,
+          last_used_at,
+          user:users!user_sessions_user_id_fkey (
+            user_id,
+            username,
+            user_type
+          )
+        `)
         .eq('token_hash', tokenHash)
         .maybeSingle();
 
@@ -118,16 +142,7 @@ function createRequireUserSession(supabase) {
         return res.status(401).json({ error: 'User session has expired. Please log in again.' });
       }
 
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('user_id, username, user_type')
-        .eq('user_id', session.user_id)
-        .maybeSingle();
-
-      if (userError) {
-        console.error('Error loading session user:', userError);
-        return res.status(500).json({ error: 'Failed to verify session user' });
-      }
+      const user = getSessionUser(session);
       if (!user) {
         return res.status(401).json({ error: 'User session is invalid' });
       }
@@ -138,16 +153,18 @@ function createRequireUserSession(supabase) {
         expires_at: session.expires_at,
       };
 
-      supabase
-        .from('user_sessions')
-        .update({ last_used_at: new Date().toISOString() })
-        .eq('token_hash', tokenHash)
-        .then(({ error }) => {
-          if (error) console.warn('Failed to update user session last_used_at:', error);
-        })
-        .catch((error) => {
-          console.warn('Failed to update user session metadata:', error);
-        });
+      if (shouldTouchUserSession(session.last_used_at)) {
+        supabase
+          .from('user_sessions')
+          .update({ last_used_at: new Date().toISOString() })
+          .eq('token_hash', tokenHash)
+          .then(({ error }) => {
+            if (error) console.warn('Failed to update user session last_used_at:', error);
+          })
+          .catch((error) => {
+            console.warn('Failed to update user session metadata:', error);
+          });
+      }
 
       return next();
     } catch (error) {
@@ -177,4 +194,5 @@ module.exports = {
   readBearerToken,
   requireOwnUserParam,
   revokeUserSession,
+  shouldTouchUserSession,
 };

@@ -4,6 +4,7 @@ const {
   getUserSessionTtlHours,
   hashUserSessionToken,
   requireOwnUserParam,
+  shouldTouchUserSession,
 } = require('../lib/userSessionAuth');
 
 test('getUserSessionTtlHours defaults to 30 days', () => {
@@ -33,6 +34,13 @@ test('session tokens are hashed before persistence', () => {
   const token = 'fps_user_example';
   assert.notEqual(hashUserSessionToken(token), token);
   assert.equal(hashUserSessionToken(token).length, 64);
+});
+
+test('session metadata is touched at most once every 15 minutes', () => {
+  const now = Date.parse('2026-08-31T12:00:00.000Z');
+  assert.equal(shouldTouchUserSession(null, now), true);
+  assert.equal(shouldTouchUserSession('2026-08-31T11:46:00.000Z', now), false);
+  assert.equal(shouldTouchUserSession('2026-08-31T11:45:00.000Z', now), true);
 });
 
 test('requireOwnUserParam rejects a different user id', () => {
