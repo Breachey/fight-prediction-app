@@ -3,9 +3,33 @@ import assert from 'node:assert/strict';
 import {
   haveFightCardsChanged,
   haveFightResultsChanged,
+  getEventLiveStateChanges,
   shouldPollEventLeaderboard,
   shouldPollFightCard,
 } from '../src/utils/pollingPolicy.js';
+
+test('uses compact event revisions to identify which larger payload changed', () => {
+  const current = {
+    card_revision: 'card-1',
+    result_revision: 'result-1',
+    prediction_revision: 'prediction-1',
+  };
+
+  assert.deepEqual(getEventLiveStateChanges(current, {
+    ...current,
+    result_revision: 'result-2',
+  }), {
+    cardChanged: false,
+    resultsChanged: true,
+    predictionsChanged: false,
+  });
+
+  assert.deepEqual(getEventLiveStateChanges(null, current), {
+    cardChanged: false,
+    resultsChanged: false,
+    predictionsChanged: false,
+  });
+});
 
 test('polls only a visible unfinished event leaderboard', () => {
   assert.equal(shouldPollEventLeaderboard({ selectedLeaderboard: 'event', isEventComplete: false, visibilityState: 'visible' }), true);

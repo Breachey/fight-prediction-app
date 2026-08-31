@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.28.5 - 2026-08-31
+
+### Changed
+
+- Replaced recurring full fight-card, event-leaderboard, and friend-comparison downloads with a compact authenticated event-state poll that refreshes larger payloads only when their underlying card, result, or pick revision changes.
+
+## 0.28.4 - 2026-08-31
+
+### Fixed
+
+- Restricted prediction submissions to one of the two fighters assigned to the requested fight and closed completed or cancelled fights without adding a fight-start cutoff.
+
 ## 0.28.3 - 2026-08-31
 
 ### Fixed

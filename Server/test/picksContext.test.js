@@ -59,6 +59,7 @@ test('buildPicksContextPayload returns stable empty collections', () => {
     vote_counts: {},
     reminders: [],
     prior_pick_outcomes: [],
+    live_state: null,
   });
 });
 
