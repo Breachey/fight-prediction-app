@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.28.7 - 2026-08-31
+
+### Added
+
+- Added workspace Copilot commit-message instructions that prioritize substantive changes and omit routine changelog and synchronized package-version bookkeeping.
+
+## 0.28.6 - 2026-08-31
+
+### Changed
+
+- Rendered leaderboard player cards immediately instead of deferring offscreen card painting with estimated placeholder heights, eliminating visible pop-in and scroll jumps.
+
 ## 0.28.5 - 2026-08-31
 
 ### Changed
