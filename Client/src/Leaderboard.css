@@ -17,11 +17,6 @@
   text-align: center;
 }
 
-.leaderboard-card {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 124px;
-}
-
 .leaderboard-container[data-avatar-motion-paused] .squid-avatar--animated * {
   animation-play-state: paused !important;
 }
