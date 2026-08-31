@@ -53,6 +53,7 @@ const {
 } = require('./lib/propPix');
 const { createNotifications } = require('./lib/notifications');
 const { buildPicksContextPayload } = require('./lib/picksContext');
+const { buildEventLiveState } = require('./lib/eventLiveState');
 const { buildEventRecap } = require('./lib/eventRecap');
 const { buildEventFriendComparison } = require('./lib/eventFriendComparison');
 const { randomAvatarConfig, validateAvatarConfig } = require('./lib/avatarConfig');
@@ -61,6 +62,7 @@ const {
   findLatestCompletedFightId,
 } = require('./lib/eventLeaderboardDeltas');
 const { scorePredictionOutcome } = require('./lib/predictionScoring');
+const { validatePredictionTarget } = require('./lib/predictionValidation');
 const { isValidPhoneNumber, normalizePhoneNumber } = require('./lib/phoneNumber');
 const {
   runUfcEventDiscovery,
@@ -366,12 +368,13 @@ app.use((req, res, next) => {
   const isLeaderboard = path.startsWith('/leaderboard');
   const isEventLeaderboard = /^\/events\/[^/]+\/leaderboard$/.test(path);
   const isEventFights = /^\/events\/[^/]+\/fights$/.test(path);
+  const isEventLiveState = /^\/events\/[^/]+\/live-state$/.test(path);
   const isEventRecap = /^\/events\/[^/]+\/recap$/.test(path);
   const isEventComparison = /^\/events\/[^/]+\/friend-comparison$/.test(path);
   const isPlayercards = path === '/playercards';
   const isHighlights = /^\/user\/[^/]+\/highlights\/(\d{4}|all-time)$/.test(path);
 
-  if (isLeaderboard || isEventLeaderboard || isEventFights || isEventRecap || isEventComparison) {
+  if (isLeaderboard || isEventLeaderboard || isEventFights || isEventLiveState || isEventRecap || isEventComparison) {
     res.set('Cache-Control', LEADERBOARD_CACHE_CONTROL);
   } else if (isEvents || isPlayercards || isHighlights) {
     res.set('Cache-Control', CACHE_CONTROL);
@@ -2355,59 +2358,59 @@ app.get('/fights', async (req, res) => {
 });
 
 app.post('/predict', requireUserSession, async (req, res) => {
-  const { fightId, fighter_id } = req.body;
+  const normalizedFightId = Number(req.body?.fightId);
+  const normalizedFighterId = Number(req.body?.fighter_id);
   const user_id = req.authenticatedUser.user_id;
   const username = req.authenticatedUser.username;
-  if (!fightId || !fighter_id) {
-    return res.status(400).json({ error: "Missing required data" });
+  if (!Number.isInteger(normalizedFightId) || normalizedFightId <= 0
+    || !Number.isInteger(normalizedFighterId) || normalizedFighterId <= 0) {
+    return res.status(400).json({ error: 'Fight id and fighter id must be valid positive integers' });
   }
   try {
     debugLog('Received prediction request:', {
-      fightId,
-      fighter_id,
+      fightId: normalizedFightId,
+      fighter_id: normalizedFighterId,
       username,
       user_id
     });
 
-    // Get fight details to get betting odds from ufc_full_fight_card
-    const { data: fightData, error: fightError } = await supabase
-      .from('ufc_full_fight_card')
-      .select('FighterId, odds')
-      .eq('FightId', fightId);
+    const [fightQuery, resultQuery] = await Promise.all([
+      supabase
+        .from('ufc_full_fight_card')
+        .select('FighterId, odds, FightStatus')
+        .eq('FightId', normalizedFightId),
+      supabase
+        .from('fight_results')
+        .select('is_completed')
+        .eq('fight_id', normalizedFightId)
+        .maybeSingle(),
+    ]);
 
-    if (fightError) {
-      console.error('Error fetching fight data:', fightError);
-      return res.status(500).json({ error: "Error fetching fight data" });
+    if (fightQuery.error) {
+      console.error('Error fetching fight data:', fightQuery.error);
+      return res.status(500).json({ error: 'Error fetching fight data' });
+    }
+    if (resultQuery.error) {
+      console.error('Error fetching fight result:', resultQuery.error);
+      return res.status(500).json({ error: 'Error fetching fight result' });
     }
 
-    if (!fightData || fightData.length < 2) {
-      return res.status(404).json({ error: 'Fight not found or missing fighter data' });
+    const validation = validatePredictionTarget({
+      fightRows: fightQuery.data,
+      fighterId: normalizedFighterId,
+      fightResult: resultQuery.data,
+    });
+    if (!validation.valid) {
+      return res.status(validation.status).json({ error: validation.error });
     }
 
-    // Find the selected fighter and get their odds
-    const selectedFighter = fightData.find(f => String(f.FighterId) === String(fighter_id));
-    let betting_odds = null;
-    if (selectedFighter) {
-      betting_odds = parseInt(selectedFighter.odds);
-    }
-
-    // Check if prediction already exists
-    const checkQuery = supabase
-      .from('predictions')
-      .select('fight_id')
-      .eq('fight_id', fightId)
-      .eq('user_id', user_id);
-    const { data: existingPrediction, error: checkError } = await checkQuery.single();
-
-    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
-      console.error('Error checking existing prediction:', checkError);
-      return res.status(500).json({ error: "Error checking existing prediction" });
-    }
+    const parsedOdds = Number.parseInt(String(validation.selectedFighter.odds), 10);
+    const betting_odds = Number.isFinite(parsedOdds) ? parsedOdds : null;
 
     // Insert or update prediction
     const insertData = {
-      fight_id: fightId,
-      fighter_id,
+      fight_id: normalizedFightId,
+      fighter_id: normalizedFighterId,
       betting_odds,
       user_id,
       username,
@@ -5553,6 +5556,61 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
   }
 });
 
+// Small polling payload used to decide whether larger event responses need refreshing.
+app.get('/events/:id/live-state', requireUserSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const eventId = normalizeUserId(req.params.id);
+    const includePredictions = req.query.include_predictions === '1';
+    if (!eventId) return res.status(400).json({ error: 'Invalid event id' });
+
+    const [eventResult, cardResult] = await Promise.all([
+      supabase.from('events').select('id').eq('id', eventId).maybeSingle(),
+      supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, FighterId, Corner, FightOrder, FightStatus, odds')
+        .eq('EventId', eventId)
+        .order('FightOrder'),
+    ]);
+    if (eventResult.error) throw eventResult.error;
+    if (!eventResult.data) return res.status(404).json({ error: 'Event not found' });
+    if (cardResult.error) throw cardResult.error;
+
+    const cardRows = cardResult.data || [];
+    const fightIds = Array.from(new Set(
+      cardRows.map((row) => Number(row.FightId)).filter(Number.isFinite)
+    ));
+    if (fightIds.length === 0) {
+      return res.json(buildEventLiveState({ cardRows }));
+    }
+
+    const [resultsResult, predictionRows] = await Promise.all([
+      supabase
+        .from('fight_results')
+        .select('fight_id, fighter_id, is_completed, result_type')
+        .in('fight_id', fightIds),
+      includePredictions
+        ? fetchAllFromSupabase(
+            supabase
+              .from('predictions')
+              .select('fight_id, fighter_id, user_id')
+              .in('fight_id', fightIds)
+          )
+        : Promise.resolve([]),
+    ]);
+    if (resultsResult.error) throw resultsResult.error;
+
+    return res.json(buildEventLiveState({
+      cardRows,
+      resultRows: resultsResult.data || [],
+      predictionRows,
+    }));
+  } catch (error) {
+    console.error('Error building event live state:', error);
+    return res.status(500).json({ error: 'Failed to load event state' });
+  }
+});
+
 // Get fights for a specific event
 app.get('/events/:id/fights', async (req, res) => {
   try {
@@ -5690,7 +5748,9 @@ app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
 
     const fightIds = Array.from(new Set((cardRows || []).map((row) => Number(row.FightId)).filter(Number.isFinite)));
     if (fightIds.length === 0) {
-      return res.json({ fights: [], submitted_picks: {}, vote_counts: {}, reminders: [], prior_pick_outcomes: [] });
+      return res.json(buildPicksContextPayload({
+        liveState: buildEventLiveState({ cardRows }),
+      }));
     }
 
     const [resultsResult, predictions, users, remindersResult, userPredictionRows] = await Promise.all([
@@ -5757,6 +5817,10 @@ app.get('/events/:id/picks-context', requireUserSession, async (req, res) => {
       fightMeta: historyFightMeta,
       results: historyResults,
       selectedEventDate: eventData.date,
+      liveState: buildEventLiveState({
+        cardRows,
+        resultRows: resultsResult.data || [],
+      }),
     }));
   } catch (error) {
     console.error('Error building picks context:', error);

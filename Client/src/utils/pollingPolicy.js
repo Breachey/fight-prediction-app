@@ -10,6 +10,22 @@ export function shouldPollFightCard({ isEventComplete, allFightsResolved, visibi
     && visibilityState === 'visible';
 }
 
+export function getEventLiveStateChanges(currentState, incomingState) {
+  if (!currentState || !incomingState) {
+    return {
+      cardChanged: false,
+      resultsChanged: false,
+      predictionsChanged: false,
+    };
+  }
+
+  return {
+    cardChanged: currentState.card_revision !== incomingState.card_revision,
+    resultsChanged: currentState.result_revision !== incomingState.result_revision,
+    predictionsChanged: currentState.prediction_revision !== incomingState.prediction_revision,
+  };
+}
+
 function normalizeFightCardForComparison(fights) {
   return (Array.isArray(fights) ? fights : []).map((fight) => ({
     ...fight,

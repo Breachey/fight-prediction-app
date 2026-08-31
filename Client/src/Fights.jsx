@@ -15,6 +15,7 @@ import {
 import {
   haveFightCardsChanged,
   haveFightResultsChanged,
+  getEventLiveStateChanges,
   shouldPollFightCard,
 } from './utils/pollingPolicy';
 import ReactCountryFlag from 'react-country-flag';
@@ -25,7 +26,7 @@ import VoteCard from './components/VoteCard';
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
-const FIGHT_CARD_REFRESH_INTERVAL_MS = 15000;
+const EVENT_STATE_REFRESH_INTERVAL_MS = 15000;
 const RESULT_TYPE_LABELS = {
   draw: 'Draw',
   no_contest: 'No Contest',
@@ -701,6 +702,8 @@ function Fights({
   const fightsRef = useRef([]);
   const activeEventIdRef = useRef(eventId);
   const fightCardRefreshInFlightRef = useRef(false);
+  const eventLiveStateRef = useRef(null);
+  const eventStateRefreshInFlightRef = useRef(false);
 
   const scheduleFightScroll = useCallback((fightId, behavior = 'smooth') => {
     if (fightId === null || fightId === undefined || typeof window === 'undefined') return;
@@ -742,6 +745,7 @@ function Fights({
 
   useEffect(() => {
     activeEventIdRef.current = eventId;
+    eventLiveStateRef.current = null;
   }, [eventId]);
 
   const allFightsResolved = fights.length > 0
@@ -795,6 +799,36 @@ function Fights({
     }
   }, [eventId, invalidateLeaderboardCaches, onLeaderboardRefresh, user_id]);
 
+  const refreshEventLiveState = useCallback(async () => {
+    if (!eventId || eventStateRefreshInFlightRef.current) return;
+
+    const requestedEventId = eventId;
+    eventStateRefreshInFlightRef.current = true;
+    try {
+      const incomingState = await cachedFetchJson(`${API_URL}/events/${requestedEventId}/live-state`, {
+        cacheKey: `event-live-state:${requestedEventId}`,
+        force: true,
+        allowStaleOnError: false,
+        privateCache: true,
+        fetcher: fetchWithUserSession,
+        fetchOptions: { cache: 'no-store' },
+      });
+      if (String(activeEventIdRef.current) !== String(requestedEventId)) return;
+
+      const previousState = eventLiveStateRef.current;
+      eventLiveStateRef.current = incomingState;
+      const changes = getEventLiveStateChanges(previousState, incomingState);
+
+      if (changes.cardChanged || changes.resultsChanged) {
+        await refreshFightCard();
+      }
+    } catch (refreshError) {
+      console.warn('Event state refresh failed:', refreshError);
+    } finally {
+      eventStateRefreshInFlightRef.current = false;
+    }
+  }, [eventId, refreshFightCard]);
+
   useEffect(() => {
     if (!shouldPollFightCard({
       isEventComplete,
@@ -810,12 +844,12 @@ function Fights({
         allFightsResolved,
         visibilityState: document.visibilityState,
       })) {
-        refreshFightCard();
+        refreshEventLiveState();
       }
-    }, FIGHT_CARD_REFRESH_INTERVAL_MS);
+    }, EVENT_STATE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(refreshInterval);
-  }, [allFightsResolved, isEventComplete, refreshFightCard]);
+  }, [allFightsResolved, isEventComplete, refreshEventLiveState]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -826,12 +860,12 @@ function Fights({
       })) {
         return;
       }
-      refreshFightCard();
+      refreshEventLiveState();
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [allFightsResolved, isEventComplete, refreshFightCard]);
+  }, [allFightsResolved, isEventComplete, refreshEventLiveState]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -1042,6 +1076,7 @@ function Fights({
         const normalizedReminders = normalizeReminderMap(context?.reminders || []);
         setVoteReminders(normalizedReminders);
         localStorage.setItem(reminderStorageKey, JSON.stringify(normalizedReminders));
+        eventLiveStateRef.current = context?.live_state || null;
         setLoadedEventId(String(eventId));
       })
       .catch((err) => {

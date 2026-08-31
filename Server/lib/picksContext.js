@@ -59,7 +59,7 @@ function buildPriorPickOutcomes({ predictions = [], fightMeta = [], results = []
     .sort((a, b) => Date.parse(b.event_date || 0) - Date.parse(a.event_date || 0));
 }
 
-function buildPicksContextPayload({ fights, userPredictions, currentFightIds, publicPredictions, users, reminders, fightMeta, results, selectedEventDate }) {
+function buildPicksContextPayload({ fights, userPredictions, currentFightIds, publicPredictions, users, reminders, fightMeta, results, selectedEventDate, liveState }) {
   return {
     fights: fights || [],
     submitted_picks: buildSubmittedPicks(userPredictions, currentFightIds),
@@ -71,6 +71,7 @@ function buildPicksContextPayload({ fights, userPredictions, currentFightIds, pu
       results,
       selectedEventDate,
     }),
+    live_state: liveState || null,
   };
 }
 
