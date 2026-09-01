@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validatePredictionTarget } = require('../lib/predictionValidation');
+const { validatePredictionTarget, validatePredictionUndo } = require('../lib/predictionValidation');
 
 const scheduledFightRows = [
   { FighterId: 101, odds: '-150', FightStatus: 'Scheduled' },
@@ -70,5 +70,29 @@ test('rejects completed fights', () => {
     valid: false,
     status: 409,
     error: 'Predictions are closed for a completed fight',
+  });
+});
+
+test('allows undo for a scheduled fight and rejects closed fight states', () => {
+  assert.deepEqual(validatePredictionUndo({ fightRows: scheduledFightRows }), { valid: true });
+  assert.deepEqual(validatePredictionUndo({ fightRows: [] }), {
+    valid: false,
+    status: 404,
+    error: 'Fight not found',
+  });
+  assert.deepEqual(validatePredictionUndo({
+    fightRows: scheduledFightRows,
+    fightResult: { is_completed: true },
+  }), {
+    valid: false,
+    status: 409,
+    error: 'Completed fight predictions cannot be removed',
+  });
+  assert.deepEqual(validatePredictionUndo({
+    fightRows: scheduledFightRows.map((row) => ({ ...row, FightStatus: 'Canceled' })),
+  }), {
+    valid: false,
+    status: 409,
+    error: 'Canceled fight predictions cannot be removed',
   });
 });

@@ -10,7 +10,7 @@ function formatPlace(place) {
   return String(place);
 }
 
-function EventRecap({ recap, isLoading = false, error = '' }) {
+function EventRecap({ recap, isLoading = false, error = '', onRetry }) {
   const [shareStatus, setShareStatus] = useState('');
 
   useEffect(() => {
@@ -49,12 +49,17 @@ function EventRecap({ recap, isLoading = false, error = '' }) {
     setShareStatus('Could not share');
   };
 
-  if (isLoading) {
+  if (isLoading && !recap) {
     return <div className="event-recap-state" role="status">Building event recap…</div>;
   }
 
-  if (error) {
-    return <div className="event-recap-state event-recap-state--error">{error}</div>;
+  if (error && !recap) {
+    return (
+      <div className="event-recap-state event-recap-state--error" role="alert">
+        <span>{error}</span>
+        {onRetry && <button type="button" onClick={onRetry}>Retry recap</button>}
+      </div>
+    );
   }
 
   if (!recap || recap.status !== 'complete' || recap.podium.length === 0) {
@@ -62,7 +67,7 @@ function EventRecap({ recap, isLoading = false, error = '' }) {
   }
 
   return (
-    <section className="event-recap" aria-labelledby="event-recap-title">
+    <section className="event-recap" aria-labelledby="event-recap-title" aria-busy={isLoading}>
       <header className="event-recap__header">
         <div>
           <p className="app-section-heading event-recap__kicker">Fight night recap</p>
@@ -74,6 +79,7 @@ function EventRecap({ recap, isLoading = false, error = '' }) {
           </p>
         </div>
         <div className="event-recap__share-wrap">
+          {isLoading && <span className="event-recap__updating" role="status">Updating…</span>}
           <button
             type="button"
             className="event-recap__share"
@@ -86,6 +92,13 @@ function EventRecap({ recap, isLoading = false, error = '' }) {
           <span className="event-recap__share-status" aria-live="polite">{shareStatus}</span>
         </div>
       </header>
+
+      {error && (
+        <div className="event-recap__inline-error" role="alert">
+          <span>{error} Showing the last recap we loaded.</span>
+          {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+        </div>
+      )}
 
       <div className="event-recap__podium" aria-label="Event podium">
         {recap.podium.map((entry) => (

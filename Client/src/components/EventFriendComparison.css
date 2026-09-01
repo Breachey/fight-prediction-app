@@ -355,8 +355,42 @@
 }
 
 .friend-comparison__inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: -6px 0 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(233, 23, 13, 0.32);
+  border-radius: var(--radius-sm);
+  background: rgba(233, 23, 13, 0.06);
   font-size: 0.76rem;
+}
+
+.friend-comparison-state--error {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.friend-comparison__inline-error button,
+.friend-comparison-state--error button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid rgba(249, 158, 173, 0.52);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-white);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.friend-comparison__inline-error button:focus-visible,
+.friend-comparison-state--error button:focus-visible {
+  outline: 2px solid var(--color-pink);
+  outline-offset: 2px;
 }
 
 @media (max-width: 460px) {

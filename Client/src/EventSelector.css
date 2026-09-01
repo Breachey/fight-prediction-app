@@ -259,6 +259,14 @@
   opacity: 0.25;
   z-index: 2;
   filter: blur(2px) brightness(0.7) saturate(0.8);
+  appearance: none;
+  font: inherit;
+  text-align: inherit;
+}
+
+.event-card:focus-visible {
+  outline: 2px solid #f99ead;
+  outline-offset: 3px;
 }
 
 /* Explicit blur/dim for all non-selected cards (ensures both sides) */

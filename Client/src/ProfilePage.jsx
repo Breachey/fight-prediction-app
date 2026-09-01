@@ -42,6 +42,7 @@ function ProfilePage({ user: loggedInUser }) {
   const [accountAgeError, setAccountAgeError] = useState(null);
   const [seasonRivalries, setSeasonRivalries] = useState({ biggestNemesis: null, pickTwin: null });
   const [seasonRivalriesLoading, setSeasonRivalriesLoading] = useState(true);
+  const [seasonRivalriesLoaded, setSeasonRivalriesLoaded] = useState(false);
   const [seasonRivalriesError, setSeasonRivalriesError] = useState('');
   const userIdToShow = routeUserId || loggedInUser?.user_id;
   const normalizedLoggedInUserId = loggedInUser?.user_id != null ? String(loggedInUser.user_id) : null;
@@ -88,7 +89,7 @@ function ProfilePage({ user: loggedInUser }) {
           ttlMs: 120000,
           cacheKey: `profile:${userIdToShow}:v3`,
           force,
-          allowStaleOnError: !force,
+          allowStaleOnError: true,
           fetchOptions: { signal: controller.signal },
         }
       );
@@ -143,7 +144,7 @@ function ProfilePage({ user: loggedInUser }) {
           ttlMs: 120000,
           cacheKey: `profile-rivalries:${userIdToShow}:${currentSeasonYear}:v3`,
           force,
-          allowStaleOnError: !force,
+          allowStaleOnError: true,
           fetchOptions: { signal: controller.signal },
         }
       );
@@ -154,6 +155,7 @@ function ProfilePage({ user: loggedInUser }) {
         biggestNemesis: rivalryInsights.biggest_nemesis || null,
         pickTwin: rivalryInsights.pick_twin || null,
       });
+      setSeasonRivalriesLoaded(true);
     } catch (loadError) {
       if (controller.signal.aborted && !timedOut) return;
       setSeasonRivalriesError(timedOut
@@ -174,6 +176,7 @@ function ProfilePage({ user: loggedInUser }) {
 
     setProfileUser(null);
     setSeasonRivalries({ biggestNemesis: null, pickTwin: null });
+    setSeasonRivalriesLoaded(false);
     void Promise.allSettled([
       loadProfile(),
       loadSeasonRivalries(),
@@ -197,7 +200,7 @@ function ProfilePage({ user: loggedInUser }) {
     );
   }
 
-  if (profileError) {
+  if (profileError && !profileUser) {
     return (
       <div style={{ 
         color: '#fff', 
@@ -294,6 +297,20 @@ function ProfilePage({ user: loggedInUser }) {
             Profile
           </h1>
 
+          {profileError && (
+            <div className="profile-section-error profile-section-error--inline" role="alert">
+              <div>{profileError} Showing the last profile data we loaded.</div>
+              <button
+                type="button"
+                className="profile-retry-button"
+                disabled={profileLoading}
+                onClick={() => { void loadProfile({ force: true }).catch(() => {}); }}
+              >
+                {profileLoading ? 'Retrying…' : 'Retry profile'}
+              </button>
+            </div>
+          )}
+
           {/* Current Playercard with Username Overlay */}
           {profileUser && (
             <div style={{ 
@@ -383,11 +400,11 @@ function ProfilePage({ user: loggedInUser }) {
               {currentSeasonYear} pick matchups
             </div>
 
-            {seasonRivalriesLoading ? (
+            {seasonRivalriesLoading && !seasonRivalriesLoaded ? (
               <div style={{ color: 'rgba(255, 255, 255, 0.8)', textAlign: 'center', fontSize: '0.96rem' }}>
                 Loading rivalry insights...
               </div>
-            ) : seasonRivalriesError ? (
+            ) : seasonRivalriesError && !seasonRivalriesLoaded ? (
               <div className="profile-section-error" role="alert">
                 <div>{seasonRivalriesError}</div>
                 <button
@@ -400,6 +417,22 @@ function ProfilePage({ user: loggedInUser }) {
                 </button>
               </div>
             ) : (
+              <>
+              {(seasonRivalriesLoading || seasonRivalriesError) && (
+                <div className="profile-section-error profile-section-error--inline" role={seasonRivalriesError ? 'alert' : 'status'}>
+                  <div>{seasonRivalriesError || 'Updating rivalry insights…'}</div>
+                  {seasonRivalriesError && (
+                    <button
+                      type="button"
+                      className="profile-retry-button"
+                      disabled={seasonRivalriesLoading}
+                      onClick={() => { void loadSeasonRivalries({ force: true }).catch(() => {}); }}
+                    >
+                      {seasonRivalriesLoading ? 'Retrying…' : 'Retry rivalries'}
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
@@ -469,6 +502,7 @@ function ProfilePage({ user: loggedInUser }) {
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
         </div>

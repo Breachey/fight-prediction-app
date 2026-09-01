@@ -7,6 +7,7 @@ import {
   fetchWithAdminSession,
   hasActiveAdminSession,
 } from './utils/adminSession';
+import ConfirmDialog from './components/ConfirmDialog';
 
 const areEventIdsEqual = (a, b) => String(a) === String(b);
 
@@ -338,6 +339,7 @@ function EventSelector({
   const [fightStatsEditorFilter, setFightStatsEditorFilter] = useState('all');
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
   const [adminToolsOpen, setAdminToolsOpen] = useState(false);
+  const [adminConfirmation, setAdminConfirmation] = useState(null);
   const [selectedEventCardStartTimes, setSelectedEventCardStartTimes] = useState({
     early_prelims: null,
     prelims: null,
@@ -741,15 +743,8 @@ function EventSelector({
     invalidateCache(`${API_URL}/events/${eventId}/vote-counts`);
   }, []);
 
-  const handleFinalizeEvent = async (event) => {
+  const executeFinalizeEvent = async (event) => {
     if (!event || !event.id) return;
-
-    const confirmationMessage = event.is_completed
-      ? 'Recalculate winners for this event now?'
-      : 'Mark this event as Final and crown winners now?';
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(confirmationMessage)) {
-      return;
-    }
 
     setFinalizeFeedback(null);
     setAdminAccessFeedback(null);
@@ -915,20 +910,8 @@ function EventSelector({
     }
   };
 
-  const handleImportFightCard = async (event) => {
+  const executeImportFightCard = async (event) => {
     if (!event?.id || !fightCardPreview?.previewToken) return;
-
-    if (
-      typeof window !== 'undefined'
-      && typeof window.confirm === 'function'
-      && !window.confirm(
-        fightCardPreview.existingFightCardRowCount > 0
-          ? `Import and replace ${fightCardPreview.existingFightCardRowCount} existing fighter rows for ${event.name}?`
-          : `Import ${fightCardPreview.fightCount} fights for ${event.name}?`
-      )
-    ) {
-      return;
-    }
 
     setAdminAccessFeedback(null);
     setFightCardFeedback(null);
@@ -971,6 +954,58 @@ function EventSelector({
       });
     } finally {
       setImportingEventId(null);
+    }
+  };
+
+  const requestFinalizeEvent = (event) => {
+    if (!event?.id) return;
+    const recalculating = Boolean(event.is_completed);
+    setAdminConfirmation({
+      action: 'finalize',
+      event,
+      title: recalculating ? 'Recalculate event winners?' : 'Finalize this event?',
+      summary: recalculating
+        ? `This will score ${event.name} again and replace its current winner calculation.`
+        : `${event.name} will be marked Final and its winners will be crowned.`,
+      details: recalculating
+        ? ['Existing picks and fight results will be rescored.', 'Current winner records may change.']
+        : ['The event status will change to Final.', 'All recorded picks will be scored and eligible winners created.'],
+      confirmLabel: recalculating ? 'Recalculate winners' : 'Finalize event',
+      tone: recalculating ? 'caution' : 'danger',
+    });
+  };
+
+  const requestImportFightCard = (event) => {
+    if (!event?.id || !fightCardPreview?.previewToken) return;
+    const existingRows = Number(fightCardPreview.existingFightCardRowCount) || 0;
+    const fightCount = Number(fightCardPreview.fightCount) || 0;
+    setAdminConfirmation({
+      action: 'import',
+      event,
+      title: existingRows > 0 ? 'Replace this fight card?' : 'Import this fight card?',
+      summary: existingRows > 0
+        ? `${event.name} currently has ${existingRows} fighter row${existingRows === 1 ? '' : 's'} that will be replaced.`
+        : `${fightCount} fight${fightCount === 1 ? '' : 's'} will be imported for ${event.name}.`,
+      details: [
+        `${fightCount} previewed fight${fightCount === 1 ? '' : 's'} will be saved.`,
+        ...(manualPreviewUpdateCount > 0
+          ? [`${manualPreviewUpdateCount} manual preview value${manualPreviewUpdateCount === 1 ? '' : 's'} will be included.`]
+          : []),
+        ...(existingRows > 0 ? ['The existing event fight-card rows will be replaced.'] : []),
+      ],
+      confirmLabel: existingRows > 0 ? 'Replace fight card' : 'Import fight card',
+      tone: existingRows > 0 ? 'danger' : 'caution',
+    });
+  };
+
+  const handleAdminConfirmation = () => {
+    const confirmation = adminConfirmation;
+    if (!confirmation) return;
+    setAdminConfirmation(null);
+    if (confirmation.action === 'finalize') {
+      void executeFinalizeEvent(confirmation.event);
+    } else if (confirmation.action === 'import') {
+      void executeImportFightCard(confirmation.event);
     }
   };
 
@@ -1570,12 +1605,11 @@ function EventSelector({
               const dateStr = formatEventDate(event.date);
               const isSelected = idx === currentIndex;
               return (
-                <div
+                <button
+                  type="button"
                   key={event.id}
                   className={`event-card${event.image_url ? ' has-image' : ''}${isSelected ? ' selected' : ''}${event.status === 'Complete' ? ' completed' : ''}`}
                   onClick={() => handleSelect(idx)}
-                  tabIndex={0}
-                  role="button"
                   aria-pressed={isSelected}
                   ref={el => cardRefs.current[idx] = el}
                 >
@@ -1608,7 +1642,7 @@ function EventSelector({
                       {dateStr && <span className="event-date">{dateStr}</span>}
                     </div>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -1661,7 +1695,7 @@ function EventSelector({
                 )}
                 <button
                   className="event-admin-finalize-button"
-                  onClick={() => handleFinalizeEvent(selectedEvent)}
+                  onClick={() => requestFinalizeEvent(selectedEvent)}
                   disabled={finalizingEventId === selectedEvent.id}
                 >
                   {finalizingEventId === selectedEvent.id
@@ -1695,7 +1729,7 @@ function EventSelector({
                   {canImportFightCard && (
                     <button
                       className="event-admin-import-button"
-                      onClick={() => handleImportFightCard(selectedEvent)}
+                      onClick={() => requestImportFightCard(selectedEvent)}
                       disabled={isFightCardActionBusy}
                     >
                       {importingEventId === selectedEvent.id ? 'Importing...' : 'Import Fight Card'}
@@ -2205,6 +2239,16 @@ function EventSelector({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(adminConfirmation)}
+        title={adminConfirmation?.title || ''}
+        summary={adminConfirmation?.summary || ''}
+        details={adminConfirmation?.details || []}
+        confirmLabel={adminConfirmation?.confirmLabel || 'Confirm'}
+        tone={adminConfirmation?.tone || 'caution'}
+        onCancel={() => setAdminConfirmation(null)}
+        onConfirm={handleAdminConfirmation}
+      />
     </>
   );
 }

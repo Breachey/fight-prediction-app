@@ -52,6 +52,32 @@ function validatePredictionTarget({ fightRows, fighterId, fightResult = null }) 
   };
 }
 
+function validatePredictionUndo({ fightRows, fightResult = null }) {
+  const rows = Array.isArray(fightRows) ? fightRows : [];
+  if (rows.length === 0) {
+    return { valid: false, status: 404, error: 'Fight not found' };
+  }
+
+  if (rows.some((row) => ['canceled', 'cancelled'].includes(normalizeFightStatus(row?.FightStatus)))) {
+    return {
+      valid: false,
+      status: 409,
+      error: 'Canceled fight predictions cannot be removed',
+    };
+  }
+
+  if (fightResult?.is_completed) {
+    return {
+      valid: false,
+      status: 409,
+      error: 'Completed fight predictions cannot be removed',
+    };
+  }
+
+  return { valid: true };
+}
+
 module.exports = {
   validatePredictionTarget,
+  validatePredictionUndo,
 };

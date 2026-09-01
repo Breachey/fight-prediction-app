@@ -63,7 +63,7 @@ const {
   findLatestCompletedFightId,
 } = require('./lib/eventLeaderboardDeltas');
 const { scorePredictionOutcome } = require('./lib/predictionScoring');
-const { validatePredictionTarget } = require('./lib/predictionValidation');
+const { validatePredictionTarget, validatePredictionUndo } = require('./lib/predictionValidation');
 const { isValidPhoneNumber, normalizePhoneNumber } = require('./lib/phoneNumber');
 const {
   runUfcEventDiscovery,
@@ -2436,6 +2436,55 @@ app.post('/predict', requireUserSession, async (req, res) => {
   } catch (error) {
     console.error('Error in prediction endpoint:', error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete('/predictions/:fight_id', requireUserSession, async (req, res) => {
+  const fightId = Number.parseInt(String(req.params.fight_id || ''), 10);
+  if (!Number.isInteger(fightId) || fightId <= 0) {
+    return res.status(400).json({ error: 'Fight id must be a valid positive integer' });
+  }
+
+  try {
+    const [fightQuery, resultQuery] = await Promise.all([
+      supabase
+        .from('ufc_full_fight_card')
+        .select('FightId, FightStatus')
+        .eq('FightId', fightId),
+      supabase
+        .from('fight_results')
+        .select('is_completed')
+        .eq('fight_id', fightId)
+        .maybeSingle(),
+    ]);
+
+    if (fightQuery.error || resultQuery.error) {
+      console.error('Error checking prediction undo eligibility:', fightQuery.error || resultQuery.error);
+      return res.status(500).json({ error: 'Failed to verify fight state' });
+    }
+    const validation = validatePredictionUndo({
+      fightRows: fightQuery.data,
+      fightResult: resultQuery.data,
+    });
+    if (!validation.valid) {
+      return res.status(validation.status).json({ error: validation.error });
+    }
+
+    const { error: deleteError } = await supabase
+      .from('predictions')
+      .delete()
+      .eq('fight_id', fightId)
+      .eq('user_id', req.authenticatedUser.user_id);
+
+    if (deleteError) {
+      console.error('Error undoing prediction:', deleteError);
+      return res.status(500).json({ error: 'Failed to undo prediction' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Error in DELETE /predictions/:fight_id:', error);
+    return res.status(500).json({ error: 'Failed to undo prediction' });
   }
 });
 

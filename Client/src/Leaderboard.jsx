@@ -146,7 +146,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
         cacheKey: `event-recap:${requestedEventId}`,
         ttlMs: 60000,
         force,
-        allowStaleOnError: !force,
+        allowStaleOnError: true,
         staleWhileRevalidate: !force,
         fetchOptions: { cache: 'no-store' },
       });
@@ -182,7 +182,7 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
         cacheKey: `event-friend-comparison:${currentUserId}:${requestedEventId}:${requestedFriendId || 'default'}`,
         ttlMs: isEventComplete ? 60000 : EVENT_STATE_REFRESH_INTERVAL_MS,
         force,
-        allowStaleOnError: !force,
+        allowStaleOnError: true,
         staleWhileRevalidate: !force,
         privateCache: true,
         fetcher: fetchWithUserSession,
@@ -1051,7 +1051,12 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       {selectedLeaderboard === 'event' && eventId && (
         <>
           {isEventComplete && (
-            <EventRecap recap={eventRecap} isLoading={isRecapLoading} error={recapError} />
+            <EventRecap
+              recap={eventRecap}
+              isLoading={isRecapLoading}
+              error={recapError}
+              onRetry={() => { void fetchEventRecap({ force: true }); }}
+            />
           )}
           <LeaderboardCardsList
             data={eventLeaderboard}
@@ -1064,6 +1069,9 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
             error={comparisonError}
             selectedFriendId={selectedFriendId}
             onFriendChange={handleFriendChange}
+            onRetry={() => {
+              void fetchEventComparison({ friendUserId: selectedFriendId, force: true });
+            }}
           />
         </>
       )}

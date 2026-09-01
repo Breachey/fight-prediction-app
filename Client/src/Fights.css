@@ -197,7 +197,33 @@
   transition: all 0.3s;
   position: relative;
   overflow: visible;
+  cursor: default;
+}
+
+.fighter-choice-button {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  padding: 0;
+  flex-direction: column;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
   cursor: pointer;
+}
+
+.fighter-choice-button:focus-visible {
+  outline: 3px solid #f99ead;
+  outline-offset: 8px;
+  border-radius: calc(var(--fighter-card-radius) - 6px);
+}
+
+.fighter-choice-button:disabled {
+  cursor: not-allowed;
 }
 
 .fighter-card-flag-background {
@@ -299,7 +325,7 @@
 }
 
 .fighter-card.completed {
-  cursor: not-allowed;
+  cursor: default;
 }
 
 /* Winner styles */
@@ -714,6 +740,87 @@ button.submit-vote-button:focus-visible {
   border: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.pick-change-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(249, 158, 173, 0.42);
+  border-radius: var(--radius-sm);
+  background: rgba(249, 158, 173, 0.08);
+  color: rgba(252, 251, 253, 0.82);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.pick-change-hint button,
+.pick-save-toast__actions button {
+  min-height: 38px;
+  padding: 7px 11px;
+  border: 1px solid rgba(252, 251, 253, 0.24);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: #fcfbfd;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.pick-change-hint button:hover,
+.pick-save-toast__actions button:hover {
+  border-color: #f99ead;
+  background: rgba(249, 158, 173, 0.1);
+}
+
+.pick-change-hint button:focus-visible,
+.pick-save-toast__actions button:focus-visible {
+  outline: 2px solid #f99ead;
+  outline-offset: 2px;
+}
+
+.pick-save-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 24px;
+  z-index: 30;
+  display: flex;
+  width: min(calc(100vw - 32px), 410px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(249, 158, 173, 0.46);
+  border-radius: var(--radius-sm);
+  background: #1b191c;
+  color: #fcfbfd;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
+.pick-save-toast__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pick-save-toast__copy strong {
+  font-size: 0.88rem;
+}
+
+.pick-save-toast__copy span {
+  overflow: hidden;
+  color: rgba(252, 251, 253, 0.68);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-save-toast__actions {
+  display: flex;
+  gap: 7px;
 }
 
 @keyframes fadeOut {
@@ -2164,6 +2271,34 @@ button.vote-reminder-button.active-heart-eyes {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .fighter-choice-button {
+    gap: 12px;
+  }
+
+  .pick-save-toast {
+    right: 16px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .pick-change-hint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 420px) {
+  .pick-save-toast {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pick-save-toast__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
