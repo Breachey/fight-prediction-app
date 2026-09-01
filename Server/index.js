@@ -5619,6 +5619,9 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
         scrapedRowCount: oddsScraperOutput.rowCount,
         warningCount: refreshPlan.warnings.length,
         warnings: refreshPlan.warnings,
+        scraperDiagnostics: oddsScraperOutput.stderr
+          ? oddsScraperOutput.stderr.slice(-4000)
+          : null,
       },
     });
 
@@ -5640,6 +5643,8 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
     });
   } catch (error) {
     console.error('Error refreshing odds:', error);
+    const isUpstreamOddsFailure = /Odds scraper exited with code 2|No odds source returned prices/i
+      .test(error.message || '');
     await logAdminAction(req, {
       action: 'fight_card.refresh_odds',
       status: 'error',
@@ -5650,8 +5655,10 @@ app.post('/admin/events/:id/refresh-odds', requireAdminSession, async (req, res)
         message: error.message,
       },
     });
-    return res.status(500).json({
-      error: 'Failed to refresh odds',
+    return res.status(isUpstreamOddsFailure ? 502 : 500).json({
+      error: isUpstreamOddsFailure
+        ? 'Odds providers are temporarily unavailable'
+        : 'Failed to refresh odds',
       details: error.message,
     });
   }

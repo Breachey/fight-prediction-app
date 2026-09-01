@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.29.1 - 2026-09-01
+
+### Fixed
+
+- Made odds refreshes resilient to production FightOdds failures with browser-context requests, a card-matched Covers fallback, safer fighter-name matching, and explicit upstream diagnostics instead of false successful refreshes with all odds missing.
+
 ## 0.29.0 - 2026-09-01
 
 ### Added
