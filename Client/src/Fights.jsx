@@ -23,10 +23,12 @@ import { getCountryCode, convertInchesToHeightString, formatStreak } from './uti
 import './Fights.css';
 import PlayerCard from './components/PlayerCard';
 import VoteCard from './components/VoteCard';
+import ConfirmDialog from './components/ConfirmDialog';
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
 const EVENT_STATE_REFRESH_INTERVAL_MS = 15000;
+const PICK_UNDO_WINDOW_MS = 6500;
 const RESULT_TYPE_LABELS = {
   draw: 'Draw',
   no_contest: 'No Contest',
@@ -665,12 +667,6 @@ function Fights({
   const [loading, setLoading] = useState(true);
   const [loadedEventId, setLoadedEventId] = useState(null);
   const [error, setError] = useState('');
-  const [openRankTooltipId, setOpenRankTooltipId] = useState(null);
-  const [selectedFights, setSelectedFights] = useState(() => {
-    // Initialize from localStorage if available
-    const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
-    return saved ? JSON.parse(saved) : {};
-  });
   const [submittedFights, setSubmittedFights] = useState(() => {
     // Initialize from localStorage if available, will be updated with API data
     const saved = localStorage.getItem(`submittedFights_${eventId}_${username}`);
@@ -681,7 +677,9 @@ function Fights({
   const [expandedFights, setExpandedFights] = useState({});
   const [fightVotes, setFightVotes] = useState({});
   const [voteCounts, setVoteCounts] = useState({}); // Store vote counts (total + human) for button ratio
-  const [, setFadeOutMessages] = useState({});
+  const [recentPick, setRecentPick] = useState(null);
+  const [changeableFightId, setChangeableFightId] = useState(null);
+  const [pickConfirmation, setPickConfirmation] = useState(null);
   const showAIVotes = showAIUsers;
   const [expandedFightStats, setExpandedFightStats] = useState({});
   const [expandedAdminControls, setExpandedAdminControls] = useState({});
@@ -695,6 +693,7 @@ function Fights({
   });
   const [reminderAnimations, setReminderAnimations] = useState({});
   const reminderAnimationTimeoutsRef = useRef(new Map());
+  const recentPickTimeoutRef = useRef(null);
   const firstFightRef = useRef(null);
   const fightCardRefs = useRef(new Map());
   const scheduledFightScrollRef = useRef(null);
@@ -867,38 +866,18 @@ function Fights({
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [allFightsResolved, isEventComplete, refreshEventLiveState]);
 
-  useEffect(() => {
-    const handlePointerDown = (event) => {
-      if (event.target.closest('.rank-tooltip-wrap')) {
-        return;
-      }
-      setOpenRankTooltipId(null);
-    };
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setOpenRankTooltipId(null);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
-
   useEffect(() => () => {
     reminderAnimationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
     reminderAnimationTimeoutsRef.current.clear();
     if (scheduledFightScrollRef.current !== null) {
       window.cancelAnimationFrame(scheduledFightScrollRef.current);
     }
+    if (recentPickTimeoutRef.current) {
+      window.clearTimeout(recentPickTimeoutRef.current);
+    }
   }, []);
 
-  const renderFighterRank = (rank, tooltipId) => {
+  const renderFighterRank = (rank) => {
     if (rank === 0) {
       return <span className="champion-rank">C</span>;
     }
@@ -909,34 +888,15 @@ function Fights({
 
     const numericRank = Number(rank);
     const isUnofficialRank = Number.isFinite(numericRank) && numericRank > 15;
-    const isTooltipOpen = openRankTooltipId === tooltipId;
 
     return (
       <span className="fighter-rank-value">
         <span>{rank}</span>
         {isUnofficialRank && (
-          <span
-            className={`rank-tooltip-wrap ${isTooltipOpen ? 'is-open' : ''}`}
-            onMouseEnter={() => setOpenRankTooltipId(tooltipId)}
-            onMouseLeave={() => setOpenRankTooltipId((prev) => (prev === tooltipId ? null : prev))}
-          >
+          <span className="rank-tooltip-wrap" title="Unofficial rank by Tapology">
             <span
-              role="button"
-              tabIndex={0}
               className="rank-tooltip-trigger"
               aria-label="Unofficial rank by Tapology"
-              aria-expanded={isTooltipOpen ? 'true' : 'false'}
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpenRankTooltipId((prev) => (prev === tooltipId ? null : tooltipId));
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setOpenRankTooltipId((prev) => (prev === tooltipId ? null : tooltipId));
-                }
-              }}
             >
               *
             </span>
@@ -946,6 +906,133 @@ function Fights({
           </span>
         )}
       </span>
+    );
+  };
+
+  const renderFighterChoiceCard = (fight, fighterKey) => {
+    const fighterId = fight[`${fighterKey}_id`];
+    const fighterName = fight[`${fighterKey}_name`];
+    const isSelected = String(submittedFights[fight.id] || '') === String(fighterId);
+    const canChange = String(changeableFightId || '') === String(fight.id);
+    const isUnavailable = fight.is_completed || fight.is_canceled;
+    const isDisabled = isUnavailable || Boolean(pendingVotes[fight.id]) || (Boolean(submittedFights[fight.id]) && !canChange);
+    const resultClassName = fight.is_completed
+      ? fight.winner
+        ? String(fight.winner) === String(fighterId) ? 'winner' : 'loser'
+        : 'neutral-result'
+      : isSelected
+        ? 'selected'
+        : (submittedFights[fight.id] && !canChange) ? 'unselected' : '';
+    const pickLabel = isUnavailable
+      ? `${fighterName}${fight.is_completed ? ', fight complete' : ', fight canceled'}`
+      : isSelected && canChange
+        ? `Keep ${fighterName} as your pick`
+        : canChange
+          ? `Change your pick to ${fighterName}`
+          : `Pick ${fighterName}`;
+
+    return (
+      <div className={`fighter-card ${resultClassName}`}>
+        <button
+          type="button"
+          className="fighter-choice-button"
+          onClick={() => handleFighterChoice(fight.id, fighterId, fighterName)}
+          disabled={isDisabled}
+          aria-label={pickLabel}
+          aria-pressed={isSelected}
+          aria-busy={Boolean(pendingVotes[fight.id])}
+        >
+          <FighterFlagBackground
+            bornCountry={fight[`${fighterKey}_born_country`]}
+            fightingOutOfCountry={fight[`${fighterKey}_country`]}
+          />
+          <div className="fighter-image-container">
+            <img
+              src={fight[`${fighterKey}_image`]}
+              alt={fighterName}
+              className="fighter-image"
+              loading="lazy"
+              decoding="async"
+            />
+            <FighterReminderOverlay
+              fighterName={fighterName}
+              reminderType={getReminderType(fighterId)}
+              animation={reminderAnimations[String(fighterId)] || null}
+            />
+          </div>
+          <h3 className="fighter-name">
+            <span className="fighter-name-text">{fight[`${fighterKey}_firstName`]}</span>
+            {fight[`${fighterKey}_nickname`] && (
+              <span className="fighter-nickname">{fight[`${fighterKey}_nickname`]}</span>
+            )}
+            <span className="fighter-name-text">{fight[`${fighterKey}_lastName`]}</span>
+          </h3>
+          <div className="stat-container">
+            <div className="stat-row">
+              <span className="stat-label">Rank</span>
+              <span>{renderFighterRank(fight[`${fighterKey}_rank`])}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-label">Record</span>
+              <span>{fight[`${fighterKey}_record`] ? fight[`${fighterKey}_record`].split('-').join(' - ') : 'N/A'}</span>
+            </div>
+            <div className="stat-row odds-row">
+              <span className="stat-label">Odds</span>
+              <span className={parseInt(fight[`${fighterKey}_odds`], 10) < 0 ? 'favorite-odds' : 'underdog-odds'}>
+                {fight[`${fighterKey}_odds`] || 'N/A'}
+              </span>
+            </div>
+          </div>
+          {isSelected && <div className="vote-badge">Your Pick</div>}
+        </button>
+
+        {expandedFightStats[fight.id] && (
+          <div className="expanded-stats">
+            <FighterDetailSections fight={fight} fighterKey={fighterKey} />
+            <FinishMethodBreakdown fight={fight} fighterKey={fighterKey} />
+            {(() => {
+              const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fighterId);
+              return lastVoteOutcome ? (
+                <div className="last-vote-outcome">
+                  Last time you voted for this fighter, they {lastVoteOutcome}.
+                </div>
+              ) : null;
+            })()}
+            {hasVoteReminder(fighterId) && (
+              <div className="vote-reminder-status">
+                {getReminderStatusMessage(fighterId)}
+              </div>
+            )}
+            <div className="vote-reminder-controls">
+              <span className="vote-reminder-prompt">Your take</span>
+              <div className="vote-reminder-options">
+                <button
+                  type="button"
+                  className={`vote-reminder-button ${getReminderType(fighterId) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
+                  onClick={() => toggleVoteReminderType(fighterId, fighterName, REMINDER_TYPE_BROKEN_HEART)}
+                  aria-label={`Dislike ${fighterName}`}
+                  aria-pressed={getReminderType(fighterId) === REMINDER_TYPE_BROKEN_HEART}
+                  title="Dislike fighter"
+                >
+                  <span aria-hidden="true">💔</span>
+                  <span>Dislike</span>
+                </button>
+                <button
+                  type="button"
+                  className={`vote-reminder-button ${getReminderType(fighterId) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
+                  onClick={() => toggleVoteReminderType(fighterId, fighterName, REMINDER_TYPE_HEART_EYES)}
+                  aria-label={`Like ${fighterName}`}
+                  aria-pressed={getReminderType(fighterId) === REMINDER_TYPE_HEART_EYES}
+                  title="Like fighter"
+                >
+                  <span aria-hidden="true">😍</span>
+                  <span>Like</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -1141,13 +1228,6 @@ function Fights({
     };
   }, [user_id, currentSeasonYear]);
 
-  // Save selectedFights to localStorage whenever it changes
-  useEffect(() => {
-    if (eventId && username) {
-      localStorage.setItem(`selectedFights_${eventId}_${username}`, JSON.stringify(selectedFights));
-    }
-  }, [selectedFights, eventId, username]);
-
   // Save submittedFights to localStorage whenever it changes
   useEffect(() => {
     if (eventId && username) {
@@ -1183,69 +1263,114 @@ function Fights({
     };
   }, [fights, eventId]);
 
-  // Restore unsent selections for the active event; server context owns submitted picks.
+  // Clear transient pick controls when the active event changes.
   useEffect(() => {
-    const saved = localStorage.getItem(`selectedFights_${eventId}_${username}`);
-    setSelectedFights(saved ? JSON.parse(saved) : {});
     setPendingVotes({});
+    setRecentPick(null);
+    setChangeableFightId(null);
+    setPickConfirmation(null);
+    if (recentPickTimeoutRef.current) {
+      window.clearTimeout(recentPickTimeoutRef.current);
+      recentPickTimeoutRef.current = null;
+    }
   }, [username, eventId]);
 
-  // Function to handle selection (but not submission) of a fighter
-  const handleSelection = (fightId, fighterId, fighterName) => {
-    // Only allow selection if vote hasn't been submitted and fight isn't completed
-    if (submittedFights[fightId] || fights.find(f => f.id === fightId)?.is_completed) return;
-
-    const reminder = voteReminders[String(fighterId)];
-    const reminderType = reminder?.reminderType || REMINDER_TYPE_BROKEN_HEART;
-    if (reminder && reminderType === REMINDER_TYPE_BROKEN_HEART) {
-      const shouldContinue = window.confirm(
-        `Reminder: you asked not to vote for ${fighterName} again.\n\nSelect ${fighterName} anyway?`
-      );
-      if (!shouldContinue) {
-        setVoteErrors(prev => ({
-          ...prev,
-          [fightId]: `Reminder active: you asked not to vote for ${fighterName} again.`
-        }));
-        return;
-      }
+  const loadFightVotes = useCallback(async (fightId) => {
+    const response = await fetchWithUserSession(
+      `${API_URL}/fights/${encodeURIComponent(fightId)}/votes`
+    );
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.error || 'Failed to load votes');
     }
 
-    setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
-    setSelectedFights(prev => ({ ...prev, [fightId]: fighterId }));
-  };
+    const { fighter1Votes = [], fighter2Votes = [] } = await response.json();
+    setFightVotes((previous) => ({
+      ...previous,
+      [fightId]: { fighter1Votes, fighter2Votes },
+    }));
 
-  // Function to handle message fade out
-  const handleMessageFadeOut = (fightId) => {
-    setTimeout(() => {
-      setFadeOutMessages(prev => ({ ...prev, [fightId]: true }));
-      // Remove the message completely after animation
-      setTimeout(() => {
-        setFadeOutMessages(prev => {
-          const newState = { ...prev };
-          delete newState[fightId];
-          return newState;
-        });
-      }, 500); // Match this with the CSS animation duration
-    }, 3000); // Show message for 3 seconds before starting fade
-  };
+    const fighter1Human = fighter1Votes.filter((vote) => !vote.is_bot).length;
+    const fighter2Human = fighter2Votes.filter((vote) => !vote.is_bot).length;
+    setVoteCounts((previous) => ({
+      ...previous,
+      [fightId]: {
+        fighter1: { total: fighter1Votes.length, human: fighter1Human },
+        fighter2: { total: fighter2Votes.length, human: fighter2Human },
+      },
+    }));
+  }, []);
 
-  // Function to submit the selected vote for a fight
-  const handleSubmitVote = async (fightId) => {
+  const clearRecentPick = useCallback(() => {
+    if (recentPickTimeoutRef.current) {
+      window.clearTimeout(recentPickTimeoutRef.current);
+      recentPickTimeoutRef.current = null;
+    }
+    setRecentPick(null);
+  }, []);
+
+  const showRecentPick = useCallback((pick) => {
+    if (recentPickTimeoutRef.current) {
+      window.clearTimeout(recentPickTimeoutRef.current);
+    }
+    setRecentPick(pick);
+    recentPickTimeoutRef.current = window.setTimeout(() => {
+      setRecentPick(null);
+      recentPickTimeoutRef.current = null;
+    }, PICK_UNDO_WINDOW_MS);
+  }, []);
+
+  const adjustVoteCountsForPick = useCallback((fight, previousFighterId, nextFighterId) => {
+    if (!fight || String(previousFighterId || '') === String(nextFighterId || '')) return;
+    const getCornerKey = (fighterId) => {
+      if (String(fighterId) === String(fight.fighter1_id)) return 'fighter1';
+      if (String(fighterId) === String(fight.fighter2_id)) return 'fighter2';
+      return null;
+    };
+    const previousKey = getCornerKey(previousFighterId);
+    const nextKey = getCornerKey(nextFighterId);
+
+    setVoteCounts((currentCounts) => {
+      const current = currentCounts[fight.id] || {
+        fighter1: { total: 0, human: 0 },
+        fighter2: { total: 0, human: 0 },
+      };
+      const next = {
+        fighter1: { ...current.fighter1 },
+        fighter2: { ...current.fighter2 },
+      };
+      if (previousKey) {
+        next[previousKey].total = Math.max(0, next[previousKey].total - 1);
+        next[previousKey].human = Math.max(0, next[previousKey].human - 1);
+      }
+      if (nextKey) {
+        next[nextKey].total += 1;
+        next[nextKey].human += 1;
+      }
+      return { ...currentCounts, [fight.id]: next };
+    });
+  }, []);
+
+  const handleSubmitVote = async (fightId, fighterId, fighterName) => {
     if (!user_id) {
       setVoteErrors(prev => ({ ...prev, [fightId]: 'Please log in to vote' }));
       return;
     }
-
-    const selectedFighter = selectedFights[fightId];
-    if (!selectedFighter) {
+    if (!fighterId) {
       setVoteErrors(prev => ({ ...prev, [fightId]: 'No fighter selected' }));
       return;
     }
 
     const fightKey = String(fightId);
     const previousSubmitted = submittedFights[fightId];
+    if (String(previousSubmitted || '') === String(fighterId)) {
+      setChangeableFightId(null);
+      return;
+    }
+
     setPendingVotes((current) => ({ ...current, [fightId]: true }));
-    setSubmittedFights((current) => ({ ...current, [fightId]: selectedFighter }));
+    setSubmittedFights((current) => ({ ...current, [fightId]: fighterId }));
+    setChangeableFightId(null);
     try {
       const response = await fetchWithUserSession(`${API_URL}/predict`, {
         method: 'POST',
@@ -1254,8 +1379,8 @@ function Fights({
         },
         body: JSON.stringify({
           fightId,
-          fighter_id: selectedFighter,
-          selected_fighter: selectedFighter,
+          fighter_id: fighterId,
+          selected_fighter: fighterId,
         }),
       });
 
@@ -1266,88 +1391,34 @@ function Fights({
         throw new Error(errorData.error || 'Failed to submit vote');
       }
 
-      // Mark this fight's vote as submitted
-      setSubmittedFights(prev => ({ ...prev, [fightId]: selectedFighter }));
-      
-      // Clear any previous vote error for this fight
+      setSubmittedFights(prev => ({ ...prev, [fightId]: fighterId }));
       setVoteErrors(prev => ({ ...prev, [fightId]: '' }));
-      
-      // Start fade out timer for the submission message
-      handleMessageFadeOut(fightId);
-      
-      // Clear the selection state for this fight
-      setSelectedFights(prev => {
-        const newState = { ...prev };
-        delete newState[fightId];
-        return newState;
-      });
 
       const nextFightId = getNextUnvotedFightId(fights, {
         ...submittedFights,
-        [fightId]: selectedFighter,
+        [fightId]: fighterId,
       });
       if (nextFightId !== null) {
         scheduleFightScroll(nextFightId);
       }
 
-      // Optimistically update vote counts immediately for instant UI feedback
       const fight = fights.find(f => String(f.id) === fightKey);
-      if (fight) {
-        setVoteCounts(prev => {
-          const current = prev[fightKey] || {
-            fighter1: { total: 0, human: 0 },
-            fighter2: { total: 0, human: 0 }
-          };
-          const isFighter1 = String(selectedFighter) === String(fight.fighter1_id);
-          const targetKey = isFighter1 ? 'fighter1' : 'fighter2';
-          return {
-            ...prev,
-            [fightKey]: {
-              ...current,
-              [targetKey]: {
-                total: current[targetKey].total + 1,
-                human: current[targetKey].human + 1
-              }
-            }
-          };
-        });
-      }
+      adjustVoteCountsForPick(fight, previousSubmitted, fighterId);
+      showRecentPick({
+        fightId,
+        fighterId,
+        fighterName: fighterName || (String(fighterId) === String(fight?.fighter1_id)
+          ? fight?.fighter1_name
+          : fight?.fighter2_name),
+        previousFighterId: previousSubmitted || null,
+      });
 
       invalidateCache(`picks-context:${user_id}:${eventId}`);
 
-      // Refresh the votes display if the fight is expanded
       if (expandedFights[fightId]) {
-        const fight = fights.find(f => f.id === fightId);
-        if (fight) {
-          const [fighter1Response, fighter2Response] = await Promise.all([
-            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-            fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-          ]);
-
-          const [fighter1Votes, fighter2Votes] = await Promise.all([
-            fighter1Response.json(),
-            fighter2Response.json()
-          ]);
-
-          setFightVotes(prev => ({
-            ...prev,
-            [fightId]: {
-              fighter1Votes,
-              fighter2Votes
-            }
-          }));
-
-          // Update vote counts from the fetched data
-          const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
-          const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
-          setVoteCounts(prev => ({
-            ...prev,
-            [fightId]: {
-              fighter1: { total: fighter1Votes.length, human: fighter1Human },
-              fighter2: { total: fighter2Votes.length, human: fighter2Human }
-            }
-          }));
-        }
+        loadFightVotes(fightId).catch((loadError) => {
+          console.error('Error refreshing fight votes:', loadError);
+        });
       }
     } catch (err) {
       console.error('Error submitting prediction:', err);
@@ -1358,9 +1429,95 @@ function Fights({
         return next;
       });
       setVoteErrors(prev => ({ ...prev, [fightId]: `Failed to submit prediction: ${err.message}` }));
+      if (previousSubmitted) setChangeableFightId(fightId);
     } finally {
       setPendingVotes((current) => ({ ...current, [fightId]: false }));
     }
+  };
+
+  const handleFighterChoice = (fightId, fighterId, fighterName) => {
+    const fight = fights.find((candidate) => String(candidate.id) === String(fightId));
+    const canChange = String(changeableFightId || '') === String(fightId);
+    if (!fight || fight.is_completed || fight.is_canceled || pendingVotes[fightId]) return;
+    if (submittedFights[fightId] && !canChange) return;
+    if (String(submittedFights[fightId] || '') === String(fighterId)) {
+      setChangeableFightId(null);
+      return;
+    }
+
+    const reminder = voteReminders[String(fighterId)];
+    const reminderType = reminder?.reminderType || REMINDER_TYPE_BROKEN_HEART;
+    if (reminder && reminderType === REMINDER_TYPE_BROKEN_HEART) {
+      setPickConfirmation({ fightId, fighterId, fighterName });
+      return;
+    }
+
+    void handleSubmitVote(fightId, fighterId, fighterName);
+  };
+
+  const handleUndoRecentPick = async () => {
+    const pick = recentPick;
+    if (!pick || pendingVotes[pick.fightId]) return;
+    clearRecentPick();
+    setPendingVotes((current) => ({ ...current, [pick.fightId]: true }));
+    try {
+      const response = pick.previousFighterId
+        ? await fetchWithUserSession(`${API_URL}/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fightId: pick.fightId,
+            fighter_id: pick.previousFighterId,
+            selected_fighter: pick.previousFighterId,
+          }),
+        })
+        : await fetchWithUserSession(`${API_URL}/predictions/${encodeURIComponent(pick.fightId)}`, {
+          method: 'DELETE',
+        });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Failed to undo pick');
+      }
+
+      setSubmittedFights((current) => {
+        const next = { ...current };
+        if (pick.previousFighterId) next[pick.fightId] = pick.previousFighterId;
+        else delete next[pick.fightId];
+        return next;
+      });
+      const fight = fights.find((candidate) => String(candidate.id) === String(pick.fightId));
+      adjustVoteCountsForPick(fight, pick.fighterId, pick.previousFighterId);
+      setVoteErrors((current) => ({ ...current, [pick.fightId]: '' }));
+      invalidateCache(`picks-context:${user_id}:${eventId}`);
+      if (expandedFights[pick.fightId]) {
+        loadFightVotes(pick.fightId).catch((loadError) => {
+          console.error('Error refreshing fight votes after undo:', loadError);
+        });
+      }
+    } catch (undoError) {
+      setVoteErrors((current) => ({
+        ...current,
+        [pick.fightId]: `Could not undo pick: ${undoError.message}`,
+      }));
+    } finally {
+      setPendingVotes((current) => ({ ...current, [pick.fightId]: false }));
+    }
+  };
+
+  const handleChangeRecentPick = () => {
+    if (!recentPick) return;
+    const fightId = recentPick.fightId;
+    clearRecentPick();
+    setChangeableFightId(fightId);
+    scheduleFightScroll(fightId);
+  };
+
+  const handleConfirmedPick = () => {
+    if (!pickConfirmation) return;
+    const { fightId, fighterId, fighterName } = pickConfirmation;
+    setPickConfirmation(null);
+    void handleSubmitVote(fightId, fighterId, fighterName);
   };
 
   const toggleFightExpansion = async (fightId) => {
@@ -1386,43 +1543,7 @@ function Fights({
     // Fetch votes if expanding and we don't have them yet
     if (!expandedFights[fightId] && !fightVotes[fightId]) {
       try {
-        const [fighter1Response, fighter2Response] = await Promise.all([
-          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter1_id)}`),
-          fetchWithUserSession(`${API_URL}/predictions/filter?fight_id=${fightId}&fighter_id=${encodeURIComponent(fight.fighter2_id)}`)
-        ]);
-
-        if (!fighter1Response.ok) {
-          console.error('Fighter 1 response error:', await fighter1Response.text());
-          throw new Error('Failed to fetch votes for fighter 1');
-        }
-        if (!fighter2Response.ok) {
-          console.error('Fighter 2 response error:', await fighter2Response.text());
-          throw new Error('Failed to fetch votes for fighter 2');
-        }
-
-        const [fighter1Votes, fighter2Votes] = await Promise.all([
-          fighter1Response.json(),
-          fighter2Response.json()
-        ]);
-
-        setFightVotes(prev => ({
-          ...prev,
-          [fightId]: {
-            fighter1Votes,
-            fighter2Votes
-          }
-        }));
-
-        // Update vote counts from the fetched data
-        const fighter1Human = fighter1Votes.filter(vote => !vote.is_bot).length;
-        const fighter2Human = fighter2Votes.filter(vote => !vote.is_bot).length;
-        setVoteCounts(prev => ({
-          ...prev,
-          [fightId]: {
-            fighter1: { total: fighter1Votes.length, human: fighter1Human },
-            fighter2: { total: fighter2Votes.length, human: fighter2Human }
-          }
-        }));
+        await loadFightVotes(fightId);
       } catch (err) {
         console.error('Error fetching votes:', err);
         setError('Failed to load votes');
@@ -1706,6 +1827,18 @@ function Fights({
   
   return (
     <div className="fights-container">
+      {recentPick && (
+        <div className="pick-save-toast">
+          <div className="pick-save-toast__copy" role="status" aria-live="polite" aria-atomic="true">
+            <strong>Pick saved</strong>
+            <span>{recentPick.fighterName}</span>
+          </div>
+          <div className="pick-save-toast__actions">
+            <button type="button" onClick={handleUndoRecentPick}>Undo</button>
+            <button type="button" onClick={handleChangeRecentPick}>Change</button>
+          </div>
+        </div>
+      )}
       <div className="fights-header">
         <h2 className="app-section-heading fights-title">Upcoming Fights</h2>
         <div className="fight-card-refresh-controls">
@@ -1810,238 +1943,12 @@ function Fights({
           )}
           <div className="fighters-container">
             {/* Fighter 1 Card */}
-            <div
-              className={`fighter-card ${
-                fight.is_completed
-                  ? fight.winner
-                    ? String(fight.winner) === String(fight.fighter1_id)
-                      ? 'winner'
-                      : 'loser'
-                    : 'neutral-result'
-                  : (selectedFights[fight.id] === fight.fighter1_id || submittedFights[fight.id] === fight.fighter1_id)
-                    ? 'selected'
-                    : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter1_id)
-                      ? 'unselected'
-                      : ''
-              }`}
-              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter1_id, fight.fighter1_name)}
-            >
-              <FighterFlagBackground
-                bornCountry={fight.fighter1_born_country}
-                fightingOutOfCountry={fight.fighter1_country}
-              />
-              <div className="fighter-image-container">
-                <img
-                  src={fight.fighter1_image}
-                  alt={fight.fighter1_name}
-                  className="fighter-image"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <FighterReminderOverlay
-                  fighterName={fight.fighter1_name}
-                  reminderType={getReminderType(fight.fighter1_id)}
-                  animation={reminderAnimations[String(fight.fighter1_id)] || null}
-                />
-              </div>
-              <h3 className="fighter-name">
-                <span className="fighter-name-text">{fight.fighter1_firstName}</span>
-                {fight.fighter1_nickname && (
-                  <span className="fighter-nickname">{fight.fighter1_nickname}</span>
-                )}
-                <span className="fighter-name-text">{fight.fighter1_lastName}</span>
-              </h3>
-              <div className="stat-container">
-                <div className="stat-row">
-                  <span className="stat-label">Rank</span>
-                  <span>{renderFighterRank(fight.fighter1_rank, `${fight.id}-fighter1-rank`)}</span>
-                </div>
-                <div className="stat-row">
-                  <span className="stat-label">Record</span>
-                  <span>{fight.fighter1_record ? fight.fighter1_record.split('-').join(' - ') : 'N/A'}</span>
-                </div>
-                <div className="stat-row odds-row">
-                  <span className="stat-label">Odds</span>
-                  <span className={parseInt(fight.fighter1_odds) < 0 ? 'favorite-odds' : 'underdog-odds'}>
-                    {fight.fighter1_odds ? fight.fighter1_odds : 'N/A'}
-                  </span>
-                </div>
-              </div>
-              {expandedFightStats[fight.id] && (
-                <div className="expanded-stats">
-                  <FighterDetailSections fight={fight} fighterKey="fighter1" />
-                  <FinishMethodBreakdown fight={fight} fighterKey="fighter1" />
-                  {(() => {
-                    const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter1_id);
-                    if (!lastVoteOutcome) return null;
-                    return (
-                      <div className="last-vote-outcome">
-                        Last time you voted for this fighter, they {lastVoteOutcome}.
-                      </div>
-                    );
-                  })()}
-                  {hasVoteReminder(fight.fighter1_id) && (
-                    <div className="vote-reminder-status">
-                      {getReminderStatusMessage(fight.fighter1_id)}
-                    </div>
-                  )}
-                  <div className="vote-reminder-controls">
-                    <span className="vote-reminder-prompt">Your take</span>
-                    <div className="vote-reminder-options">
-                      <button
-                        type="button"
-                        className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_BROKEN_HEART);
-                        }}
-                        aria-label={`Dislike ${fight.fighter1_name}`}
-                        aria-pressed={getReminderType(fight.fighter1_id) === REMINDER_TYPE_BROKEN_HEART}
-                        title="Dislike fighter"
-                      >
-                        <span aria-hidden="true">💔</span>
-                        <span>Dislike</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`vote-reminder-button ${getReminderType(fight.fighter1_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleVoteReminderType(fight.fighter1_id, fight.fighter1_name, REMINDER_TYPE_HEART_EYES);
-                        }}
-                        aria-label={`Like ${fight.fighter1_name}`}
-                        aria-pressed={getReminderType(fight.fighter1_id) === REMINDER_TYPE_HEART_EYES}
-                        title="Like fighter"
-                      >
-                        <span aria-hidden="true">😍</span>
-                        <span>Like</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {String(submittedFights[fight.id]) === String(fight.fighter1_id) && (
-                <div className="vote-badge">Your Pick</div>
-              )}
-            </div>
+            {renderFighterChoiceCard(fight, 'fighter1')}
 
             <div className="vs-text">VS</div>
 
             {/* Fighter 2 Card */}
-            <div
-              className={`fighter-card ${
-                fight.is_completed
-                  ? fight.winner
-                    ? String(fight.winner) === String(fight.fighter2_id)
-                      ? 'winner'
-                      : 'loser'
-                    : 'neutral-result'
-                  : (selectedFights[fight.id] === fight.fighter2_id || submittedFights[fight.id] === fight.fighter2_id)
-                    ? 'selected'
-                    : (submittedFights[fight.id] && submittedFights[fight.id] !== fight.fighter2_id)
-                      ? 'unselected'
-                      : ''
-              }`}
-              onClick={() => !fight.is_completed && !fight.is_canceled && handleSelection(fight.id, fight.fighter2_id, fight.fighter2_name)}
-            >
-              <FighterFlagBackground
-                bornCountry={fight.fighter2_born_country}
-                fightingOutOfCountry={fight.fighter2_country}
-              />
-              <div className="fighter-image-container">
-                <img
-                  src={fight.fighter2_image}
-                  alt={fight.fighter2_name}
-                  className="fighter-image"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <FighterReminderOverlay
-                  fighterName={fight.fighter2_name}
-                  reminderType={getReminderType(fight.fighter2_id)}
-                  animation={reminderAnimations[String(fight.fighter2_id)] || null}
-                />
-              </div>
-              <h3 className="fighter-name">
-                <span className="fighter-name-text">{fight.fighter2_firstName}</span>
-                {fight.fighter2_nickname && (
-                  <span className="fighter-nickname">{fight.fighter2_nickname}</span>
-                )}
-                <span className="fighter-name-text">{fight.fighter2_lastName}</span>
-              </h3>
-              <div className="stat-container">
-                <div className="stat-row">
-                  <span className="stat-label">Rank</span>
-                  <span>{renderFighterRank(fight.fighter2_rank, `${fight.id}-fighter2-rank`)}</span>
-                </div>
-                <div className="stat-row">
-                  <span className="stat-label">Record</span>
-                  <span>{fight.fighter2_record ? fight.fighter2_record.split('-').join(' - ') : 'N/A'}</span>
-                </div>
-                <div className="stat-row odds-row">
-                  <span className="stat-label">Odds</span>
-                  <span className={parseInt(fight.fighter2_odds) < 0 ? 'favorite-odds' : 'underdog-odds'}>
-                    {fight.fighter2_odds ? fight.fighter2_odds : 'N/A'}
-                  </span>
-                </div>
-              </div>
-              {expandedFightStats[fight.id] && (
-                <div className="expanded-stats">
-                  <FighterDetailSections fight={fight} fighterKey="fighter2" />
-                  <FinishMethodBreakdown fight={fight} fighterKey="fighter2" />
-                  {(() => {
-                    const lastVoteOutcome = getLastVoteOutcomeForFighter(fight, fight.fighter2_id);
-                    if (!lastVoteOutcome) return null;
-                    return (
-                      <div className="last-vote-outcome">
-                        Last time you voted for this fighter, they {lastVoteOutcome}.
-                      </div>
-                    );
-                  })()}
-                  {hasVoteReminder(fight.fighter2_id) && (
-                    <div className="vote-reminder-status">
-                      {getReminderStatusMessage(fight.fighter2_id)}
-                    </div>
-                  )}
-                  <div className="vote-reminder-controls">
-                    <span className="vote-reminder-prompt">Your take</span>
-                    <div className="vote-reminder-options">
-                      <button
-                        type="button"
-                        className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_BROKEN_HEART ? 'active active-broken-heart' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_BROKEN_HEART);
-                        }}
-                        aria-label={`Dislike ${fight.fighter2_name}`}
-                        aria-pressed={getReminderType(fight.fighter2_id) === REMINDER_TYPE_BROKEN_HEART}
-                        title="Dislike fighter"
-                      >
-                        <span aria-hidden="true">💔</span>
-                        <span>Dislike</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`vote-reminder-button ${getReminderType(fight.fighter2_id) === REMINDER_TYPE_HEART_EYES ? 'active active-heart-eyes' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleVoteReminderType(fight.fighter2_id, fight.fighter2_name, REMINDER_TYPE_HEART_EYES);
-                        }}
-                        aria-label={`Like ${fight.fighter2_name}`}
-                        aria-pressed={getReminderType(fight.fighter2_id) === REMINDER_TYPE_HEART_EYES}
-                        title="Like fighter"
-                      >
-                        <span aria-hidden="true">😍</span>
-                        <span>Like</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {String(submittedFights[fight.id]) === String(fight.fighter2_id) && (
-                <div className="vote-badge">Your Pick</div>
-              )}
-            </div>
+            {renderFighterChoiceCard(fight, 'fighter2')}
           </div>
 
           {expandedFightStats[fight.id] && (
@@ -2063,28 +1970,10 @@ function Fights({
             <div className="error-message">{voteErrors[fight.id]}</div>
           )}
 
-          {selectedFights[fight.id] && !submittedFights[fight.id] && (
-            <div className="selected-fighter-message">
-              <button
-                className={`submit-vote-button ${
-                  String(selectedFights[fight.id]) === String(fight.fighter1_id)
-                    ? 'submit-vote-button--red'
-                    : 'submit-vote-button--blue'
-                }`}
-                onClick={() => handleSubmitVote(fight.id)}
-                disabled={Boolean(pendingVotes[fight.id])}
-              >
-                {pendingVotes[fight.id] ? 'Saving pick…' : 'Submit Vote for '}
-                {!pendingVotes[fight.id] && (
-                <span style={{
-                  color: '#ffffff'
-                }}>
-                  {String(selectedFights[fight.id]) === String(fight.fighter1_id) 
-                    ? fight.fighter1_name 
-                    : fight.fighter2_name}
-                </span>
-                )}
-              </button>
+          {String(changeableFightId || '') === String(fight.id) && (
+            <div className="pick-change-hint" role="status">
+              <span>Choose another fighter. Your current pick stays saved until the change succeeds.</span>
+              <button type="button" onClick={() => setChangeableFightId(null)}>Cancel</button>
             </div>
           )}
 
@@ -2300,6 +2189,17 @@ function Fights({
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={Boolean(pickConfirmation)}
+        title="Pick this fighter anyway?"
+        summary={pickConfirmation
+          ? `You marked ${pickConfirmation.fighterName} as a fighter you do not trust.`
+          : ''}
+        details={["We'll save the pick immediately if you continue."]}
+        confirmLabel={pickConfirmation ? `Pick ${pickConfirmation.fighterName}` : 'Save pick'}
+        onCancel={() => setPickConfirmation(null)}
+        onConfirm={handleConfirmedPick}
+      />
     </div>
   );
 }

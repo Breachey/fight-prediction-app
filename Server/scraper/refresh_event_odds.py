@@ -8,6 +8,7 @@ from typing import Dict, List
 from scrape_full_ufc_event_with_tapology import (
     build_event_odds_map,
     build_ufc_session,
+    expected_odds_entry_count,
     fetch_ufc_event,
     normalize_name,
 )
@@ -62,6 +63,13 @@ def main() -> None:
                 sys.exit(1)
 
             odds_map = build_event_odds_map(event, session=session, timeout=args.timeout)
+            if expected_odds_entry_count(event) > 0 and not odds_map:
+                print(
+                    "No odds source returned prices for this event. "
+                    "The stored fight card was not changed.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
 
     payload = {
         "event_id": args.event_id,

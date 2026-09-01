@@ -7,3 +7,10 @@
 .profile-rivalry--nemesis { border-color: rgba(233,23,13,.36) !important; }
 .profile-rivalry--twin { border-color: rgba(43,49,178,.62) !important; }
 .profile-rivalry--twin > div:first-child { color: rgba(215,218,255,.96) !important; }
+.profile-section-error { display: grid; justify-items: center; gap: 10px; color: #f99ead; text-align: center; font-size: .96rem; }
+.profile-section-error--inline { margin: 0 0 16px; padding: 10px 12px; border: 1px solid rgba(249,158,173,.34); border-radius: var(--radius-sm); background: rgba(249,158,173,.06); }
+.profile-retry-button { margin-top: 16px; padding: 8px 12px; border: 1px solid rgba(249,158,173,.55); border-radius: var(--radius-xs); background: #151316; color: #fcfbfd; font: inherit; font-size: .88rem; font-weight: 700; cursor: pointer; }
+.profile-section-error .profile-retry-button { margin-top: 0; }
+.profile-retry-button:hover:not(:disabled) { border-color: #f99ead; background: #211b1e; }
+.profile-retry-button:focus-visible { outline: 2px solid #f99ead; outline-offset: 2px; }
+.profile-retry-button:disabled { cursor: wait; opacity: .6; }

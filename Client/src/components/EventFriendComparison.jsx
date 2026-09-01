@@ -87,13 +87,19 @@ function EventFriendComparison({
   error = '',
   selectedFriendId = '',
   onFriendChange,
+  onRetry,
 }) {
   if (isLoading && !comparison) {
     return <div className="friend-comparison-state" role="status">Loading friend matchup…</div>;
   }
 
   if (error && !comparison) {
-    return <div className="friend-comparison-state friend-comparison-state--error">{error}</div>;
+    return (
+      <div className="friend-comparison-state friend-comparison-state--error" role="alert">
+        <span>{error}</span>
+        {onRetry && <button type="button" onClick={onRetry}>Retry comparison</button>}
+      </div>
+    );
   }
 
   if (!comparison) return null;
@@ -114,7 +120,12 @@ function EventFriendComparison({
         {isLoading && <span className="friend-comparison__updating" role="status">Updating…</span>}
       </header>
 
-      {error && <p className="friend-comparison__inline-error">{error}</p>}
+      {error && (
+        <div className="friend-comparison__inline-error" role="alert">
+          <span>{error} Showing the last comparison we loaded.</span>
+          {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+        </div>
+      )}
 
       {friends.length === 0 ? (
         <div className="friend-comparison__empty">

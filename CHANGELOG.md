@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.29.1 - 2026-09-01
+
+### Fixed
+
+- Made odds refreshes resilient to production FightOdds failures with browser-context requests, a card-matched Covers fallback, safer fighter-name matching, and explicit upstream diagnostics instead of false successful refreshes with all odds missing.
+
+## 0.29.0 - 2026-09-01
+
+### Added
+
+- Added one-tap fighter picks with brief Undo and Change actions, including a protected endpoint for removing a newly saved pick.
+- Added accessible in-app confirmation dialogs that summarize event finalization, fight-card replacement, and disliked-fighter pick actions.
+
+### Changed
+
+- Changed fighter choices and event cards to native buttons with keyboard focus and activation behavior.
+
+### Fixed
+
+- Preserved cached profile, rivalry, event recap, and friend-comparison content when a refresh fails, with independent status and retry controls.
+
+## 0.28.8 - 2026-08-31
+
+### Added
+
+- Added one fight-votes endpoint that returns both corners with player-card and ranking metadata in a single request.
+
+### Changed
+
+- Joined users into session validation, limited session activity writes to once every 15 minutes, and added short-lived resilient caches for weight classes and user player-card metadata.
+
+### Fixed
+
+- Let profile and rivalry sections load, time out, fail, and retry independently so optional insights no longer block the basic profile.
+
+### Removed
+
+- Removed an unreliable VS Code workspace override for commit-message generation.
+
 ## 0.28.7 - 2026-08-31
 
 ### Added

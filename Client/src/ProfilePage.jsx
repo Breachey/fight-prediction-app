@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL } from './config';
 import { useParams } from 'react-router-dom';
 import PlayerCard from './components/PlayerCard';
@@ -30,17 +30,21 @@ function formatAccountAge(createdAt) {
 
 function ProfilePage({ user: loggedInUser }) {
   const cardRef = useRef(null);
+  const profileRequestRef = useRef(null);
+  const rivalriesRequestRef = useRef(null);
   const currentSeasonYear = new Date().getFullYear();
-  const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [profileUser, setProfileUser] = useState(null);
-  const [error, setError] = useState(null);
+  const [profileError, setProfileError] = useState(null);
   const { user_id: routeUserId } = useParams();
   const [accountCreatedAt, setAccountCreatedAt] = useState(null);
   const [accountAgeLoading, setAccountAgeLoading] = useState(true);
   const [accountAgeError, setAccountAgeError] = useState(null);
   const [seasonRivalries, setSeasonRivalries] = useState({ biggestNemesis: null, pickTwin: null });
   const [seasonRivalriesLoading, setSeasonRivalriesLoading] = useState(true);
+  const [seasonRivalriesLoaded, setSeasonRivalriesLoaded] = useState(false);
   const [seasonRivalriesError, setSeasonRivalriesError] = useState('');
+  const userIdToShow = routeUserId || loggedInUser?.user_id;
   const normalizedLoggedInUserId = loggedInUser?.user_id != null ? String(loggedInUser.user_id) : null;
   const normalizedProfileUserId = profileUser?.user_id != null ? String(profileUser.user_id) : null;
   const isOwnProfile = Boolean(
@@ -57,74 +61,134 @@ function ProfilePage({ user: loggedInUser }) {
     }
   `;
 
-  // Fetch user data
-  useEffect(() => {
-    if (!loggedInUser) return;
-    
-    let isMounted = true;
-    setLoading(true);
-    setError(null);
+  const loadProfile = useCallback(async ({ force = false } = {}) => {
+    if (!userIdToShow) return;
+
+    profileRequestRef.current?.controller.abort();
+    if (profileRequestRef.current?.timeoutId) {
+      clearTimeout(profileRequestRef.current.timeoutId);
+    }
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10000);
+    profileRequestRef.current = { controller, timeoutId };
+
+    setProfileLoading(true);
+    setProfileError(null);
     setAccountAgeLoading(true);
     setAccountAgeError(null);
+
+    try {
+      const userData = await cachedFetchJson(
+        `${API_URL}/user/by-id/${encodeURIComponent(userIdToShow)}`,
+        {
+          ttlMs: 120000,
+          cacheKey: `profile:${userIdToShow}:v3`,
+          force,
+          allowStaleOnError: true,
+          fetchOptions: { signal: controller.signal },
+        }
+      );
+      if (controller.signal.aborted) return;
+
+      setProfileUser({
+        username: userData.username,
+        user_id: userData.user_id || userIdToShow,
+        playercard: userData.playercards || null,
+        avatarConfig: userData.avatar_config || null,
+      });
+      setAccountCreatedAt(userData.created_at);
+    } catch (loadError) {
+      if (controller.signal.aborted && !timedOut) return;
+      setProfileError(timedOut
+        ? 'Loading the profile timed out. Please try again.'
+        : (loadError.message || 'Could not load profile'));
+      setAccountAgeError('Could not load account age');
+      throw loadError;
+    } finally {
+      clearTimeout(timeoutId);
+      if (profileRequestRef.current?.controller === controller) {
+        setProfileLoading(false);
+        setAccountAgeLoading(false);
+      }
+    }
+  }, [userIdToShow]);
+
+  const loadSeasonRivalries = useCallback(async ({ force = false } = {}) => {
+    if (!userIdToShow) return;
+
+    rivalriesRequestRef.current?.controller.abort();
+    if (rivalriesRequestRef.current?.timeoutId) {
+      clearTimeout(rivalriesRequestRef.current.timeoutId);
+    }
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10000);
+    rivalriesRequestRef.current = { controller, timeoutId };
+
     setSeasonRivalriesLoading(true);
     setSeasonRivalriesError('');
-    setSeasonRivalries({ biggestNemesis: null, pickTwin: null });
-    
-    // Determine which user_id to show
-    const userIdToShow = routeUserId || loggedInUser.user_id;
-    
-    Promise.all([
-      cachedFetchJson(`${API_URL}/user/by-id/${encodeURIComponent(userIdToShow)}`, {
-        ttlMs: 120000,
-        cacheKey: `profile:${userIdToShow}:v3`,
-      }),
-      cachedFetchJson(`${API_URL}/user/${encodeURIComponent(userIdToShow)}/highlights/${currentSeasonYear}`, {
-        ttlMs: 120000,
-        cacheKey: `profile-rivalries:${userIdToShow}:${currentSeasonYear}:v3`,
-      }),
-    ])
-      .then(([userData, highlightsData]) => {
-        if (!isMounted) return;
-        setProfileUser({
-          username: userData.username,
-          user_id: userData.user_id || userIdToShow,
-          playercard: userData.playercards || null,
-          avatarConfig: userData.avatar_config || null,
-        });
-        setAccountCreatedAt(userData.created_at);
-        setAccountAgeLoading(false);
-        const rivalryInsights = highlightsData?.rivalry_insights || {};
-        setSeasonRivalries({
-          biggestNemesis: rivalryInsights.biggest_nemesis || null,
-          pickTwin: rivalryInsights.pick_twin || null,
-        });
-        setSeasonRivalriesLoading(false);
-        setLoading(false);
-      })
-      .catch((loadError) => {
-        if (!isMounted) return;
-        setError(loadError.message || 'Could not load profile');
-        setAccountAgeError('Could not load account age');
-        setAccountAgeLoading(false);
-        setSeasonRivalriesError('Could not load rivalry insights right now.');
-        setSeasonRivalriesLoading(false);
-        setLoading(false);
-      });
-      
-    return () => { isMounted = false; };
-  }, [routeUserId, loggedInUser, currentSeasonYear]);
 
-  // Loading timeout
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        setError('Loading timed out. Please refresh and try again.');
-        setLoading(false);
+    try {
+      const highlightsData = await cachedFetchJson(
+        `${API_URL}/user/${encodeURIComponent(userIdToShow)}/highlights/${currentSeasonYear}`,
+        {
+          ttlMs: 120000,
+          cacheKey: `profile-rivalries:${userIdToShow}:${currentSeasonYear}:v3`,
+          force,
+          allowStaleOnError: true,
+          fetchOptions: { signal: controller.signal },
+        }
+      );
+      if (controller.signal.aborted) return;
+
+      const rivalryInsights = highlightsData?.rivalry_insights || {};
+      setSeasonRivalries({
+        biggestNemesis: rivalryInsights.biggest_nemesis || null,
+        pickTwin: rivalryInsights.pick_twin || null,
+      });
+      setSeasonRivalriesLoaded(true);
+    } catch (loadError) {
+      if (controller.signal.aborted && !timedOut) return;
+      setSeasonRivalriesError(timedOut
+        ? 'Rivalry insights timed out. Please try again.'
+        : 'Could not load rivalry insights right now.');
+      throw loadError;
+    } finally {
+      clearTimeout(timeoutId);
+      if (rivalriesRequestRef.current?.controller === controller) {
+        setSeasonRivalriesLoading(false);
       }
-    }, 10000);
-    
-    return () => clearTimeout(timeoutId);
-  }, [loading]);
+    }
+  }, [currentSeasonYear, userIdToShow]);
+
+  // Start both profile sections together, but settle them independently.
+  useEffect(() => {
+    if (!normalizedLoggedInUserId || !userIdToShow) return undefined;
+
+    setProfileUser(null);
+    setSeasonRivalries({ biggestNemesis: null, pickTwin: null });
+    setSeasonRivalriesLoaded(false);
+    void Promise.allSettled([
+      loadProfile(),
+      loadSeasonRivalries(),
+    ]);
+
+    return () => {
+      profileRequestRef.current?.controller.abort();
+      rivalriesRequestRef.current?.controller.abort();
+      clearTimeout(profileRequestRef.current?.timeoutId);
+      clearTimeout(rivalriesRequestRef.current?.timeoutId);
+    };
+  }, [loadProfile, loadSeasonRivalries, normalizedLoggedInUserId, userIdToShow]);
 
   // Error states
   if (!loggedInUser) {
@@ -136,7 +200,7 @@ function ProfilePage({ user: loggedInUser }) {
     );
   }
 
-  if (error) {
+  if (profileError && !profileUser) {
     return (
       <div style={{ 
         color: '#fff', 
@@ -152,12 +216,20 @@ function ProfilePage({ user: loggedInUser }) {
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
       }}>
         <span style={{ fontSize: '2rem', color: '#ff6b6b' }}>🚫</span><br />
-        <strong>{error === 'User not found' ? 'User not found' : 'Error loading profile'}</strong><br />
+        <strong>{profileError === 'User not found' ? 'User not found' : 'Error loading profile'}</strong><br />
         <div style={{ marginTop: 24, fontSize: '1rem', color: 'rgba(255, 255, 255, 0.9)' }}>
-          {error === 'User not found' 
+          {profileError === 'User not found'
             ? 'Please check the username and try again.' 
-            : error}
+            : profileError}
         </div>
+        <button
+          type="button"
+          className="profile-retry-button"
+          disabled={profileLoading}
+          onClick={() => { void loadProfile({ force: true }).catch(() => {}); }}
+        >
+          {profileLoading ? 'Retrying…' : 'Retry profile'}
+        </button>
       </div>
     );
   }
@@ -224,6 +296,20 @@ function ProfilePage({ user: loggedInUser }) {
           }}>
             Profile
           </h1>
+
+          {profileError && (
+            <div className="profile-section-error profile-section-error--inline" role="alert">
+              <div>{profileError} Showing the last profile data we loaded.</div>
+              <button
+                type="button"
+                className="profile-retry-button"
+                disabled={profileLoading}
+                onClick={() => { void loadProfile({ force: true }).catch(() => {}); }}
+              >
+                {profileLoading ? 'Retrying…' : 'Retry profile'}
+              </button>
+            </div>
+          )}
 
           {/* Current Playercard with Username Overlay */}
           {profileUser && (
@@ -314,15 +400,39 @@ function ProfilePage({ user: loggedInUser }) {
               {currentSeasonYear} pick matchups
             </div>
 
-            {seasonRivalriesLoading ? (
+            {seasonRivalriesLoading && !seasonRivalriesLoaded ? (
               <div style={{ color: 'rgba(255, 255, 255, 0.8)', textAlign: 'center', fontSize: '0.96rem' }}>
                 Loading rivalry insights...
               </div>
-            ) : seasonRivalriesError ? (
-              <div style={{ color: '#ffb6b6', textAlign: 'center', fontSize: '0.96rem' }}>
-                {seasonRivalriesError}
+            ) : seasonRivalriesError && !seasonRivalriesLoaded ? (
+              <div className="profile-section-error" role="alert">
+                <div>{seasonRivalriesError}</div>
+                <button
+                  type="button"
+                  className="profile-retry-button"
+                  disabled={seasonRivalriesLoading}
+                  onClick={() => { void loadSeasonRivalries({ force: true }).catch(() => {}); }}
+                >
+                  {seasonRivalriesLoading ? 'Retrying…' : 'Retry rivalries'}
+                </button>
               </div>
             ) : (
+              <>
+              {(seasonRivalriesLoading || seasonRivalriesError) && (
+                <div className="profile-section-error profile-section-error--inline" role={seasonRivalriesError ? 'alert' : 'status'}>
+                  <div>{seasonRivalriesError || 'Updating rivalry insights…'}</div>
+                  {seasonRivalriesError && (
+                    <button
+                      type="button"
+                      className="profile-retry-button"
+                      disabled={seasonRivalriesLoading}
+                      onClick={() => { void loadSeasonRivalries({ force: true }).catch(() => {}); }}
+                    >
+                      {seasonRivalriesLoading ? 'Retrying…' : 'Retry rivalries'}
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
@@ -392,6 +502,7 @@ function ProfilePage({ user: loggedInUser }) {
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
         </div>

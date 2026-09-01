@@ -118,7 +118,8 @@ export const cachedFetchJson = async (url, options = {}) => {
     fetchOptions
   } = options;
 
-  const cachedEntry = !force ? getCacheEntry(cacheKey, privateCache) : null;
+  const storedEntry = getCacheEntry(cacheKey, privateCache);
+  const cachedEntry = !force ? storedEntry : null;
   if (cachedEntry && isFresh(cachedEntry, ttlMs)) {
     return cachedEntry.data;
   }
@@ -131,8 +132,8 @@ export const cachedFetchJson = async (url, options = {}) => {
   try {
     return await requestAndCache({ url, cacheKey, privateCache, fetcher, fetchOptions });
   } catch (error) {
-    if (allowStaleOnError && cachedEntry) {
-      return cachedEntry.data;
+    if (allowStaleOnError && storedEntry) {
+      return storedEntry.data;
     }
     throw error;
   }

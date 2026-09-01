@@ -50,6 +50,23 @@ test('stale data is returned when a refresh fails', async () => {
   assert.deepEqual(stale, { saved: true });
 });
 
+test('forced refresh can fall back to the last usable response', async () => {
+  invalidateCache('forced-stale');
+  await cachedFetchJson('/forced-stale', {
+    cacheKey: 'forced-stale',
+    fetcher: async () => response({ saved: true }),
+  });
+
+  const stale = await cachedFetchJson('/forced-stale', {
+    cacheKey: 'forced-stale',
+    force: true,
+    allowStaleOnError: true,
+    fetcher: async () => { throw new Error('offline'); },
+  });
+
+  assert.deepEqual(stale, { saved: true });
+});
+
 test('stale-while-revalidate returns cached data before the refresh finishes', async () => {
   invalidateCache('swr');
   await cachedFetchJson('/swr', {
