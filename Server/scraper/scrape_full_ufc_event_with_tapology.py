@@ -46,6 +46,7 @@ DEFAULT_TAPOLOGY_PROXY_URL_TEMPLATE = (
     "https://api.allorigins.win/raw?url={url}"
 )
 FIGHTODDS_GQL_URL = "https://api.fightodds.io/gql"
+BESTFIGHTODDS_HOME_URL = "https://www.bestfightodds.com/"
 COVERS_UFC_ODDS_URL = "https://www.covers.com/sport/mma/ufc/odds"
 SUPABASE_STYLE_SELECT = "fighter_id,mma_id,first_name,last_name,style"
 SUPABASE_FIGHTER_PROFILE_SELECT = (
@@ -1310,21 +1311,39 @@ def fightodds_query(
 ) -> Dict:
     operation_match = re.search(r"\b(?:query|mutation)\s+([A-Za-z_][A-Za-z0-9_]*)", query)
     operation_name = operation_match.group(1) if operation_match else None
+    request_payload = {
+        "operationName": operation_name,
+        "query": query,
+        "variables": variables,
+    }
+    request_headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Origin": "https://fightodds.io",
+        "Referer": "https://fightodds.io/",
+    }
     response = session.post(
         FIGHTODDS_GQL_URL,
-        json={
-            "operationName": operation_name,
-            "query": query,
-            "variables": variables,
-        },
+        json=request_payload,
         timeout=timeout,
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Origin": "https://fightodds.io",
-            "Referer": "https://fightodds.io/",
-        },
+        headers=request_headers,
     )
+
+    if is_cloudflare_challenge(response) and cloudscraper is not None:
+        challenge_session = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "linux", "mobile": False}
+        )
+        challenge_session.headers.update(DEFAULT_HEADERS)
+        try:
+            response = challenge_session.post(
+                FIGHTODDS_GQL_URL,
+                json=request_payload,
+                timeout=timeout,
+                headers=request_headers,
+            )
+        finally:
+            challenge_session.close()
+
     raise_for_status_with_context(response, FIGHTODDS_GQL_URL)
     payload = response.json()
     if payload.get("errors"):
@@ -1612,7 +1631,130 @@ def select_coherent_american_odds_pair(
     if not valid_pairs:
         return "", ""
 
-    return str(max(pair[0] for pair in valid_pairs)), str(max(pair[1] for pair in valid_pairs))
+    def select_consensus_side(values: Iterable[int]) -> str:
+        values = list(values)
+        positive_values = [value for value in values if value > 0]
+        negative_values = [value for value in values if value < 0]
+        if len(positive_values) == len(negative_values):
+            return ""
+        consensus_values = (
+            positive_values if len(positive_values) > len(negative_values) else negative_values
+        )
+        return str(max(consensus_values))
+
+    return (
+        select_consensus_side(pair[0] for pair in valid_pairs),
+        select_consensus_side(pair[1] for pair in valid_pairs),
+    )
+
+
+def extract_bestfightodds_moneyline_rows(html: str) -> List[Dict[str, object]]:
+    soup = BeautifulSoup(html, "html.parser")
+    parsed_rows = []
+
+    for row in soup.select("tr:not(.pr)"):
+        fighter_name_node = row.select_one("th span.t-b-fcc")
+        if fighter_name_node is None:
+            continue
+
+        matchup_ids = set()
+        matchup_sides = set()
+        odds_by_book = {}
+        for cell in row.select("td.but-sg[data-li]"):
+            data_li = re.fullmatch(
+                r"\[(\d+),([12]),(\d+)\]",
+                str(cell.get("data-li", "")).replace(" ", ""),
+            )
+            odds_match = re.search(
+                r"(?<!\d)[+-]\d{3,4}(?!\d)",
+                cell.get_text(" ", strip=True),
+            )
+            if data_li is None or odds_match is None:
+                continue
+
+            book_id, matchup_side, matchup_id = data_li.groups()
+            matchup_ids.add(matchup_id)
+            matchup_sides.add(matchup_side)
+            odds_by_book[book_id] = odds_match.group(0)
+
+        if len(matchup_ids) != 1 or len(matchup_sides) != 1 or not odds_by_book:
+            continue
+
+        parsed_rows.append({
+            "name": normalize_name(fighter_name_node.get_text(" ", strip=True)),
+            "matchup_id": next(iter(matchup_ids)),
+            "matchup_side": next(iter(matchup_sides)),
+            "odds_by_book": odds_by_book,
+        })
+
+    return parsed_rows
+
+
+def extract_bestfightodds_map(html: str, fights: Iterable[Dict]) -> Dict[str, str]:
+    provider_rows = extract_bestfightodds_moneyline_rows(html)
+    odds_by_name: Dict[str, str] = {}
+
+    for fight in fights:
+        fighters = fight.get("Fighters", [])
+        if len(fighters) != 2:
+            continue
+
+        expected_pair = [normalize_name(fighter_full_name(fighter)) for fighter in fighters]
+        candidate_pairs = []
+        for row_a in provider_rows:
+            if not fighter_names_match(expected_pair[0], str(row_a.get("name", ""))):
+                continue
+            for row_b in provider_rows:
+                if row_a.get("matchup_id") != row_b.get("matchup_id"):
+                    continue
+                if row_a.get("matchup_side") == row_b.get("matchup_side"):
+                    continue
+                if fighter_names_match(expected_pair[1], str(row_b.get("name", ""))):
+                    candidate_pairs.append((row_a, row_b))
+
+        if len(candidate_pairs) != 1:
+            continue
+
+        row_a, row_b = candidate_pairs[0]
+        common_books = sorted(
+            set(row_a["odds_by_book"]) & set(row_b["odds_by_book"])
+        )
+        selected_a, selected_b = select_coherent_american_odds_pair(
+            [row_a["odds_by_book"][book_id] for book_id in common_books],
+            [row_b["odds_by_book"][book_id] for book_id in common_books],
+        )
+        if selected_a and selected_b:
+            odds_by_name[expected_pair[0]] = selected_a
+            odds_by_name[expected_pair[1]] = selected_b
+
+    return odds_by_name
+
+
+def fetch_bestfightodds_odds_map(
+    event: Dict,
+    session: requests.Session,
+    timeout: float,
+) -> Dict[str, str]:
+    try:
+        response = session.get(
+            BESTFIGHTODDS_HOME_URL,
+            timeout=timeout,
+            headers={
+                "Accept": "text/html,application/xhtml+xml",
+                "Referer": "https://www.bestfightodds.com/",
+            },
+        )
+        raise_for_status_with_context(response, BESTFIGHTODDS_HOME_URL)
+    except (requests.RequestException, RuntimeError) as err:
+        print(f"Unable to fetch BestFightOdds: {err}")
+        return {}
+
+    odds_map = extract_bestfightodds_map(response.text, event.get("FightCard", []))
+    if odds_map:
+        print(f"Pulled fallback odds from BestFightOdds for {len(odds_map)} fighter(s).")
+    else:
+        print("BestFightOdds returned a page, but no event odds matched the UFC card.")
+    return odds_map
 
 
 def extract_covers_odds_map(html: str, fights: Iterable[Dict]) -> Dict[str, str]:
@@ -1826,10 +1968,26 @@ def build_event_odds_map(
     if expected_count > 0 and len(fightodds_map) >= expected_count:
         return fightodds_map
 
+    bestfightodds_map = fetch_bestfightodds_odds_map(
+        event,
+        session=session,
+        timeout=timeout,
+    )
+    if expected_count > 0 and len({**bestfightodds_map, **fightodds_map}) >= expected_count:
+        return {
+            **bestfightodds_map,
+            **fightodds_map,
+        }
+
     covers_odds_map = fetch_covers_odds_map(event, session=session, timeout=timeout)
-    if expected_count > 0 and len({**covers_odds_map, **fightodds_map}) >= expected_count:
+    if expected_count > 0 and len({
+        **covers_odds_map,
+        **bestfightodds_map,
+        **fightodds_map,
+    }) >= expected_count:
         return {
             **covers_odds_map,
+            **bestfightodds_map,
             **fightodds_map,
         }
 
@@ -1837,13 +1995,15 @@ def build_event_odds_map(
     merged_map = {
         **ufc_odds_map,
         **covers_odds_map,
+        **bestfightodds_map,
         **fightodds_map,
     }
 
     if merged_map:
         print(
             "Using merged odds map: "
-            f"fightodds.io={len(fightodds_map)} Covers={len(covers_odds_map)} "
+            f"fightodds.io={len(fightodds_map)} "
+            f"BestFightOdds={len(bestfightodds_map)} Covers={len(covers_odds_map)} "
             f"UFC={len(ufc_odds_map)} merged={len(merged_map)}"
         )
 

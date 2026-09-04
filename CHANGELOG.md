@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.29.4 - 2026-09-04
+
+### Fixed
+
+- Added a verified BestFightOdds moneyline fallback so replacement bouts still receive odds when FightOdds is blocked in production.
+- Tightened fallback pairing and consensus checks to prevent prop-market prices such as the erroneous Duclos `+700` from being stored as fighter moneylines.
+
 ## 0.29.3 - 2026-09-04
 
 ### Fixed
