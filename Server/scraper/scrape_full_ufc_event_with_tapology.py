@@ -1580,37 +1580,39 @@ def fetch_fightodds_odds_map(
     return odds_map
 
 
-def select_consensus_american_odds(values: Iterable[str]) -> str:
-    parsed_values = []
-    for value in values:
-        match = re.fullmatch(r"([+-])(\d{3,4})", str(value).strip())
-        if not match:
+def parse_american_odds(value: str) -> Optional[int]:
+    match = re.fullmatch(r"([+-])(\d{3,4})", str(value).strip())
+    return int(match.group(0)) if match else None
+
+
+def american_odds_implied_probability(value: int) -> float:
+    if value > 0:
+        return 100 / (value + 100)
+    return abs(value) / (abs(value) + 100)
+
+
+def select_coherent_american_odds_pair(
+    values_a: Iterable[str],
+    values_b: Iterable[str],
+) -> Tuple[str, str]:
+    valid_pairs = []
+    for raw_a, raw_b in zip(values_a, values_b):
+        odds_a = parse_american_odds(raw_a)
+        odds_b = parse_american_odds(raw_b)
+        if odds_a is None or odds_b is None:
             continue
-        parsed_values.append(int(match.group(0)))
 
-    if not parsed_values:
-        return ""
+        implied_total = (
+            american_odds_implied_probability(odds_a)
+            + american_odds_implied_probability(odds_b)
+        )
+        if 0.95 <= implied_total <= 1.15:
+            valid_pairs.append((odds_a, odds_b))
 
-    positive_values = [value for value in parsed_values if value > 0]
-    negative_values = [value for value in parsed_values if value < 0]
-    if len(positive_values) == len(negative_values):
-        return ""
+    if not valid_pairs:
+        return "", ""
 
-    consensus_values = (
-        positive_values if len(positive_values) > len(negative_values) else negative_values
-    )
-    ordered_magnitudes = sorted(abs(value) for value in consensus_values)
-    median_magnitude = ordered_magnitudes[len(ordered_magnitudes) // 2]
-    reasonable_values = [
-        value
-        for value in consensus_values
-        if abs(value) <= max(median_magnitude * 2, median_magnitude + 100)
-    ]
-    if not reasonable_values:
-        reasonable_values = consensus_values
-
-    best_value = max(reasonable_values)
-    return str(best_value)
+    return str(max(pair[0] for pair in valid_pairs)), str(max(pair[1] for pair in valid_pairs))
 
 
 def extract_covers_odds_map(html: str, fights: Iterable[Dict]) -> Dict[str, str]:
@@ -1642,25 +1644,47 @@ def extract_covers_odds_map(html: str, fights: Iterable[Dict]) -> Dict[str, str]
     if best_table is None or best_match_count < 2:
         return {}
 
-    odds_by_name: Dict[str, str] = {}
+    provider_rows: Dict[str, List[str]] = {}
     for row in best_table.select("tr"):
         fighter_image = row.select_one("th img[alt]")
         if fighter_image is None:
             continue
 
         provider_name = normalize_name(fighter_image.get("alt", ""))
-        matched_names = [
-            expected_name
-            for expected_name in expected_names
-            if fighter_names_match(expected_name, provider_name)
-        ]
-        if len(matched_names) != 1:
+        if provider_name:
+            provider_rows[provider_name] = [
+                cell.get_text(" ", strip=True) for cell in row.select("td")
+            ]
+
+    odds_by_name: Dict[str, str] = {}
+    for fight in fights:
+        fighters = fight.get("Fighters", [])
+        if len(fighters) != 2:
             continue
 
-        cell_values = [cell.get_text(" ", strip=True) for cell in row.select("td")]
-        selected_odds = select_consensus_american_odds(cell_values)
-        if selected_odds:
-            odds_by_name[matched_names[0]] = selected_odds
+        expected_pair = [normalize_name(fighter_full_name(fighter)) for fighter in fighters]
+        matched_provider_names = []
+        for expected_name in expected_pair:
+            matches = [
+                provider_name
+                for provider_name in provider_rows
+                if fighter_names_match(expected_name, provider_name)
+            ]
+            if len(matches) != 1:
+                matched_provider_names = []
+                break
+            matched_provider_names.append(matches[0])
+
+        if len(matched_provider_names) != 2:
+            continue
+
+        selected_a, selected_b = select_coherent_american_odds_pair(
+            provider_rows[matched_provider_names[0]],
+            provider_rows[matched_provider_names[1]],
+        )
+        if selected_a and selected_b:
+            odds_by_name[expected_pair[0]] = selected_a
+            odds_by_name[expected_pair[1]] = selected_b
 
     return odds_by_name
 
