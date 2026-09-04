@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from scrape_full_ufc_event_with_tapology import (
     build_event_odds_map,
+    extract_bestfightodds_map,
     extract_covers_odds_map,
     extract_fightodds_map,
     fightodds_query,
@@ -46,6 +47,22 @@ class FakeSession:
         return FakeResponse()
 
 
+class ChallengeResponse(FakeResponse):
+    status_code = 403
+    headers = {"server": "cloudflare", "content-type": "text/html"}
+    text = "<title>Just a moment...</title>"
+
+
+class FakeChallengeScraper(FakeSession):
+    def __init__(self):
+        super().__init__()
+        self.headers = {}
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
 class EventOddsTest(unittest.TestCase):
     def test_fightodds_graphql_uses_browser_context_and_operation_name(self):
         session = FakeSession()
@@ -65,6 +82,30 @@ class EventOddsTest(unittest.TestCase):
         self.assertEqual(options["json"]["operationName"], "Event")
         self.assertEqual(options["headers"]["Accept"], "application/json")
         self.assertEqual(options["headers"]["Origin"], "https://fightodds.io")
+
+    @patch("scrape_full_ufc_event_with_tapology.cloudscraper")
+    def test_fightodds_graphql_retries_cloudflare_with_cloudscraper(
+        self,
+        cloudscraper_mock,
+    ):
+        session = FakeSession()
+        session.post = lambda *_args, **_kwargs: ChallengeResponse()
+        challenge_scraper = FakeChallengeScraper()
+        cloudscraper_mock.create_scraper.return_value = challenge_scraper
+
+        result = fightodds_query(
+            session,
+            "query Event($pk: Int!) { eventOfferTable(pk: $pk) { pk } }",
+            {"pk": 9648},
+            10,
+        )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(challenge_scraper.calls), 1)
+        self.assertTrue(challenge_scraper.closed)
+        cloudscraper_mock.create_scraper.assert_called_once_with(
+            browser={"browser": "chrome", "platform": "linux", "mobile": False}
+        )
 
     def test_reversed_two_token_fighter_name_matches(self):
         self.assertTrue(fighter_names_match("Axel Sola", "Sola Axel"))
@@ -105,6 +146,52 @@ class EventOddsTest(unittest.TestCase):
                 ["-110"],
             ),
             ("-110", "-110"),
+        )
+
+    def test_coherent_pair_uses_consensus_to_reject_duclos_prop_price(self):
+        self.assertEqual(
+            select_coherent_american_odds_pair(
+                [
+                    "+-", "+1600", "+165", "-120", "-116",
+                    "-120", "+700", "+130", "-120", "+145",
+                ],
+                [
+                    "+-", "+325", "+290", "+100", "-102",
+                    "+100", "-1667", "+275", "+100", "+325",
+                ],
+            ),
+            ("-116", "100"),
+        )
+
+    def test_bestfightodds_parser_uses_only_paired_moneyline_rows(self):
+        event_fights = [{
+            "Fighters": [
+                fighter("Nathaniel", "Wood", 1),
+                fighter("Pavel", "Andrusca", 2),
+            ],
+        }]
+        html = """
+            <table>
+              <tr id="mu-44760">
+                <th><span class="t-b-fcc">Nathaniel Wood</span></th>
+                <td class="but-sg" data-li="[29,1,44760]"><span>-291</span></td>
+                <td class="but-sg" data-li="[31,1,44760]"><span>-300</span></td>
+              </tr>
+              <tr id="mu-44760-opp">
+                <th><span class="t-b-fcc">Pavel Andrusca</span></th>
+                <td class="but-sg" data-li="[29,2,44760]"><span>+217</span></td>
+                <td class="but-sg" data-li="[31,2,44760]"><span>+245</span></td>
+              </tr>
+              <tr class="pr">
+                <th><span class="t-b-fcc">Nathaniel Wood</span></th>
+                <td class="but-sg" data-li="[29,1,99999]"><span>+700</span></td>
+              </tr>
+            </table>
+        """
+
+        self.assertEqual(
+            extract_bestfightodds_map(html, event_fights),
+            {"nathaniel wood": "-291", "pavel andrusca": "245"},
         )
 
     def test_covers_parser_selects_table_matching_the_event_card(self):
@@ -155,15 +242,20 @@ class EventOddsTest(unittest.TestCase):
     )
     @patch(
         "scrape_full_ufc_event_with_tapology.fetch_covers_odds_map",
+        side_effect=AssertionError("Covers should not run when BestFightOdds completes the card"),
+    )
+    @patch(
+        "scrape_full_ufc_event_with_tapology.fetch_bestfightodds_odds_map",
         return_value={"fares ziam": "-148", "axel sola": "125"},
     )
     @patch(
         "scrape_full_ufc_event_with_tapology.fetch_fightodds_odds_map",
         return_value={},
     )
-    def test_covers_completes_map_when_fightodds_is_unavailable(
+    def test_bestfightodds_completes_map_when_fightodds_is_unavailable(
         self,
         _fightodds_mock,
+        _bestfightodds_mock,
         _covers_mock,
         _ufc_mock,
     ):
