@@ -1610,7 +1610,7 @@ def select_consensus_american_odds(values: Iterable[str]) -> str:
         reasonable_values = consensus_values
 
     best_value = max(reasonable_values)
-    return f"{best_value:+d}"
+    return str(best_value)
 
 
 def extract_covers_odds_map(html: str, fights: Iterable[Dict]) -> Dict[str, str]:

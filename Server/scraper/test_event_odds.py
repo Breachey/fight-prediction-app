@@ -96,7 +96,7 @@ class EventOddsTest(unittest.TestCase):
             select_consensus_american_odds(
                 ["+-", "+475", "+400", "+455", "+1300", "+450", "+1400"]
             ),
-            "+475",
+            "475",
         )
         self.assertEqual(
             select_consensus_american_odds(
@@ -125,7 +125,7 @@ class EventOddsTest(unittest.TestCase):
 
         self.assertEqual(
             extract_covers_odds_map(html, event_fights),
-            {"fares ziam": "-148", "axel sola": "+125"},
+            {"fares ziam": "-148", "axel sola": "125"},
         )
 
     def test_covers_parser_maps_provider_name_variants_to_ufc_names(self):
@@ -144,7 +144,7 @@ class EventOddsTest(unittest.TestCase):
 
         self.assertEqual(
             extract_covers_odds_map(html, event_fights),
-            {"dan hooker": "+450", "muhammad naimov": "+280"},
+            {"dan hooker": "450", "muhammad naimov": "280"},
         )
 
     @patch(
@@ -153,7 +153,7 @@ class EventOddsTest(unittest.TestCase):
     )
     @patch(
         "scrape_full_ufc_event_with_tapology.fetch_covers_odds_map",
-        return_value={"fares ziam": "-148", "axel sola": "+125"},
+        return_value={"fares ziam": "-148", "axel sola": "125"},
     )
     @patch(
         "scrape_full_ufc_event_with_tapology.fetch_fightodds_odds_map",
@@ -176,7 +176,7 @@ class EventOddsTest(unittest.TestCase):
 
         self.assertEqual(
             build_event_odds_map(event, session=object(), timeout=10),
-            {"fares ziam": "-148", "axel sola": "+125"},
+            {"fares ziam": "-148", "axel sola": "125"},
         )
 
 

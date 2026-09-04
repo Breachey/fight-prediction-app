@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.29.2 - 2026-09-01
+
+### Fixed
+
+- Normalized positive fallback odds before storage so the client displays a single leading plus sign.
+
 ## 0.29.1 - 2026-09-01
 
 ### Fixed
