@@ -11,7 +11,7 @@ from scrape_full_ufc_event_with_tapology import (
     extract_fightodds_map,
     fightodds_query,
     fighter_names_match,
-    select_consensus_american_odds,
+    select_coherent_american_odds_pair,
 )
 
 
@@ -91,18 +91,20 @@ class EventOddsTest(unittest.TestCase):
             {"fares ziam": "-138", "axel sola": "138"},
         )
 
-    def test_consensus_odds_reject_wrong_sign_and_large_outliers(self):
+    def test_coherent_pair_rejects_columns_from_unrelated_markets(self):
         self.assertEqual(
-            select_consensus_american_odds(
-                ["+-", "+475", "+400", "+455", "+1300", "+450", "+1400"]
+            select_coherent_american_odds_pair(
+                ["+-", "+900", "+1200", "+440", "+950", "+1200", "+450"],
+                ["+-", "-160", "-140", "-600", "-132", "+280", "-650"],
             ),
-            "475",
+            ("450", "-600"),
         )
         self.assertEqual(
-            select_consensus_american_odds(
-                ["-", "+165", "-148", "-162", "-150", "-156", "-155"]
+            select_coherent_american_odds_pair(
+                ["-110"],
+                ["-110"],
             ),
-            "-148",
+            ("-110", "-110"),
         )
 
     def test_covers_parser_selects_table_matching_the_event_card(self):
@@ -132,19 +134,19 @@ class EventOddsTest(unittest.TestCase):
         event_fights = [{
             "Fighters": [
                 fighter("Dan", "Hooker", 1),
-                fighter("Muhammad", "Naimov", 2),
+                fighter("Salahdine", "Parnasse", 2),
             ],
         }]
         html = """
             <table class="covers-mma-table">
               <tr><th><img alt="Daniel Hooker"></th><td>+400</td><td>+450</td></tr>
-              <tr><th><img alt="Muhammadjon Naimov"></th><td>+240</td><td>+280</td></tr>
+              <tr><th><img alt="Salahdine Parnasse"></th><td>-550</td><td>-650</td></tr>
             </table>
         """
 
         self.assertEqual(
             extract_covers_odds_map(html, event_fights),
-            {"dan hooker": "450", "muhammad naimov": "280"},
+            {"dan hooker": "450", "salahdine parnasse": "-550"},
         )
 
     @patch(

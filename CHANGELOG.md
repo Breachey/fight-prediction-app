@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.29.3 - 2026-09-04
+
+### Fixed
+
+- Validated fallback odds as two-sided bookmaker pairs so unrelated Covers market columns cannot produce inflated fighter prices.
+
 ## 0.29.2 - 2026-09-01
 
 ### Fixed
