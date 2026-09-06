@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.31.0 - 2026-09-06
+
+### Added
+
+- Added a public UFC calendar subscription feed with stable event identities, fixed MST times, automatically refreshed schedules, and 90 days of recent event history.
+- Added calendar-app subscription links and a copyable subscription URL with Google Calendar and Outlook instructions; retained individual event downloads.
+- Protected subscribed calendars from partial database responses, with paginated schedule reads and short-lived feed caching.
+
+### Fixed
+
+- Added the required closing calendar marker to generated calendar files and feeds.
+
+## 0.30.0 - 2026-09-06
+
+### Added
+
+- Added individual and all-upcoming UFC event calendar downloads with fixed MST (UTC−7) start times, card segment schedules, venue details, and links back to picks.
+- Included all-day time-TBD placeholders for upcoming events without confirmed times; excluded past and completed events from exports.
+
 ## 0.29.4 - 2026-09-04
 
 ### Fixed

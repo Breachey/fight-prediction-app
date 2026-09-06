@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const { createCalendarFeedHandler } = require('./lib/calendarFeed');
 const { spawn } = require('child_process');
 require('dotenv').config();
 const {
@@ -4076,6 +4077,9 @@ app.get('/leaderboard/monthly', async (req, res) => {
     res.status(500).json({ error: 'Failed to process monthly leaderboard' });
   }
 });
+
+// Public read-only feed: calendar providers refresh without an app login.
+app.get('/calendar/ufc.ics', createCalendarFeedHandler({ supabase }));
 
 // Get all events
 app.get('/events', async (req, res) => {

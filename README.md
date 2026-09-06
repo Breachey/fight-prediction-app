@@ -200,3 +200,14 @@ At a glance:
 Fight Picks was created by Brandon Breach and Paul Ruggiero.
 
 For questions, contact [breachey@gmail.com](mailto:breachey@gmail.com).
+
+
+## UFC calendar subscription
+
+The Events section includes **Subscribe to UFC calendar**. Open the calendar app link, or copy the subscription URL into a calendar's URL subscription feature. Google Calendar supports **Other calendars → + → From URL** on desktop; Outlook supports **Add calendar → Subscribe from web**. Importing a downloaded file does not create a subscription.
+
+The public server endpoint is `GET /calendar/ufc.ics`. It requires no login, contains only public event schedule/venue information, and reads the current app data. It includes all future UFC events and 90 days of recent history (including completed events), with stable UIDs so schedule edits and time-TBD updates keep the same identity. MST is fixed UTC−7 year-round. Calendar apps may display the equivalent time in their own configured timezone.
+
+The feed caches responses for five minutes and suggests hourly refreshes; each calendar provider controls its actual refresh schedule. Database errors return HTTP 503 instead of a partial calendar. Individual event downloads remain available.
+
+Deploy both the server and client for this feature. The client's existing `VITE_API_URL` must point to the publicly reachable HTTPS server; its `/calendar/ufc.ics` URL must be reachable without deployment protection or login. A localhost URL can be used for development but cannot be fetched by hosted calendar providers. Calendar serialization is shared from `Server/lib/eventCalendar.mjs`, so client builds require the repository checkout including `Server/lib`.

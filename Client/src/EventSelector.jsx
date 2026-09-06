@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, Save } from 'lucide-react';
+import { CalendarPlus, RefreshCw, Save } from 'lucide-react';
 import './EventSelector.css';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
@@ -8,6 +8,7 @@ import {
   hasActiveAdminSession,
 } from './utils/adminSession';
 import ConfirmDialog from './components/ConfirmDialog';
+import { downloadEventCalendar, getUpcomingCalendarEvents } from './utils/eventCalendar';
 
 const areEventIdsEqual = (a, b) => String(a) === String(b);
 
@@ -299,6 +300,26 @@ function EventSelector({
   onFightCardImportComplete,
 }) {
   const [allEvents, setAllEvents] = useState([]);
+  const [calendarSubscriptionOpen, setCalendarSubscriptionOpen] = useState(false);
+  const calendarFeedUrl = `${API_URL.replace(/\/$/, '')}/calendar/ufc.ics`;
+  const calendarSubscribeUrl = calendarFeedUrl.replace(/^https?:/, 'webcal:');
+  const copyCalendarUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(calendarFeedUrl);
+      setCalendarFeedback('Subscription URL copied. Paste it into your calendar’s subscribe-from-URL option.');
+    } catch {
+      setCalendarFeedback('Select and copy the subscription URL below.');
+    }
+  };
+  const [calendarFeedback, setCalendarFeedback] = useState('');
+  const exportCalendar = (calendarEvents) => {
+    try {
+      downloadEventCalendar(calendarEvents);
+      setCalendarFeedback('Calendar file downloaded. Open or import it in your calendar app.');
+    } catch (err) {
+      setCalendarFeedback(err.message || 'Calendar download failed. Please try again.');
+    }
+  };
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeSeasonYear, setActiveSeasonYear] = useState(null);
@@ -1568,6 +1589,25 @@ function EventSelector({
   return (
     <>
       <h2 className="app-section-heading event-selector-heading">Events</h2>
+      <div className="event-calendar-actions">
+        <button type="button" onClick={() => setCalendarSubscriptionOpen(open => !open)} aria-expanded={calendarSubscriptionOpen} aria-controls="calendar-subscription">
+          <CalendarPlus size={16} aria-hidden="true" /> Subscribe to UFC calendar
+        </button>
+        <span>MST (UTC−7) · Updates automatically</span>
+      </div>
+      {calendarSubscriptionOpen && (
+        <div id="calendar-subscription" className="event-calendar-subscription">
+          <div className="event-calendar-actions">
+            <a href={calendarSubscribeUrl}>Open calendar app</a>
+            <button type="button" onClick={copyCalendarUrl}>Copy subscription URL</button>
+          </div>
+          <label htmlFor="calendar-feed-url">Subscription URL</label>
+          <input id="calendar-feed-url" readOnly value={calendarFeedUrl} onFocus={event => event.target.select()} />
+          <p>Subscribe once for new events and schedule changes. Your calendar controls how soon updates appear.</p>
+          <p>Google Calendar: on a computer, choose Other calendars → + → From URL. Outlook: Add calendar → Subscribe from web. Paste this URL to subscribe.</p>
+        </div>
+      )}
+      <div className="event-calendar-feedback" role="status">{calendarFeedback}</div>
       <div className="event-season-nav" role="group" aria-label="Season navigation">
         <button
           type="button"
@@ -1661,6 +1701,13 @@ function EventSelector({
                 <div key={line} className="event-admin-panel__time">{line}</div>
               ))}
               <div className="event-admin-panel__location">{selectedEventLocationDisplay}</div>
+              {getUpcomingCalendarEvents([selectedEvent]).length > 0 && (
+                <div className="event-calendar-actions">
+                  <button type="button" onClick={() => exportCalendar([selectedEvent])}>
+                    <CalendarPlus size={16} aria-hidden="true" /> Add event to calendar
+                  </button>
+                </div>
+              )}
               {userType === 'admin' && (
                 <>
                   <div className={`event-admin-session-indicator${canManageAdminActions ? ' active' : ''}`}>
