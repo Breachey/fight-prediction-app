@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.31.1 - 2026-09-07
+
+### Fixed
+
+- Added bounded retries for transient UFC event and primary fighter-profile requests, and continued candidate matching after individual source failures.
+- Validated UFC event identity and fight-card structure before enrichment, with fallback to the second endpoint for malformed or incomplete responses.
+- Preserved validated primary stats and nonblank cached values during Tapology fallback; stopped counting empty profile parses as successful refreshes.
+- Prevented null optional biography and location data from crashing fight-card exports.
+
+### Added
+
+- Saved fighter source provenance and failure diagnostics in scraper metadata, documented the source chain and remaining limitations, and added scraping reliability regression tests.
+
 ## 0.31.0 - 2026-09-06
 
 ### Added
