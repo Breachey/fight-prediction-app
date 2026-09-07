@@ -57,7 +57,9 @@ def main() -> None:
     with redirect_stdout(sys.stderr):
         with build_ufc_session() as session:
             try:
-                event = fetch_ufc_event(args.event_id, session=session, timeout=args.timeout)
+                event = fetch_ufc_event(
+                    args.event_id, session=session, timeout=args.timeout, require_fight_card=True,
+                )
             except RuntimeError as err:
                 print(str(err), file=sys.stderr)
                 sys.exit(1)

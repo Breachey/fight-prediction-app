@@ -16,6 +16,8 @@ import requests
 from bs4 import BeautifulSoup
 import certifi
 
+from http_fetch import get_with_retry
+
 from fighter_profile_sources import (
     PROFILE_FIELDS as VALIDATED_PROFILE_FIELDS,
     RateLimiter as ProfileSourceRateLimiter,
@@ -1151,27 +1153,64 @@ def parse_start_time(value: Optional[str]) -> Optional[datetime.datetime]:
         return None
 
 
-def fetch_ufc_event(event_id: int, session: requests.Session, timeout: float) -> Dict:
-    last_error: Optional[Exception] = None
+def validate_ufc_event(payload: object, event_id: int, require_fight_card: bool = False) -> Dict:
+    event = payload.get("LiveEventDetail") if isinstance(payload, dict) else None
+    if not isinstance(event, dict) or str(event.get("EventId")) != str(event_id):
+        raise ValueError(f"Response does not contain requested UFC event {event_id}")
+    if not isinstance(event.get("Name"), str) or not event["Name"].strip():
+        raise ValueError("Event name is missing")
+    if not require_fight_card:
+        return event
+    fights = event.get("FightCard")
+    if not isinstance(fights, list) or not fights:
+        raise ValueError("Event has no published fight card")
+    fight_ids, fighter_ids = set(), set()
+    for fight in fights:
+        if not isinstance(fight, dict):
+            raise ValueError("Fight card contains an invalid fight")
+        fight_id = str(fight.get("FightId", ""))
+        if not re.fullmatch(r"[1-9]\d*", fight_id) or fight_id in fight_ids:
+            raise ValueError(f"Invalid or duplicate FightId: {fight_id}")
+        fight_ids.add(fight_id)
+        fighters = fight.get("Fighters")
+        if not isinstance(fighters, list) or len(fighters) != 2:
+            raise ValueError(f"Fight {fight_id} must contain two fighters")
+        corners = []
+        for fighter in fighters:
+            if not isinstance(fighter, dict):
+                raise ValueError(f"Fight {fight_id} contains an invalid fighter")
+            fighter_id = str(fighter.get("FighterId", ""))
+            if not re.fullmatch(r"[1-9]\d*", fighter_id) or fighter_id in fighter_ids:
+                raise ValueError(f"Invalid or duplicate FighterId: {fighter_id}")
+            fighter_ids.add(fighter_id)
+            name = fighter.get("Name")
+            if not isinstance(name, dict) or not any(
+                isinstance(name.get(key), str) and name[key].strip()
+                for key in ("FirstName", "LastName")
+            ):
+                raise ValueError(f"Fighter {fighter_id} has no name")
+            corners.append(fighter.get("Corner"))
+        if "Red" not in corners or "Blue" not in corners:
+            raise ValueError(f"Fight {fight_id} must contain Red and Blue corners")
+    return event
+
+
+def fetch_ufc_event(
+    event_id: int, session: requests.Session, timeout: float,
+    require_fight_card: bool = False,
+) -> Dict:
+    errors = []
     for domain in UFC_DOMAINS:
         url = f"https://{domain}/api/v3/event/live/{event_id}.json"
         try:
-            response = session.get(url, timeout=timeout)
-            if response.status_code == 404:
-                continue
+            response = get_with_retry(session, url, timeout=timeout)
             raise_for_status_with_context(response, url)
-            payload = response.json()
-        except (requests.RequestException, ValueError) as err:
-            last_error = err
+            return validate_ufc_event(response.json(), event_id, require_fight_card)
+        except (requests.RequestException, ValueError, RuntimeError) as err:
+            errors.append(f"{domain}: {err}")
             continue
 
-        event = payload.get("LiveEventDetail")
-        if isinstance(event, dict) and event:
-            return event
-
-    if last_error:
-        raise RuntimeError(f"Unable to fetch UFC event {event_id}: {last_error}") from last_error
-    raise RuntimeError(f"UFC event {event_id} was not found on either API domain.")
+    raise RuntimeError(f"Unable to fetch UFC event {event_id}: {'; '.join(errors)}")
 
 
 def strip_name_suffix(value: str) -> str:
@@ -2882,6 +2921,7 @@ def fetch_tapology_profiles_for_enrichment(
     timeout: float,
     tapology_delay_seconds: float,
     tapology_profile_limit: int,
+    primary_enrichment: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Tuple[int, int, Dict[str, Dict[str, str]]]:
     profile_count = 0
     profile_attempt_count = 0
@@ -2922,9 +2962,22 @@ def fetch_tapology_profiles_for_enrichment(
             }
             continue
 
-        fighter_profile = parse_tapology_fighter_profile(fighter_html)
+        fighter_profile = {
+            field: value for field, value in parse_tapology_fighter_profile(fighter_html).items()
+            if cache_value_to_csv(value)
+        }
+        if not fighter_profile:
+            error = "Tapology page contained no recognized fighter profile fields"
+            print(f"Unable to parse Tapology fighter page {fighter_url}: {error}")
+            failed_profiles[fighter_key] = {"TapologyFighterURL": fighter_url, "error": error}
+            continue
+        # Live values can refresh cached data, but the validated primary source
+        # retains priority (including zero values) in the exported card.
         fighter_data.update(fighter_profile)
-        enrichment[fighter_key] = fighter_data
+        enrichment[fighter_key] = merge_tapology_enrichment(
+            {fighter_key: (primary_enrichment or {}).get(fighter_key, {})},
+            {fighter_key: fighter_data},
+        )[fighter_key]
         refreshed_profiles[fighter_key] = {
             "TapologyFighterURL": fighter_url,
             "TapologyMatchConfidence": fighter_data.get("TapologyMatchConfidence", ""),
@@ -2977,6 +3030,7 @@ def fetch_tapology_fighter_enrichment(
             timeout=timeout,
             tapology_delay_seconds=tapology_delay_seconds,
             tapology_profile_limit=tapology_profile_limit,
+            primary_enrichment=initial_enrichment,
         )
         if profile_count:
             print(f"Fetched {profile_count} Tapology fighter profiles from cached URLs.")
@@ -3040,6 +3094,7 @@ def fetch_tapology_fighter_enrichment(
         timeout=timeout,
         tapology_delay_seconds=tapology_delay_seconds,
         tapology_profile_limit=tapology_profile_limit,
+        primary_enrichment=initial_enrichment,
     )
 
     print(
@@ -3082,6 +3137,7 @@ def fetch_validated_fighter_source_enrichment(
     timeout: float,
     sherdog_delay_seconds: float,
     ufc_delay_seconds: float,
+    diagnostics_by_fighter: Optional[Dict[str, object]] = None,
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
     """Fetch the non-Tapology source chain once for every event fighter."""
     enrichment: Dict[str, Dict[str, str]] = {}
@@ -3153,6 +3209,12 @@ def fetch_validated_fighter_source_enrichment(
                     "UFCRank": cache_value_to_csv(official.get("Rank")),
                 }
                 diagnostics = result.get("diagnostics") or {}
+                if diagnostics_by_fighter is not None:
+                    diagnostics_by_fighter[str(fighter.get("FighterId"))] = {
+                        "name": fighter_name,
+                        "field_sources": result.get("field_sources") or {},
+                        **diagnostics,
+                    }
                 print(
                     f"Fighter sources {completed}/{total}: {fighter_name} "
                     f"[{result.get('source', 'none')}] "
@@ -3178,8 +3240,8 @@ def fetch_validated_fighter_source_enrichment(
 
 
 def build_event_constants(event: Dict) -> Dict[str, Optional[str]]:
-    organization = event.get("Organization", {})
-    location = event.get("Location", {})
+    organization = event.get("Organization") or {}
+    location = event.get("Location") or {}
     return {
         "Event": event.get("Name"),
         "EventId": event.get("EventId"),
@@ -3254,11 +3316,11 @@ def build_row(
     fighter_style_lookup: Dict[str, Dict[str, str]],
 ) -> Dict[str, Optional[str]]:
     name_info = fighter.get("Name", {})
-    record = fighter.get("Record", {})
-    born = fighter.get("Born", {})
-    fighting_out = fighter.get("FightingOutOf", {})
+    record = fighter.get("Record") or {}
+    born = fighter.get("Born") or {}
+    fighting_out = fighter.get("FightingOutOf") or {}
     referee = fight.get("Referee", {}) or {}
-    weight_classes = fighter.get("WeightClasses", [])
+    weight_classes = fighter.get("WeightClasses") or []
     possible_rounds = extract_possible_rounds(fight)
     is_title_fight, title_fight_name = extract_title_fight_details(fight)
 
@@ -3450,7 +3512,9 @@ def main() -> None:
     with build_ufc_session() as ufc_session, build_tapology_session() as tapology_session:
         emit_scrape_progress("event", "Loading UFC event", f"Event {args.event_id}", percent=5)
         try:
-            event = fetch_ufc_event(args.event_id, session=ufc_session, timeout=args.timeout)
+            event = fetch_ufc_event(
+                args.event_id, session=ufc_session, timeout=args.timeout, require_fight_card=True,
+            )
         except RuntimeError as err:
             print(str(err), file=sys.stderr)
             sys.exit(1)
@@ -3465,12 +3529,14 @@ def main() -> None:
         )
         fighter_style_lookup = fetch_fighter_style_lookup(timeout=args.timeout)
         tapology_cache_lookup = fetch_tapology_cache_lookup(timeout=args.timeout)
+        fighter_source_diagnostics: Dict[str, object] = {}
         primary_fighters, ufc_profiles = fetch_validated_fighter_source_enrichment(
             event=event,
             ufc_session=ufc_session,
             timeout=args.timeout,
             sherdog_delay_seconds=args.sherdog_delay_seconds,
             ufc_delay_seconds=args.ufc_profile_delay_seconds,
+            diagnostics_by_fighter=fighter_source_diagnostics,
         )
         emit_scrape_progress(
             "fallback",
@@ -3524,6 +3590,7 @@ def main() -> None:
             json.dump(
                 {
                     "event_id": event.get("EventId"),
+                    "fighter_sources": fighter_source_diagnostics,
                     "tapology_event_url": tapology_event.get("TapologyEventURL", ""),
                     "tapology_event_image_url": tapology_event.get(
                         "TapologyEventImageURL", ""

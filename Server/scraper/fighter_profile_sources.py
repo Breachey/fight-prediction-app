@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
+from http_fetch import get_with_retry
+
 
 SHERDOG_SEARCH_URL = "https://www.sherdog.com/stats/fightfinder"
 WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
@@ -86,7 +88,9 @@ class RateLimiter:
         if delay > 0:
             time.sleep(delay)
         try:
-            return session.get(url, timeout=timeout, **kwargs)
+            return get_with_retry(
+                session, url, timeout=timeout, minimum_delay=self.interval_seconds, **kwargs,
+            )
         finally:
             self.next_allowed = time.monotonic() + self.interval_seconds
 
@@ -225,17 +229,25 @@ def fetch_sherdog_profile(
     normalized = normalize_name(fighter_name)
     search_terms = [fighter_name, *sorted(KNOWN_NAME_ALIASES.get(normalized.replace(" ", ""), set()))]
     candidates: Dict[str, int] = {}
+    tested = []
     for search_term in search_terms:
-        response = limiter.get(
-            session, SHERDOG_SEARCH_URL, timeout,
-            params={"SearchTxt": search_term},
-        )
-        response.raise_for_status()
+        try:
+            response = limiter.get(
+                session, SHERDOG_SEARCH_URL, timeout,
+                params={"SearchTxt": search_term},
+            )
+            response.raise_for_status()
+        except requests.RequestException as error:
+            tested.append({"search_term": search_term, "error": str(error)})
+            continue
         for score, url in _sherdog_candidates(response.text, response.url, fighter_name):
             candidates[url] = max(score, candidates.get(url, 0))
-    tested = []
     for initial_score, url in sorted(((score, url) for url, score in candidates.items()), reverse=True)[:12]:
-        candidate = limiter.get(session, url, timeout)
+        try:
+            candidate = limiter.get(session, url, timeout)
+        except requests.RequestException as error:
+            tested.append({"url": url, "error": str(error)})
+            continue
         if candidate.status_code != 200:
             tested.append({"url": url, "http_status": candidate.status_code})
             continue
@@ -411,7 +423,7 @@ def fetch_wikipedia_profile(
     session: Optional[requests.Session] = None,
 ) -> Tuple[Dict[str, object], Dict[str, object]]:
     session = session or build_session()
-    response = session.get(WIKIPEDIA_API_URL, params={
+    response = get_with_retry(session, WIKIPEDIA_API_URL, params={
         "action": "query", "list": "search", "srsearch": f'"{fighter_name}" mixed martial artist',
         "format": "json", "srlimit": 8,
     }, timeout=timeout)
@@ -422,11 +434,15 @@ def fetch_wikipedia_profile(
         if name_score(fighter_name, title) < 82:
             tested.append({"title": title, "identity_ok": False})
             continue
-        page = session.get(WIKIPEDIA_API_URL, params={
-            "action": "parse", "page": title, "prop": "text", "format": "json", "redirects": "1",
-        }, timeout=timeout)
-        page.raise_for_status()
-        profile = parse_wikipedia_profile(page.json().get("parse", {}).get("text", {}).get("*", ""))
+        try:
+            page = get_with_retry(session, WIKIPEDIA_API_URL, params={
+                "action": "parse", "page": title, "prop": "text", "format": "json", "redirects": "1",
+            }, timeout=timeout)
+            page.raise_for_status()
+            profile = parse_wikipedia_profile(page.json().get("parse", {}).get("text", {}).get("*", ""))
+        except (requests.RequestException, ValueError) as error:
+            tested.append({"title": title, "error": str(error)})
+            continue
         record_ok = (
             expected_wins is not None and expected_losses is not None
             and profile.get("Record_Wins") == int(expected_wins)
