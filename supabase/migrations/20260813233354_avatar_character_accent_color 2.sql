@@ -1,0 +1,89 @@
+alter table public.users
+drop constraint if exists users_avatar_config_check;
+
+alter table public.users
+alter column avatar_config set default jsonb_build_object(
+  'character', (array['squid', 'kirby', 'cloudee', 'red-panda', 'ogre', 'golden-retriever'])[1 + floor(random() * 6)::integer],
+  'color', (array['#2B31B2', '#E9170D', '#F99EAD', '#FCFBFD', '#1E3A8A', '#7F1D1D', '#334155'])[1 + floor(random() * 7)::integer],
+  'eyeColor', '#050000',
+  'patternColor', '#050000',
+  'accentColor', '#050000',
+  'pattern', (array['solid', 'spots', 'stripes', 'split', 'checker', 'drips', 'waves', 'many-eyes'])[1 + floor(random() * 8)::integer],
+  'eyes', (array[
+    'oval', 'round', 'sleepy', 'focus', 'tiny', 'wide', 'side-eye', 'skeptical', 'determined',
+    'curious', 'joy', 'angry', 'heart', 'stars', 'dead', 'spiral', 'teary', 'possessed'
+  ])[1 + floor(random() * 18)::integer],
+  'width', 70 + floor(random() * 61)::integer,
+  'height', 75 + floor(random() * 51)::integer,
+  'roundness', 10 + floor(random() * 91)::integer,
+  'tentacleSpread', 70 + floor(random() * 61)::integer,
+  'tentacleLength', 70 + floor(random() * 56)::integer,
+  'eyeSpacing', 70 + floor(random() * 61)::integer,
+  'size', 80 + floor(random() * 41)::integer,
+  'motion', 20 + floor(random() * 81)::integer
+);
+
+update public.users
+set avatar_config = jsonb_set(
+  avatar_config,
+  '{accentColor}',
+  to_jsonb(coalesce(avatar_config ->> 'patternColor', '#050000')),
+  true
+)
+where not (avatar_config ? 'accentColor');
+
+alter table public.users
+add constraint users_avatar_config_check check (
+  jsonb_typeof(avatar_config) = 'object'
+  and avatar_config ?& array[
+    'color', 'accentColor', 'pattern', 'eyes', 'width', 'height', 'roundness',
+    'tentacleSpread', 'tentacleLength', 'eyeSpacing', 'size', 'motion'
+  ]
+  and avatar_config - array[
+    'character', 'color', 'eyeColor', 'patternColor', 'accentColor', 'pattern', 'eyes',
+    'width', 'height', 'roundness', 'tentacleSpread', 'tentacleLength',
+    'eyeSpacing', 'size', 'motion'
+  ]::text[] = '{}'::jsonb
+  and (
+    not (avatar_config ? 'character')
+    or avatar_config ->> 'character' in (
+      'squid', 'kirby', 'cloudee', 'red-panda', 'ogre', 'golden-retriever'
+    )
+  )
+  and avatar_config ->> 'color' ~ '^#[0-9A-Fa-f]{6}$'
+  and (
+    not (avatar_config ? 'eyeColor')
+    or avatar_config ->> 'eyeColor' ~ '^#[0-9A-Fa-f]{6}$'
+  )
+  and (
+    not (avatar_config ? 'patternColor')
+    or avatar_config ->> 'patternColor' ~ '^#[0-9A-Fa-f]{6}$'
+  )
+  and (
+    not (avatar_config ? 'accentColor')
+    or avatar_config ->> 'accentColor' ~ '^#[0-9A-Fa-f]{6}$'
+  )
+  and avatar_config ->> 'pattern' in (
+    'solid', 'spots', 'stripes', 'split', 'checker', 'drips', 'waves', 'many-eyes'
+  )
+  and avatar_config ->> 'eyes' in (
+    'oval', 'round', 'sleepy', 'focus', 'tiny', 'wide', 'side-eye', 'skeptical', 'determined',
+    'curious', 'joy', 'angry', 'heart', 'stars', 'dead', 'spiral', 'teary', 'possessed'
+  )
+  and jsonb_typeof(avatar_config -> 'width') = 'number'
+  and (avatar_config ->> 'width')::integer between 70 and 130
+  and jsonb_typeof(avatar_config -> 'height') = 'number'
+  and (avatar_config ->> 'height')::integer between 75 and 125
+  and jsonb_typeof(avatar_config -> 'roundness') = 'number'
+  and (avatar_config ->> 'roundness')::integer between 10 and 100
+  and jsonb_typeof(avatar_config -> 'tentacleSpread') = 'number'
+  and (avatar_config ->> 'tentacleSpread')::integer between 70 and 130
+  and jsonb_typeof(avatar_config -> 'tentacleLength') = 'number'
+  and (avatar_config ->> 'tentacleLength')::integer between 70 and 125
+  and jsonb_typeof(avatar_config -> 'eyeSpacing') = 'number'
+  and (avatar_config ->> 'eyeSpacing')::integer between 70 and 130
+  and jsonb_typeof(avatar_config -> 'size') = 'number'
+  and (avatar_config ->> 'size')::integer between 80 and 120
+  and jsonb_typeof(avatar_config -> 'motion') = 'number'
+  and (avatar_config ->> 'motion')::integer between 0 and 100
+);
