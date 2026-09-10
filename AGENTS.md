@@ -29,6 +29,15 @@ These instructions apply to the entire repository.
   - `npm run release:major`
 - The version number in `CHANGELOG.md` must match the version committed in `Client/package.json`.
 
+## GitHub Change Messages
+
+- Before creating a commit or pull request, review the complete relevant diff and base the title and description on the changes actually included.
+- Write a specific, plain-language title that states the primary outcome or user-visible purpose. Keep implementation details out of the title unless they are essential to understanding the change.
+- Do not use generic titles such as `Update files`, `Fix issues`, `Various changes`, `Improvements`, or `Updates`.
+- When a commit or pull request contains several related changes, summarize their shared purpose in the title and list the meaningful individual changes in the description.
+- Use the description for concise technical detail, verification performed, important limitations, and any migration or deployment notes.
+- Example: prefer `Fix architecture diagram rendering` over `Update architecture.md` or `Fix Mermaid parser token error`.
+
 ## Before Finishing
 
 - Confirm `CHANGELOG.md`, `Client/package.json`, `Client/package-lock.json`, and the client footer version display all agree on the version for the completed change.

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.32.3 - 2026-09-10
+
+### Changed
+
+- Added repository guidance requiring specific, plain-language GitHub change titles and informative descriptions based on the actual diff.
+
+## 0.32.2 - 2026-09-10
+
+### Fixed
+
+- Quoted architecture diagram labels so GitHub can render the Mermaid flowchart without a parse error.
+
 ## 0.32.1 - 2026-09-10
 
 ### Fixed
