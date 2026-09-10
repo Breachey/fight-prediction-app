@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.32.1 - 2026-09-10
+
+### Fixed
+
+- Reduced scheduled event-discovery timeouts with bounded concurrent scans, a smaller lookback and miss window, and a ten-minute discovery budget; deferred optional posters to card enrichment.
+- Included recent scan progress and endpoint errors in discovery timeout reports.
+
+## 0.32.0 - 2026-09-08
+
+### Changed
+
+- Unified the duplicate admin fighter-stat and imported-card editors under Edit Fight Card, with shared red/blue fighter panels and editable rank.
+- Added field-level All, Missing, and Changed filters; newly filled missing fields remain visible until saved.
+
+### Added
+
+- Added Edit Fighter Details under each fight's admin controls, with saves scoped to that fight, source refreshes, validation, and unsaved-change protection.
+- Load the large editor only when admin tools need it.
+
+### Fixed
+
+- Refresh displayed fight cards after saved editor changes and fighter-source refreshes, and preserve typed edits when saving fails.
+
 ## 0.31.1 - 2026-09-07
 
 ### Fixed

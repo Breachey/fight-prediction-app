@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
-import { CalendarPlus, RefreshCw, Save } from 'lucide-react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { CalendarPlus, RefreshCw } from 'lucide-react';
 import './EventSelector.css';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
@@ -8,7 +8,10 @@ import {
   hasActiveAdminSession,
 } from './utils/adminSession';
 import ConfirmDialog from './components/ConfirmDialog';
+import { buildManualPreviewUpdates, countManualPreviewValues, getEditorValue, normalizeStatEditorValue, isValidStatEditorValue, hasUnsavedEditorChanges, hasInvalidEditorValues } from './utils/fightCardEditor';
 import { downloadEventCalendar, getUpcomingCalendarEvents } from './utils/eventCalendar';
+
+const FighterDetailsEditor = lazy(() => import('./components/FighterDetailsEditor'));
 
 const areEventIdsEqual = (a, b) => String(a) === String(b);
 
@@ -167,83 +170,6 @@ const formatScrapeFields = (fields) => (fields || [])
   .map((field) => SCRAPE_FIELD_LABELS[field] || field)
   .join(', ');
 
-const MANUAL_METHOD_STAT_FIELDS = [
-  ['KO_TKO_Wins', 'KO/TKO W'],
-  ['KO_TKO_Losses', 'KO/TKO L'],
-  ['Submission_Wins', 'Sub W'],
-  ['Submission_Losses', 'Sub L'],
-  ['Decision_Wins', 'Dec W'],
-  ['Decision_Losses', 'Dec L'],
-];
-const FIGHT_CARD_EDITOR_FIELDS = [
-  ['odds', 'Odds', 'odds'],
-  ['TapologyFighterURL', 'Tapology URL', 'url'],
-  ['style', 'Style', 'text'],
-  ['Streak', 'Streak', 'signed-number'],
-  ...MANUAL_METHOD_STAT_FIELDS.map(([field, label]) => [field, label, 'number']),
-];
-const ADMIN_STAT_EDITOR_FIELDS = FIGHT_CARD_EDITOR_FIELDS;
-
-const normalizeStatEditorValue = (value) => (
-  value === null || value === undefined ? '' : String(value)
-);
-
-const isValidStatEditorValue = (type, value) => {
-  if (!value) return true;
-  if (type === 'number') return /^\d+$/.test(value);
-  if (type === 'signed-number') return /^-?\d+$/.test(value);
-  if (type === 'odds') return /^[+-]?\d+$/.test(value);
-  if (type === 'url') return /^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//i.test(value);
-  return true;
-};
-
-const buildManualPreviewUpdates = (editableRows, edits) => {
-  const updates = {};
-
-  (editableRows || []).forEach((row) => {
-    const rowEdits = edits?.[row.rowKey];
-    if (!rowEdits) return;
-
-    const patch = {};
-    FIGHT_CARD_EDITOR_FIELDS.forEach(([field, , type]) => {
-      if (!Object.prototype.hasOwnProperty.call(rowEdits, field)) return;
-
-      const originalValue = normalizeStatEditorValue(row[field]).trim();
-      const editedValue = normalizeStatEditorValue(rowEdits[field]).trim();
-      if (originalValue === editedValue || !isValidStatEditorValue(type, editedValue)) return;
-      patch[field] = editedValue === '' ? null : editedValue;
-    });
-
-    if (Object.keys(patch).length > 0) {
-      updates[row.rowKey] = patch;
-    }
-  });
-
-  return updates;
-};
-
-const countManualPreviewValues = (editableRows, edits) => (
-  Object.values(buildManualPreviewUpdates(editableRows, edits))
-    .reduce((count, patch) => count + Object.keys(patch).length, 0)
-);
-
-const countMissingEditablePreviewValues = (editableRows) => (
-  (editableRows || []).reduce((count, row) => count + FIGHT_CARD_EDITOR_FIELDS.reduce(
-    (fieldCount, [field]) => fieldCount + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
-    0
-  ), 0)
-);
-
-const rowHasMissingEditorValues = (row) => FIGHT_CARD_EDITOR_FIELDS.some(
-  ([field]) => !normalizeStatEditorValue(row?.[field]).trim()
-);
-
-const getEditorValue = (edits, rowId, row, field) => (
-  Object.prototype.hasOwnProperty.call(edits?.[rowId] || {}, field)
-    ? edits[rowId][field]
-    : normalizeStatEditorValue(row?.[field])
-);
-
 const omitEditRows = (edits, rowIds) => {
   const omittedIds = new Set(rowIds.map(String));
   return Object.fromEntries(
@@ -266,31 +192,6 @@ const omitEditFields = (edits, rowFields) => {
 
   return nextEdits;
 };
-
-const buildFightCardStatUpdates = (rows, edits) => (
-  (rows || []).reduce((updates, row) => {
-    const rowEdits = edits?.[row.id];
-    if (!rowEdits) return updates;
-
-    const values = {};
-    ADMIN_STAT_EDITOR_FIELDS.forEach(([field, , type]) => {
-      if (!Object.prototype.hasOwnProperty.call(rowEdits, field)) return;
-
-      const originalValue = normalizeStatEditorValue(row[field]).trim();
-      const editedValue = normalizeStatEditorValue(rowEdits[field]).trim();
-      if (originalValue === editedValue) return;
-
-      if (!isValidStatEditorValue(type, editedValue)) return;
-      values[field] = editedValue === '' ? null : editedValue;
-    });
-
-    if (Object.keys(values).length > 0) {
-      updates.push({ id: row.id, values });
-    }
-
-    return updates;
-  }, [])
-);
 
 function EventSelector({
   onEventSelect,
@@ -340,24 +241,16 @@ function EventSelector({
   const [importingEventId, setImportingEventId] = useState(null);
   const [refreshingOddsEventId, setRefreshingOddsEventId] = useState(null);
   const [discoveringUfcEvents, setDiscoveringUfcEvents] = useState(false);
-  const [editingFightStatsEventId, setEditingFightStatsEventId] = useState(null);
-  const [loadingFightStatsEventId, setLoadingFightStatsEventId] = useState(null);
   const [openingImportedEditorEventId, setOpeningImportedEditorEventId] = useState(null);
-  const [savingFightStatsEventId, setSavingFightStatsEventId] = useState(null);
-  const [savingFightStatsRowId, setSavingFightStatsRowId] = useState(null);
   const [savingPreviewProgressRowKey, setSavingPreviewProgressRowKey] = useState(null);
-  const [scrapingTapologyRowId, setScrapingTapologyRowId] = useState(null);
   const [scrapingPreviewTapologyRowKeys, setScrapingPreviewTapologyRowKeys] = useState([]);
   const [previewTapologyScrapeProgress, setPreviewTapologyScrapeProgress] = useState(null);
   const [fightCardScrapeLog, setFightCardScrapeLog] = useState([]);
   const [loadingFightCardScrapeLog, setLoadingFightCardScrapeLog] = useState(false);
-  const [fightStatsRows, setFightStatsRows] = useState([]);
-  const [fightStatsEdits, setFightStatsEdits] = useState({});
   const [fightCardFeedback, setFightCardFeedback] = useState(null);
   const [fightCardPreview, setFightCardPreview] = useState(null);
   const [fightCardPreviewEdits, setFightCardPreviewEdits] = useState({});
   const [previewEditorFilter, setPreviewEditorFilter] = useState('missing');
-  const [fightStatsEditorFilter, setFightStatsEditorFilter] = useState('all');
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
   const [adminToolsOpen, setAdminToolsOpen] = useState(false);
   const [adminConfirmation, setAdminConfirmation] = useState(null);
@@ -613,35 +506,15 @@ function EventSelector({
   const selectedEventLocationDisplay = selectedEventLocationStr || 'Location TBD';
   const canImportFightCard = Boolean(fightCardPreview?.previewToken)
     && !fightCardPreview?.isImported
+    && !hasInvalidEditorValues(fightCardPreview?.editableRows || [], fightCardPreviewEdits)
     && (fightCardPreview?.blockers?.length || 0) === 0;
   const hasFightCardPreview = Boolean(fightCardPreview);
-  const isEditingSelectedFightStats = Boolean(selectedEvent?.id)
-    && editingFightStatsEventId === selectedEvent.id;
-  const fightStatsUpdates = useMemo(
-    () => buildFightCardStatUpdates(fightStatsRows, fightStatsEdits),
-    [fightStatsRows, fightStatsEdits]
-  );
-  const fightStatsUpdateCount = fightStatsUpdates.length;
-  const fightStatsUpdateRowIds = useMemo(
-    () => new Set(fightStatsUpdates.map((update) => String(update.id))),
-    [fightStatsUpdates]
-  );
-  const visibleFightStatsRows = useMemo(() => (
-    fightStatsRows.filter((row) => {
-      if (fightStatsEditorFilter === 'missing') return rowHasMissingEditorValues(row);
-      if (fightStatsEditorFilter === 'changed') return fightStatsUpdateRowIds.has(String(row.id));
-      return true;
-    })
-  ), [fightStatsRows, fightStatsEditorFilter, fightStatsUpdateRowIds]);
   const isFightCardActionBusy = selectedEvent
     ? previewingEventId === selectedEvent.id
       || importingEventId === selectedEvent.id
       || refreshingOddsEventId === selectedEvent.id
-      || loadingFightStatsEventId === selectedEvent.id
       || openingImportedEditorEventId === selectedEvent.id
-      || savingFightStatsEventId === selectedEvent.id
       || savingPreviewProgressRowKey !== null
-      || scrapingTapologyRowId !== null
       || scrapingPreviewTapologyRowKeys.length > 0
       || previewTapologyScrapeProgress !== null
     : false;
@@ -698,15 +571,7 @@ function EventSelector({
     () => countManualPreviewValues(editablePreviewRows, fightCardPreviewEdits),
     [editablePreviewRows, fightCardPreviewEdits]
   );
-  const missingEditablePreviewValueCount = useMemo(
-    () => countMissingEditablePreviewValues(editablePreviewRows),
-    [editablePreviewRows]
-  );
   const hasManualPreviewUpdates = Object.keys(manualPreviewUpdates).length > 0;
-  const manualPreviewUpdateRowKeys = useMemo(
-    () => new Set(Object.keys(manualPreviewUpdates)),
-    [manualPreviewUpdates]
-  );
   const scrapablePreviewRows = useMemo(() => (
     editablePreviewRows.filter((row) => {
       const tapologyUrl = normalizeStatEditorValue(
@@ -715,24 +580,10 @@ function EventSelector({
       return !tapologyUrl || isValidStatEditorValue('url', tapologyUrl);
     })
   ), [editablePreviewRows, fightCardPreviewEdits]);
-  const visiblePreviewRows = useMemo(() => (
-    editablePreviewRows.filter((row) => {
-      if (previewEditorFilter === 'missing') return rowHasMissingEditorValues(row);
-      if (previewEditorFilter === 'changed') return manualPreviewUpdateRowKeys.has(row.rowKey);
-      return true;
-    })
-  ), [editablePreviewRows, previewEditorFilter, manualPreviewUpdateRowKeys]);
   useEffect(() => {
     if (typeof onSelectedEventChange !== 'function') return;
     onSelectedEventChange(selectedEvent || null);
   }, [selectedEvent, onSelectedEventChange]);
-
-  useEffect(() => {
-    if (!selectedEvent?.id || editingFightStatsEventId === selectedEvent.id) return;
-    setEditingFightStatsEventId(null);
-    setFightStatsRows([]);
-    setFightStatsEdits({});
-  }, [selectedEvent?.id, editingFightStatsEventId]);
 
   useEffect(() => {
     const cardStartTimes = selectedEvent?.card_start_times || {};
@@ -1027,6 +878,8 @@ function EventSelector({
       void executeFinalizeEvent(confirmation.event);
     } else if (confirmation.action === 'import') {
       void executeImportFightCard(confirmation.event);
+    } else if (confirmation.action === 'discard-editor') {
+      closeFightCardEditor();
     }
   };
 
@@ -1118,46 +971,6 @@ function EventSelector({
     }
   };
 
-  const handleToggleFightStatsEditor = async (event) => {
-    if (!event?.id) return;
-
-    if (editingFightStatsEventId === event.id) {
-      setEditingFightStatsEventId(null);
-      setFightStatsRows([]);
-      setFightStatsEdits({});
-      return;
-    }
-
-    setAdminAccessFeedback(null);
-    setFightCardFeedback(null);
-    setLoadingFightStatsEventId(event.id);
-
-    try {
-      const response = await fetchWithAdminSession(`${API_URL}/admin/events/${event.id}/fight-card/stats`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to load fighter stats'));
-      }
-
-      setEditingFightStatsEventId(event.id);
-      setFightStatsRows(payload.rows || []);
-      setFightStatsEdits({});
-      setFightStatsEditorFilter('all');
-    } catch (err) {
-      setFightCardFeedback({
-        type: 'error',
-        message: err.message || 'Failed to load fighter stats'
-      });
-    } finally {
-      setLoadingFightStatsEventId(null);
-    }
-  };
-
   const handleToggleImportedFightCardEditor = async (event) => {
     if (!event?.id) return;
 
@@ -1185,9 +998,6 @@ function EventSelector({
       setFightCardPreview(payload);
       setFightCardPreviewEdits({});
       setPreviewEditorFilter('all');
-      setEditingFightStatsEventId(null);
-      setFightStatsRows([]);
-      setFightStatsEdits({});
       await loadFightCardScrapeLog(event, { silent: true });
       setFightCardFeedback({
         type: 'success',
@@ -1203,138 +1013,19 @@ function EventSelector({
     }
   };
 
-  const handleFightStatsEditChange = (rowId, field, value) => {
-    setFightStatsEdits((current) => ({
-      ...current,
-      [rowId]: {
-        ...(current[rowId] || {}),
-        [field]: value,
-      },
-    }));
-  };
-
-  const handleSaveFightStats = async (event, rowId = null) => {
-    const updatesToSave = rowId === null
-      ? fightStatsUpdates
-      : fightStatsUpdates.filter((update) => String(update.id) === String(rowId));
-    if (!event?.id || updatesToSave.length === 0) return;
-
-    setAdminAccessFeedback(null);
-    setFightCardFeedback(null);
-    setSavingFightStatsEventId(event.id);
-    setSavingFightStatsRowId(rowId);
-
-    try {
-      const response = await fetchWithAdminSession(`${API_URL}/admin/events/${event.id}/fight-card/stats`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ updates: updatesToSave })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to save fighter stats'));
-      }
-
-      const reloadResponse = await fetchWithAdminSession(`${API_URL}/admin/events/${event.id}/fight-card/stats`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      const reloadPayload = await reloadResponse.json().catch(() => ({}));
-      if (!reloadResponse.ok) {
-        throw new Error(buildApiErrorMessage(reloadPayload, 'Saved stats, but failed to reload rows'));
-      }
-
-      setFightStatsRows(reloadPayload.rows || []);
-      setFightStatsEdits((current) => omitEditRows(
-        current,
-        updatesToSave.map((update) => update.id)
-      ));
-      invalidateEventCaches(event.id);
-      onFightCardImportComplete?.(event.id);
-      setFightCardFeedback({
-        type: 'success',
-        message: `Saved stats for ${payload.updatedFightCardRows || 0} fighter row${payload.updatedFightCardRows === 1 ? '' : 's'} and updated ${payload.updatedFighters || 0} fighter profile${payload.updatedFighters === 1 ? '' : 's'}.`
-      });
-    } catch (err) {
-      setFightCardFeedback({
-        type: 'error',
-        message: err.message || 'Failed to save fighter stats'
-      });
-    } finally {
-      setSavingFightStatsEventId(null);
-      setSavingFightStatsRowId(null);
-    }
-  };
-
-  const handleScrapeTapologyFighterStats = async (event, row) => {
-    if (!event?.id || !row?.id) return;
-
-    setAdminAccessFeedback(null);
-    setFightCardFeedback(null);
-    setScrapingTapologyRowId(row.id);
-
-    try {
-      const response = await fetchWithAdminSession(
-        `${API_URL}/admin/events/${event.id}/fight-card/stats/${row.id}/scrape-profile`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            tapologyFighterUrl: Object.prototype.hasOwnProperty.call(fightStatsEdits[row.id] || {}, 'TapologyFighterURL')
-              ? fightStatsEdits[row.id].TapologyFighterURL
-              : row.TapologyFighterURL,
-          })
-        }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(buildApiErrorMessage(payload, 'Failed to scrape fighter stats'));
-      }
-
-      const reloadResponse = await fetchWithAdminSession(`${API_URL}/admin/events/${event.id}/fight-card/stats`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      const reloadPayload = await reloadResponse.json().catch(() => ({}));
-      if (!reloadResponse.ok) {
-        throw new Error(buildApiErrorMessage(reloadPayload, 'Scraped stats, but failed to reload rows'));
-      }
-
-      setFightStatsRows(reloadPayload.rows || []);
-      setFightStatsEdits((current) => omitEditRows(current, [row.id]));
-      invalidateEventCaches(event.id);
-      onFightCardImportComplete?.(event.id);
-      await loadFightCardScrapeLog(event, { silent: true });
-      const sourceLabel = SCRAPE_SOURCE_LABELS[payload.statsSource] || 'validated fighter sources';
-      setFightCardFeedback({
-        type: 'success',
-        message: payload.updatedFields?.length
-          ? `Updated ${[row.FirstName, row.LastName].filter(Boolean).join(' ') || 'fighter'} from ${sourceLabel} and changed ${payload.updatedFields.length} field${payload.updatedFields.length === 1 ? '' : 's'}.`
-          : `${sourceLabel} lookup completed for ${[row.FirstName, row.LastName].filter(Boolean).join(' ') || 'fighter'}, but no stat fields changed.`
-      });
-    } catch (err) {
-      await loadFightCardScrapeLog(event, { silent: true });
-      setFightCardFeedback({
-        type: 'error',
-        message: err.message || 'Failed to scrape fighter stats'
-      });
-    } finally {
-      setScrapingTapologyRowId(null);
-    }
-  };
-
-  const handleDiscardFightCardPreview = () => {
+  const closeFightCardEditor = () => {
     setFightCardPreview(null);
     setFightCardPreviewEdits({});
     setFightCardFeedback(null);
+  };
+
+  const handleDiscardFightCardPreview = () => {
+    if (hasUnsavedEditorChanges(editablePreviewRows, fightCardPreviewEdits)) {
+      setAdminConfirmation({ action: 'discard-editor', title: 'Discard unsaved changes?',
+        summary: 'Your saved fighter details will stay unchanged.', confirmLabel: 'Discard Changes' });
+      return;
+    }
+    closeFightCardEditor();
   };
 
   const requestPreviewTapologyScrape = async (event, row) => {
@@ -1370,6 +1061,10 @@ function EventSelector({
 
     try {
       const payload = await requestPreviewTapologyScrape(event, row);
+      if (payload.isImported) {
+        invalidateEventCaches(event.id);
+        onFightCardImportComplete?.(event.id);
+      }
       setFightCardPreview(payload);
       setFightCardPreviewEdits((current) => omitEditFields(current, {
         [row.rowKey]: ['TapologyFighterURL', ...(payload.updatedFields || [])],
@@ -1455,6 +1150,10 @@ function EventSelector({
         throw new Error(buildApiErrorMessage(refreshedPreview, 'Scrapes completed, but the preview could not be refreshed'));
       }
 
+      if (refreshedPreview.isImported) {
+        invalidateEventCaches(event.id);
+        onFightCardImportComplete?.(event.id);
+      }
       setFightCardPreview(refreshedPreview);
       setFightCardPreviewEdits((current) => omitEditFields(current, successfulFieldsByRow));
       await loadFightCardScrapeLog(event, { silent: true });
@@ -1509,6 +1208,10 @@ function EventSelector({
         throw new Error(buildApiErrorMessage(payload, 'Failed to save preview progress'));
       }
 
+      if (payload.isImported) {
+        invalidateEventCaches(event.id);
+        onFightCardImportComplete?.(event.id);
+      }
       setFightCardPreview(payload);
       setFightCardPreviewEdits((current) => omitEditRows(current, Object.keys(updatesToSave)));
       setFightCardFeedback({
@@ -1836,17 +1539,6 @@ function EventSelector({
                   >
                     {discoveringUfcEvents ? 'Discovering Events...' : 'Discover UFC Events'}
                   </button>
-                  <button
-                    className="event-admin-secondary-button"
-                    onClick={() => handleToggleFightStatsEditor(selectedEvent)}
-                    disabled={isFightCardActionBusy || discoveringUfcEvents || selectedEvent.has_fight_data === false}
-                  >
-                    {loadingFightStatsEventId === selectedEvent.id
-                      ? 'Loading Stats...'
-                      : isEditingSelectedFightStats
-                      ? 'Close Stats Editor'
-                      : 'Edit Fighter Stats'}
-                  </button>
                   {!hasFightCardPreview && (
                     <button
                       className="event-admin-secondary-button"
@@ -1855,7 +1547,7 @@ function EventSelector({
                     >
                       {openingImportedEditorEventId === selectedEvent.id
                         ? 'Opening Editor...'
-                        : 'Edit Imported Fight Card'}
+                        : 'Edit Fight Card'}
                     </button>
                   )}
                   {hasFightCardPreview && (
@@ -1868,123 +1560,6 @@ function EventSelector({
                     </button>
                   )}
                 </div>
-                {isEditingSelectedFightStats && (
-                  <div className="event-admin-import-preview event-admin-stats-editor">
-                    <div className="event-admin-import-preview__section">
-                      <div className="event-admin-stats-editor__header">
-                        <div>
-                          <div className="event-admin-import-preview__title">Fight Card Editor</div>
-                          <div className="event-admin-import-preview__meta">
-                            {fightStatsRows.length} fighters · {fightStatsUpdateCount} unsaved row{fightStatsUpdateCount === 1 ? '' : 's'}
-                          </div>
-                        </div>
-                        <div className="event-admin-stats-editor__header-actions">
-                          <div className="event-admin-stats-editor__filters" aria-label="Filter fighter rows">
-                            {['all', 'missing', 'changed'].map((filter) => (
-                              <button
-                                key={filter}
-                                type="button"
-                                className={fightStatsEditorFilter === filter ? 'active' : ''}
-                                onClick={() => setFightStatsEditorFilter(filter)}
-                              >
-                                {filter === 'all' ? 'All' : filter === 'missing' ? 'Missing' : 'Changed'}
-                              </button>
-                            ))}
-                          </div>
-                          <button
-                            className="event-admin-import-button event-admin-stats-editor__save"
-                            onClick={() => handleSaveFightStats(selectedEvent)}
-                            disabled={isFightCardActionBusy || fightStatsUpdateCount === 0}
-                          >
-                            <Save size={16} aria-hidden="true" />
-                            {savingFightStatsEventId === selectedEvent.id && savingFightStatsRowId === null
-                              ? 'Saving...'
-                              : `Save All${fightStatsUpdateCount ? ` (${fightStatsUpdateCount})` : ''}`}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="event-admin-import-preview__edit-list">
-                        {visibleFightStatsRows.map((row) => {
-                          const rowUpdate = fightStatsUpdates.find((update) => String(update.id) === String(row.id));
-                          const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                            (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
-                            0
-                          );
-                          return (
-                            <div key={row.id} className={`event-admin-import-preview__edit-row event-admin-stats-editor__row event-admin-stats-editor__row--${String(row.Corner || '').toLowerCase()}`}>
-                              <div className="event-admin-import-preview__fighter">
-                                <span>{[row.FirstName, row.LastName].filter(Boolean).join(' ') || 'Unknown fighter'}</span>
-                                <small>
-                                  {row.Corner || 'Corner TBD'} corner · Fight {row.FightId || 'TBD'}
-                                  {row.Record_Wins !== null && row.Record_Losses !== null
-                                    ? ` · ${row.Record_Wins}-${row.Record_Losses}`
-                                    : ''}
-                                </small>
-                                <div className="event-admin-stats-editor__row-status">
-                                  {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
-                                  {rowUpdate && <span>{Object.keys(rowUpdate.values).length} changed</span>}
-                                </div>
-                                <div className="event-admin-stats-editor__row-actions">
-                                  <button
-                                    type="button"
-                                    className="event-admin-stats-editor__scrape-button"
-                                    onClick={() => handleScrapeTapologyFighterStats(selectedEvent, row)}
-                                    disabled={isFightCardActionBusy}
-                                    title="Refresh this fighter from Sherdog, UFC.com, Wikipedia, then Tapology fallback"
-                                  >
-                                    <RefreshCw size={14} aria-hidden="true" />
-                                    {scrapingTapologyRowId === row.id ? 'Scraping...' : 'Scrape'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="event-admin-stats-editor__row-save"
-                                    onClick={() => handleSaveFightStats(selectedEvent, row.id)}
-                                    disabled={isFightCardActionBusy || !rowUpdate}
-                                    title="Save this fighter"
-                                  >
-                                    <Save size={14} aria-hidden="true" />
-                                    {savingFightStatsRowId === row.id ? 'Saving...' : 'Save'}
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="event-admin-import-preview__edit-fields event-admin-stats-editor__fields">
-                                {ADMIN_STAT_EDITOR_FIELDS.map(([field, label, type]) => {
-                                  const value = getEditorValue(fightStatsEdits, row.id, row, field);
-                                  const isMissing = normalizeStatEditorValue(row[field]).trim() === '';
-                                  const isDirty = Object.prototype.hasOwnProperty.call(fightStatsEdits[row.id] || {}, field)
-                                    && normalizeStatEditorValue(row[field]).trim() !== normalizeStatEditorValue(value).trim();
-                                  const isValid = isValidStatEditorValue(type, normalizeStatEditorValue(value).trim());
-                                  return (
-                                    <label
-                                      key={field}
-                                      className={`event-admin-import-preview__field ${['number', 'signed-number', 'odds'].includes(type) ? 'event-admin-import-preview__field--stat' : ''} ${type === 'url' ? 'event-admin-import-preview__field--url' : ''} ${isMissing ? 'event-admin-stats-editor__field--missing' : ''} ${isDirty ? 'event-admin-stats-editor__field--dirty' : ''}`}
-                                    >
-                                      <span>{label}</span>
-                                      <input
-                                        type={['number', 'signed-number'].includes(type) ? 'number' : type === 'url' ? 'url' : 'text'}
-                                        inputMode={['number', 'signed-number'].includes(type) ? 'numeric' : type === 'odds' ? 'text' : type === 'url' ? 'url' : 'text'}
-                                        min={type === 'number' ? '0' : undefined}
-                                        step={['number', 'signed-number'].includes(type) ? '1' : undefined}
-                                        placeholder={type === 'number' ? '0' : type === 'signed-number' ? '-1' : type === 'odds' ? '+120' : type === 'url' ? 'https://www.tapology.com/fightcenter/fighters/...' : 'Wrestler'}
-                                        value={value}
-                                        onChange={(inputEvent) => handleFightStatsEditChange(row.id, field, inputEvent.target.value)}
-                                        disabled={isFightCardActionBusy}
-                                        aria-invalid={!isValid}
-                                      />
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {visibleFightStatsRows.length === 0 && (
-                          <div className="event-admin-stats-editor__empty">No fighters match this view.</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {fightCardPreview && (
                   <div className="event-admin-import-preview">
                     <div className="event-admin-import-preview__stats">
@@ -2034,141 +1609,24 @@ function EventSelector({
                       </div>
                     )}
                     {editablePreviewRows.length > 0 && (
-                      <div className="event-admin-import-preview__section event-admin-stats-editor">
-                        <div className="event-admin-stats-editor__header">
-                          <div>
-                            <div className="event-admin-import-preview__title">
-                              {fightCardPreview.isImported ? 'Imported Fight Card Editor' : 'Preview Editor'}
-                            </div>
-                            <div className="event-admin-import-preview__meta">
-                              {missingEditablePreviewValueCount} missing · {manualPreviewUpdateCount} unsaved value{manualPreviewUpdateCount === 1 ? '' : 's'}
-                            </div>
-                          </div>
-                          <div className="event-admin-stats-editor__header-actions">
-                            <div className="event-admin-stats-editor__filters" aria-label="Filter preview fighters">
-                              {['missing', 'all', 'changed'].map((filter) => (
-                                <button
-                                  key={filter}
-                                  type="button"
-                                  className={previewEditorFilter === filter ? 'active' : ''}
-                                  onClick={() => setPreviewEditorFilter(filter)}
-                                >
-                                  {filter === 'all' ? 'All' : filter === 'missing' ? 'Missing' : 'Changed'}
-                                </button>
-                              ))}
-                            </div>
-                            <button
-                              type="button"
-                              className="event-admin-stats-editor__bulk-scrape"
-                              onClick={() => handleScrapeAllPreviewTapologyFighters(selectedEvent)}
-                              disabled={isFightCardActionBusy || scrapablePreviewRows.length === 0}
-                              title="Scrape every preview fighter from the validated source chain"
-                            >
-                              <RefreshCw size={16} aria-hidden="true" />
-                              {previewTapologyScrapeProgress
-                                ? `Scraping ${previewTapologyScrapeProgress.completed}/${previewTapologyScrapeProgress.total}`
-                                : `Scrape All (${scrapablePreviewRows.length})`}
-                            </button>
-                            <button
-                              type="button"
-                              className="event-admin-import-button event-admin-stats-editor__save"
-                              onClick={() => handleSaveFightCardPreviewProgress(selectedEvent)}
-                              disabled={isFightCardActionBusy || !hasManualPreviewUpdates}
-                            >
-                              <Save size={16} aria-hidden="true" />
-                              {savingPreviewProgressRowKey === 'all'
-                                ? 'Saving...'
-                                : fightCardPreview.isImported
-                                ? 'Save to Fight Card'
-                                : 'Save Progress'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="event-admin-import-preview__edit-list">
-                          {visiblePreviewRows.map((row) => {
-                            const rowPatch = manualPreviewUpdates[row.rowKey];
-                            const rowTapologyUrl = normalizeStatEditorValue(
-                              getEditorValue(fightCardPreviewEdits, row.rowKey, row, 'TapologyFighterURL')
-                            ).trim();
-                            const canScrapeTapologyRow = !rowTapologyUrl
-                              || isValidStatEditorValue('url', rowTapologyUrl);
-                            const isScrapingTapologyRow = scrapingPreviewTapologyRowKeys.includes(row.rowKey);
-                            const rowMissingCount = FIGHT_CARD_EDITOR_FIELDS.reduce(
-                              (count, [field]) => count + (normalizeStatEditorValue(row[field]).trim() ? 0 : 1),
-                              0
-                            );
-                            return (
-                              <div key={row.rowKey} className={`event-admin-import-preview__edit-row event-admin-stats-editor__row event-admin-stats-editor__row--${String(row.corner || '').toLowerCase()}`}>
-                                <div className="event-admin-import-preview__fighter">
-                                  <span>{getEditablePreviewFighterName(row)}</span>
-                                  <small>{row.corner || 'Corner TBD'} corner · Fight {row.fightId || 'TBD'}</small>
-                                  <div className="event-admin-stats-editor__row-status">
-                                    {rowMissingCount > 0 && <span>{rowMissingCount} missing</span>}
-                                    {rowPatch && <span>{Object.keys(rowPatch).length} changed</span>}
-                                  </div>
-                                  <div className="event-admin-stats-editor__row-actions">
-                                    <button
-                                      type="button"
-                                      className="event-admin-stats-editor__scrape-button"
-                                      onClick={() => handleScrapePreviewTapologyFighter(selectedEvent, row)}
-                                      disabled={isFightCardActionBusy || !canScrapeTapologyRow}
-                                      title={canScrapeTapologyRow
-                                        ? 'Scrape Sherdog, UFC.com, Wikipedia, then optional Tapology fallback'
-                                        : 'Fix or clear the optional Tapology fallback URL first'}
-                                    >
-                                      <RefreshCw size={14} aria-hidden="true" />
-                                      {isScrapingTapologyRow ? 'Scraping...' : 'Scrape'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="event-admin-stats-editor__row-save"
-                                      onClick={() => handleSaveFightCardPreviewProgress(selectedEvent, row.rowKey)}
-                                      disabled={isFightCardActionBusy || !rowPatch}
-                                      title={fightCardPreview.isImported
-                                        ? 'Save this fighter to the fight card'
-                                        : "Save this fighter's preview progress"}
-                                    >
-                                      <Save size={14} aria-hidden="true" />
-                                      {savingPreviewProgressRowKey === row.rowKey ? 'Saving...' : 'Save'}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="event-admin-import-preview__edit-fields event-admin-stats-editor__fields">
-                                  {FIGHT_CARD_EDITOR_FIELDS.map(([field, label, type]) => {
-                                    const value = getEditorValue(fightCardPreviewEdits, row.rowKey, row, field);
-                                    const isMissing = normalizeStatEditorValue(row[field]).trim() === '';
-                                    const isDirty = Object.prototype.hasOwnProperty.call(fightCardPreviewEdits[row.rowKey] || {}, field)
-                                      && normalizeStatEditorValue(row[field]).trim() !== normalizeStatEditorValue(value).trim();
-                                    const isValid = isValidStatEditorValue(type, normalizeStatEditorValue(value).trim());
-                                    return (
-                                      <label
-                                        key={field}
-                                        className={`event-admin-import-preview__field ${['number', 'signed-number', 'odds'].includes(type) ? 'event-admin-import-preview__field--stat' : ''} ${type === 'url' ? 'event-admin-import-preview__field--url' : ''} ${isMissing ? 'event-admin-stats-editor__field--missing' : ''} ${isDirty ? 'event-admin-stats-editor__field--dirty' : ''}`}
-                                      >
-                                        <span>{label}</span>
-                                        <input
-                                          type={['number', 'signed-number'].includes(type) ? 'number' : type === 'url' ? 'url' : 'text'}
-                                          inputMode={['number', 'signed-number'].includes(type) ? 'numeric' : type === 'url' ? 'url' : 'text'}
-                                          min={type === 'number' ? '0' : undefined}
-                                          step={['number', 'signed-number'].includes(type) ? '1' : undefined}
-                                          placeholder={type === 'number' ? '0' : type === 'signed-number' ? '-1' : type === 'odds' ? '+120' : type === 'url' ? 'https://www.tapology.com/fightcenter/fighters/...' : 'Wrestler'}
-                                          value={value}
-                                          onChange={(inputEvent) => handleFightCardPreviewEditChange(row.rowKey, field, inputEvent.target.value)}
-                                          disabled={isFightCardActionBusy}
-                                          aria-invalid={!isValid}
-                                        />
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {visiblePreviewRows.length === 0 && (
-                            <div className="event-admin-stats-editor__empty">No fighters match this view.</div>
-                          )}
-                        </div>
-                      </div>
+                      <Suspense fallback={<p role="status">Loading fighter editor…</p>}>
+                      <FighterDetailsEditor
+                        title={fightCardPreview.isImported ? 'Fight Card Editor' : 'Fight Card Preview'}
+                        rows={editablePreviewRows}
+                        edits={fightCardPreviewEdits}
+                        filter={previewEditorFilter}
+                        onFilterChange={setPreviewEditorFilter}
+                        onChange={handleFightCardPreviewEditChange}
+                        onSave={(rowKey) => handleSaveFightCardPreviewProgress(selectedEvent, rowKey)}
+                        onScrape={(row) => handleScrapePreviewTapologyFighter(selectedEvent, row)}
+                        onScrapeAll={() => handleScrapeAllPreviewTapologyFighters(selectedEvent)}
+                        busy={isFightCardActionBusy}
+                        savingKey={savingPreviewProgressRowKey}
+                        scrapingKeys={scrapingPreviewTapologyRowKeys}
+                        scrapeProgress={previewTapologyScrapeProgress}
+                        saveLabel={fightCardPreview.isImported ? 'Save Changes' : 'Save Progress'}
+                      />
+                      </Suspense>
                     )}
                     <div className="event-admin-import-preview__section event-admin-scrape-log">
                       <div className="event-admin-scrape-log__header">
