@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { API_URL } from './config';
 import { cachedFetchJson, invalidateCache } from './utils/apiCache';
 import { fetchWithAdminSession, hasActiveAdminSession } from './utils/adminSession';
@@ -24,6 +24,7 @@ import './Fights.css';
 import PlayerCard from './components/PlayerCard';
 import VoteCard from './components/VoteCard';
 import ConfirmDialog from './components/ConfirmDialog';
+const FightDetailsPanel = lazy(() => import('./components/FightDetailsPanel'));
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
 const REMINDER_TYPE_HEART_EYES = 'heart_eyes';
@@ -2101,6 +2102,10 @@ function Fights({
               
               {expandedAdminControls[fight.id] && (
                 <div className="admin-controls-content">
+                  <Suspense fallback={<p role="status">Loading fighter editor…</p>}>
+                    <FightDetailsPanel key={`${eventId}:${fight.id}`} eventId={eventId} fightId={fight.id}
+                      onSaved={() => refreshFightCard({ showIndicator: true })} />
+                  </Suspense>
                   {fight.is_canceled ? (
                     <div className="admin-canceled-display">
                       <span className="canceled-text">Fight Canceled</span>

@@ -6,6 +6,7 @@ import json
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -52,7 +53,7 @@ EXCLUDED_EVENT_NAME_PATTERNS = [
 
 
 def log(message: str) -> None:
-    print(message, file=sys.stderr)
+    print(message, file=sys.stderr, flush=True)
 
 
 def is_supported_ufc_mma_event_name(name: str) -> bool:
@@ -182,7 +183,6 @@ def discover_ufc_events(
     delay_seconds: float,
     timeout: float,
 ) -> Tuple[List[Dict], Dict[str, int]]:
-    session = build_ufc_session()
     events: List[Dict] = []
     stats = {
         "scanned": 0,
@@ -194,18 +194,40 @@ def discover_ufc_events(
     misses = 0
     current_id = start_id
 
+    def fetch_candidate(candidate_id):
+        # Sessions are isolated because requests.Session is not thread-safe.
+        with build_ufc_session() as session:
+            try:
+                return fetch_ufc_event(candidate_id, session=session, timeout=timeout), None
+            except RuntimeError as error:
+                return None, str(error)
+
+    pending = iter(())
+    log(f"Scanning UFC IDs from {start_id}; limit={max_ids}, stop-after-misses={stop_after_misses}.")
+
     while stats["scanned"] < max_ids:
         if end_id is not None and current_id > end_id:
             break
         if misses >= stop_after_misses:
             break
 
-        try:
-            event = fetch_ufc_event(current_id, session=session, timeout=timeout)
-        except RuntimeError:
+        candidate = next(pending, None)
+        if candidate is None:
+            # Finish each small batch before scheduling more work. This bounds
+            # traffic and speculative requests beyond the consecutive-miss stop.
+            batch_size = min(4, max_ids - stats["scanned"], stop_after_misses - misses)
+            if end_id is not None:
+                batch_size = min(batch_size, end_id - current_id + 1)
+            with ThreadPoolExecutor(max_workers=batch_size) as executor:
+                pending = iter(list(executor.map(
+                    fetch_candidate, range(current_id, current_id + batch_size)
+                )))
+            candidate = next(pending)
+        event, error = candidate
+        if error is not None:
             stats["missing_ids"] += 1
             misses += 1
-            log(f"MISSING {current_id}")
+            log(f"MISSING {current_id}: {error}")
             current_id += 1
             stats["scanned"] += 1
             if delay_seconds > 0:

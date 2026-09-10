@@ -98,7 +98,7 @@ async function runUfcEventDiscovery({
     });
 
     child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
+      stderr = (stderr + chunk.toString()).slice(-16000);
     });
 
     child.on('error', (error) => {
@@ -110,7 +110,9 @@ async function runUfcEventDiscovery({
       clearTimeout(timeoutId);
 
       if (timedOut) {
-        reject(new Error(`UFC event discovery timed out after ${timeoutMs}ms.`));
+        reject(new Error(
+          `UFC event discovery timed out after ${timeoutMs}ms.\nLast discovery progress:\n${stderr || '(none received)'}`
+        ));
         return;
       }
 
