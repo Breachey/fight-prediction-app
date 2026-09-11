@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.2 - 2026-09-11
+
+### Changed
+
+- Hide individual event calendar downloads after users confirm “I’m subscribed,” remembering the preference per account and calendar feed in this browser.
+- Allow users to restore individual downloads from calendar subscription settings without changing their external calendar subscription.
+
 ## 0.33.1 - 2026-09-11
 
 ### Fixed
