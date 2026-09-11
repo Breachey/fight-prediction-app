@@ -1,3 +1,4 @@
+import { calendarSubscriptionKey, readCalendarSubscription, saveCalendarSubscription } from './utils/calendarSubscription';
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { CalendarPlus, RefreshCw } from 'lucide-react';
 import './EventSelector.css';
@@ -197,12 +198,26 @@ function EventSelector({
   onEventSelect,
   selectedEventId,
   userType = 'user',
+  userId,
   onSelectedEventChange,
   onFightCardImportComplete,
 }) {
   const [allEvents, setAllEvents] = useState([]);
   const [calendarSubscriptionOpen, setCalendarSubscriptionOpen] = useState(false);
   const calendarFeedUrl = `${API_URL.replace(/\/$/, '')}/calendar/ufc.ics`;
+  const subscriptionKey = calendarSubscriptionKey(userId, calendarFeedUrl);
+  const [subscriptionPreference, setSubscriptionPreference] = useState(() => ({
+    key: subscriptionKey, subscribed: readCalendarSubscription(subscriptionKey),
+  }));
+  const calendarSubscribed = subscriptionPreference.key === subscriptionKey
+    ? subscriptionPreference.subscribed : readCalendarSubscription(subscriptionKey);
+  const changeCalendarSubscription = (subscribed) => {
+    setSubscriptionPreference({ key: subscriptionKey, subscribed });
+    const saved = saveCalendarSubscription(subscriptionKey, subscribed);
+    setCalendarFeedback(saved
+      ? (subscribed ? 'Individual event downloads hidden in this browser.' : 'Individual event downloads restored. This does not unsubscribe your calendar.')
+      : 'Preference applied for now, but could not be saved in this browser.');
+  };
   const calendarSubscribeUrl = calendarFeedUrl.replace(/^https?:/, 'webcal:');
   const copyCalendarUrl = async () => {
     try {
@@ -1294,7 +1309,7 @@ function EventSelector({
       <h2 className="app-section-heading event-selector-heading">Events</h2>
       <div className="event-calendar-actions">
         <button type="button" onClick={() => setCalendarSubscriptionOpen(open => !open)} aria-expanded={calendarSubscriptionOpen} aria-controls="calendar-subscription">
-          <CalendarPlus size={16} aria-hidden="true" /> Subscribe to UFC calendar
+          <CalendarPlus size={16} aria-hidden="true" /> {calendarSubscribed ? 'Calendar subscription settings' : 'Subscribe to UFC calendar'}
         </button>
         <span>MST (UTC−7) · Updates automatically</span>
       </div>
@@ -1306,6 +1321,11 @@ function EventSelector({
           </div>
           <label htmlFor="calendar-feed-url">Subscription URL</label>
           <input id="calendar-feed-url" readOnly value={calendarFeedUrl} onFocus={event => event.target.select()} />
+          <label className="event-calendar-subscription-toggle">
+            <input type="checkbox" role="switch" checked={calendarSubscribed} onChange={event => changeCalendarSubscription(event.target.checked)} aria-describedby="calendar-subscription-preference-help" />
+            I’m subscribed
+          </label>
+          <p id="calendar-subscription-preference-help">Turn on after subscribing to hide individual event downloads. Remembered for your account in this browser; this switch does not change your calendar subscription.</p>
           <p>Subscribe once for new events and schedule changes. Your calendar controls how soon updates appear.</p>
           <p>Google Calendar: on a computer, choose Other calendars → + → From URL. Outlook: Add calendar → Subscribe from web. Paste this URL to subscribe.</p>
         </div>
@@ -1404,7 +1424,7 @@ function EventSelector({
                 <div key={line} className="event-admin-panel__time">{line}</div>
               ))}
               <div className="event-admin-panel__location">{selectedEventLocationDisplay}</div>
-              {getUpcomingCalendarEvents([selectedEvent]).length > 0 && (
+              {!calendarSubscribed && getUpcomingCalendarEvents([selectedEvent]).length > 0 && (
                 <div className="event-calendar-actions">
                   <button type="button" onClick={() => exportCalendar([selectedEvent])}>
                     <CalendarPlus size={16} aria-hidden="true" /> Add event to calendar

@@ -2135,6 +2135,9 @@
 .event-calendar-actions a:hover { background: rgba(252, 251, 253, 0.1); }
 .event-calendar-subscription { margin: 12px 0; max-width: 640px; }
 .event-calendar-subscription label { display: block; color: #FCFBFD; font-size: 0.85rem; margin-bottom: 6px; }
-.event-calendar-subscription input { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; border: 1px solid rgba(252, 251, 253, 0.25); border-radius: var(--radius-xs); background: #050000; color: #FCFBFD; font: inherit; font-size: 0.85rem; }
+.event-calendar-subscription input:not([type="checkbox"]) { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; border: 1px solid rgba(252, 251, 253, 0.25); border-radius: var(--radius-xs); background: #050000; color: #FCFBFD; font: inherit; font-size: 0.85rem; }
 .event-calendar-subscription input:focus-visible { outline: 2px solid #F99EAD; outline-offset: 2px; }
 .event-calendar-subscription p { color: rgba(252, 251, 253, 0.75); font-size: 0.8rem; line-height: 1.5; }
+
+.event-calendar-subscription label.event-calendar-subscription-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; cursor: pointer; }
+.event-calendar-subscription-toggle input { width: 18px; height: 18px; margin: 0; accent-color: #2B31B2; flex-shrink: 0; }

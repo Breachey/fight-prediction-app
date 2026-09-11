@@ -384,6 +384,7 @@ function App() {
                   selectedEventId={selectedEventId}
                   onSelectedEventChange={setSelectedEvent}
                   userType={user.user_type}
+                  userId={user.user_id}
                   onFightCardImportComplete={handleFightCardImportComplete}
                 />
               </div>
