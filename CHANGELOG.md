@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.3 - 2026-09-11
+
+### Removed
+
+- Removed stale duplicate source, test, configuration, documentation, scraper, and migration files whose names ended in ` 2`.
+
 ## 0.33.2 - 2026-09-11
 
 ### Changed
