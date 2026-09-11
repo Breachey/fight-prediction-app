@@ -3,11 +3,13 @@ import argparse
 import contextlib
 import datetime
 import json
+import os
 import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -169,10 +171,30 @@ def fetch_tapology_event_cache_lookup(timeout: float) -> Dict[str, Dict[str, Dic
 def default_start_id(
     existing_events: Dict[int, Dict[str, object]],
     lookback_ids: int,
+    minimum_date: Optional[datetime.date] = None,
 ) -> int:
+    minimum_date = minimum_date or current_week_start()
     if not existing_events:
         return DEFAULT_START_ID
-    return max(DEFAULT_START_ID, max(existing_events.keys()) - max(0, lookback_ids))
+    upcoming_ids = [event_id for event_id, event in existing_events.items()
+                    if parsed_date(event.get("date")) is not None
+                    and parsed_date(event.get("date")) >= minimum_date]
+    # Anchor at this week's first stored event, not a historical ID lookback.
+    # IDs need not be in date order, so keep scanning/filtering each candidate.
+    return min(upcoming_ids) if upcoming_ids else max(existing_events) + 1
+
+
+def parsed_date(value) -> Optional[datetime.date]:
+    try:
+        return datetime.date.fromisoformat(str(value).split("T")[0])
+    except ValueError:
+        return None
+
+
+def current_week_start(now=None) -> datetime.date:
+    zone = ZoneInfo(os.getenv("AUTOMATION_TIME_ZONE") or "America/Denver")
+    today = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(zone).date()
+    return today - datetime.timedelta(days=today.weekday())
 
 
 def discover_ufc_events(
@@ -182,7 +204,11 @@ def discover_ufc_events(
     stop_after_misses: int,
     delay_seconds: float,
     timeout: float,
+    minimum_date: Optional[datetime.date] = None,
+    existing_events: Optional[Dict[int, Dict[str, object]]] = None,
 ) -> Tuple[List[Dict], Dict[str, int]]:
+    minimum_date = minimum_date or current_week_start()
+    existing_events = existing_events or {}
     events: List[Dict] = []
     stats = {
         "scanned": 0,
@@ -195,6 +221,9 @@ def discover_ufc_events(
     current_id = start_id
 
     def fetch_candidate(candidate_id):
+        known_date = parsed_date(existing_events.get(candidate_id, {}).get("date"))
+        if known_date is not None and known_date < minimum_date:
+            return None, None
         # Sessions are isolated because requests.Session is not thread-safe.
         with build_ufc_session() as session:
             try:
@@ -224,6 +253,13 @@ def discover_ufc_events(
                 )))
             candidate = next(pending)
         event, error = candidate
+        if event is None and error is None:
+            stats["scanned"] += 1
+            stats["filtered_events"] += 1
+            misses = 0
+            log(f"SKIP   {current_id}: stored date is before {minimum_date}; no request sent")
+            current_id += 1
+            continue
         if error is not None:
             stats["missing_ids"] += 1
             misses += 1
@@ -239,13 +275,14 @@ def discover_ufc_events(
         stats["scanned"] += 1
         name = cache_value_to_csv(event.get("Name"))
 
-        if is_supported_ufc_mma_event_name(name):
+        date = parsed_date(event_date(event))
+        if date is not None and date >= minimum_date and is_supported_ufc_mma_event_name(name):
             stats["eligible_events_found"] += 1
             events.append(event)
             log(f"FOUND  {current_id}: {name}")
         else:
             stats["filtered_events"] += 1
-            log(f"SKIP   {current_id}: {name}")
+            log(f"SKIP   {current_id}: {name} (date={date}, earliest={minimum_date})")
 
         current_id += 1
         if delay_seconds > 0:
@@ -509,7 +546,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end-id", type=int, default=None)
     parser.add_argument("--max-ids", type=int, default=DEFAULT_MAX_IDS)
     parser.add_argument("--stop-after-misses", type=int, default=DEFAULT_STOP_AFTER_MISSES)
-    parser.add_argument("--lookback-ids", type=int, default=DEFAULT_LOOKBACK_IDS)
+    parser.add_argument("--lookback-ids", type=int, default=DEFAULT_LOOKBACK_IDS,
+                        help="Legacy compatibility option; current-week discovery does not look back.")
     parser.add_argument("--delay-seconds", type=float, default=DEFAULT_DELAY_SECONDS)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--tapology-map", default=DEFAULT_TAPOLOGY_MAP)
@@ -534,12 +572,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    minimum_date = current_week_start()
 
     with contextlib.redirect_stdout(sys.stderr):
         existing_events = fetch_existing_events(timeout=args.timeout)
         start_id = args.start_id if args.start_id is not None else default_start_id(
             existing_events,
             lookback_ids=args.lookback_ids,
+            minimum_date=minimum_date,
         )
 
         events, stats = discover_ufc_events(
@@ -549,46 +589,10 @@ def main() -> None:
             stop_after_misses=args.stop_after_misses,
             delay_seconds=args.delay_seconds,
             timeout=args.timeout,
+            minimum_date=minimum_date,
+            existing_events=existing_events,
         )
 
-        fallback_stats = None
-        if (
-            args.start_id is None
-            and stats["eligible_events_found"] == 0
-            and start_id > DEFAULT_START_ID
-        ):
-            log(
-                "Default discovery window found no eligible UFC events; "
-                f"retrying from {DEFAULT_START_ID}."
-            )
-            fallback_events, fallback_stats = discover_ufc_events(
-                start_id=DEFAULT_START_ID,
-                end_id=args.end_id,
-                max_ids=args.max_ids,
-                stop_after_misses=args.stop_after_misses,
-                delay_seconds=args.delay_seconds,
-                timeout=args.timeout,
-            )
-            events_by_id = {
-                int(event["EventId"]): event
-                for event in events
-                if str(event.get("EventId", "")).strip().isdigit()
-            }
-            for event in fallback_events:
-                event_id_text = str(event.get("EventId", "")).strip()
-                if event_id_text.isdigit():
-                    events_by_id[int(event_id_text)] = event
-            events = [events_by_id[key] for key in sorted(events_by_id)]
-            stats = {
-                **stats,
-                "scanned": stats["scanned"] + fallback_stats["scanned"],
-                "api_events_found": stats["api_events_found"] + fallback_stats["api_events_found"],
-                "eligible_events_found": stats["eligible_events_found"] + fallback_stats["eligible_events_found"],
-                "filtered_events": stats["filtered_events"] + fallback_stats["filtered_events"],
-                "missing_ids": stats["missing_ids"] + fallback_stats["missing_ids"],
-                "fallback_scan_start_id": DEFAULT_START_ID,
-                "fallback_scanned": fallback_stats["scanned"],
-            }
         persisted = persist_discovered_events(
             events=events,
             existing_events=existing_events,
@@ -605,6 +609,7 @@ def main() -> None:
                 "startedAt": started_at,
                 "finishedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "startId": start_id,
+                "minimumDate": minimum_date.isoformat(),
                 "endId": args.end_id,
                 **stats,
                 **persisted,

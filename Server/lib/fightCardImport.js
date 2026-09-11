@@ -5,6 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { parseScraperProgressLine } = require('./fightCardPreviewProgress');
 const { mergeScrapedRowsWithStoredValues } = require('./fightCardAutomation');
+const { PERFORMANCE_STAT_FIELDS, normalizePerformanceStatValue } = require('./fighterPerformanceStats');
 
 const EXPECTED_FIGHT_CARD_HEADERS = [
   'id',
@@ -118,6 +119,7 @@ const MANUAL_PREVIEW_EDIT_FIELDS = [
   'style',
   'Streak',
   ...METHOD_STAT_FIELDS,
+  ...PERFORMANCE_STAT_FIELDS,
 ];
 
 for (const field of METHOD_STAT_FIELDS) {
@@ -198,7 +200,7 @@ function buildEditableFightCardPreviewRows(rows) {
     .map((row) => {
       const missingOdds = !normalizeText(row.odds);
       const missingStyle = !normalizeText(row.style);
-      const missingStats = ['Streak', ...METHOD_STAT_FIELDS]
+      const missingStats = ['Streak', ...METHOD_STAT_FIELDS, ...PERFORMANCE_STAT_FIELDS]
         .filter((field) => !normalizeText(row[field]));
 
       return {
@@ -218,6 +220,7 @@ function buildEditableFightCardPreviewRows(rows) {
         Streak: row.Streak ?? null,
         style: row.style || null,
         ...Object.fromEntries(METHOD_STAT_FIELDS.map((field) => [field, row[field] ?? null])),
+        ...Object.fromEntries(PERFORMANCE_STAT_FIELDS.map((field) => [field, row[field] ?? null])),
         missingOdds,
         missingStyle,
         missingStats,
@@ -226,6 +229,7 @@ function buildEditableFightCardPreviewRows(rows) {
 }
 
 function normalizeManualPreviewFieldValue(field, value) {
+  if (PERFORMANCE_STAT_FIELDS.includes(field)) return normalizePerformanceStatValue(field, value);
   const normalized = normalizeText(value);
   if (!normalized) {
     return { ok: true, value: null };

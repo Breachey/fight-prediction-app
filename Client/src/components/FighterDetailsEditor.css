@@ -28,6 +28,8 @@
 .fighter-details-editor input[aria-invalid="true"] { border-color: #e9170d; }
 .fighter-details-editor .fighter-details-editor__error { color: #f99ead; font-size: .875rem; }
 .fighter-details-editor__empty { padding: 1rem 0; }
+.fighter-details-editor__group-title { grid-column: 1 / -1; margin: .5rem 0 0; font-size: .875rem; color: #fcfbfd; }
+.fighter-details-editor input[type="date"] { color-scheme: dark; }
 .fight-details-panel { min-width: 0; width: 100%; margin-bottom: 1rem; text-align: left; }
 .fight-details-panel > .admin-edit-button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: var(--radius-sm); }
 .fight-details-panel > p { font-size: .875rem; }

@@ -1,3 +1,4 @@
+const { PERFORMANCE_STAT_FIELDS, normalizePerformanceStatValue } = require('./lib/fighterPerformanceStats');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const { createCalendarFeedHandler } = require('./lib/calendarFeed');
@@ -450,20 +451,7 @@ const EVENT_STREAK_BONUS_THRESHOLDS = [
 ];
 const PERFECT_MAIN_CARD_BONUS = 2;
 const PREDICTION_RESULTS_INSERT_CHUNK_SIZE = 500;
-const FIGHTER_COMPARISON_STAT_FIELDS = [
-  'SigStrLandedPerMin',
-  'SigStrAbsorbedPerMin',
-  'SigStrikeAccuracyPct',
-  'SigStrikeDefensePct',
-  'TakedownAvgPer15',
-  'TakedownAccuracyPct',
-  'TakedownDefensePct',
-  'SubmissionAvgPer15',
-  'KnockdownAvgPer15',
-  'AverageFightTimeSeconds',
-  'RecentForm',
-  'LastFightDate',
-];
+const FIGHTER_COMPARISON_STAT_FIELDS = PERFORMANCE_STAT_FIELDS;
 const FIGHT_CARD_FIGHT_SELECT = `FightId, EventId, Corner, FighterId, FirstName, LastName, Nickname, Record_Wins, Record_Losses, Record_Draws, Record_NoContests, Stance, style, ImageURL, Rank, odds, Born_City, Born_State, Born_Country, FightingOutOf_City, FightingOutOf_State, FightingOutOf_Country, Age, Weight_lbs, Height_in, Reach_in, Streak, KO_TKO_Wins, KO_TKO_Losses, Submission_Wins, Submission_Losses, Decision_Wins, Decision_Losses, ${FIGHTER_COMPARISON_STAT_FIELDS.join(', ')}, CardSegment, FighterWeightClass, FightOrder, FightStatus, PossibleRounds, Referee_FirstName, Referee_LastName, IsTitleFight, TitleFightName`;
 const ADMIN_FIGHTER_STAT_FIELDS = [
   'odds',
@@ -477,12 +465,12 @@ const ADMIN_FIGHTER_STAT_FIELDS = [
   'Submission_Losses',
   'Decision_Wins',
   'Decision_Losses',
+  ...PERFORMANCE_STAT_FIELDS,
 ];
 const ADMIN_INTEGER_FIGHTER_STAT_FIELDS = new Set(
   ADMIN_FIGHTER_STAT_FIELDS.filter((field) => !['odds', 'style', 'TapologyFighterURL', 'Streak'].includes(field))
 );
 const ADMIN_SIGNED_INTEGER_FIGHTER_STAT_FIELDS = new Set(['Streak']);
-const COMPARISON_DECIMAL_FIELDS = new Set(FIGHTER_COMPARISON_STAT_FIELDS.slice(0, 9));
 const FIGHTER_PROFILE_EDIT_COLUMNS = new Set(
   ADMIN_FIGHTER_STAT_FIELDS.map(toFighterProfileColumn).filter(Boolean)
 );
@@ -517,6 +505,7 @@ const FIGHT_CARD_STAT_SELECT = [
 ].join(',');
 
 function normalizeAdminStatValue(field, value) {
+  if (PERFORMANCE_STAT_FIELDS.includes(field)) return normalizePerformanceStatValue(field, value);
   if (!ADMIN_FIGHTER_STAT_FIELDS.includes(field)) {
     return { ok: false, error: `Unsupported field: ${field}` };
   }
@@ -562,36 +551,7 @@ function normalizeAdminStatValue(field, value) {
 }
 
 function normalizeFightCardStatValue(field, value) {
-  if (ADMIN_FIGHTER_STAT_FIELDS.includes(field)) {
-    return normalizeAdminStatValue(field, value);
-  }
-  if (!FIGHTER_COMPARISON_STAT_FIELDS.includes(field)) {
-    return { ok: false, error: `Unsupported field: ${field}` };
-  }
-  if (value === null || value === undefined || String(value).trim() === '') {
-    return { ok: true, value: null };
-  }
-
-  const trimmed = String(value).trim();
-  if (COMPARISON_DECIMAL_FIELDS.has(field)) {
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) && parsed >= 0
-      ? { ok: true, value: parsed }
-      : { ok: false, error: `${field} must be a non-negative number` };
-  }
-  if (field === 'AverageFightTimeSeconds') {
-    return /^\d+$/.test(trimmed)
-      ? { ok: true, value: Number.parseInt(trimmed, 10) }
-      : { ok: false, error: `${field} must be a non-negative whole number` };
-  }
-  if (field === 'LastFightDate') {
-    return /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-      ? { ok: true, value: trimmed }
-      : { ok: false, error: `${field} must use YYYY-MM-DD` };
-  }
-  return /^(?:W|L|D|NC)(?:,(?:W|L|D|NC)){0,4}$/.test(trimmed)
-    ? { ok: true, value: trimmed }
-    : { ok: false, error: `${field} must contain up to five comma-separated W, L, D, or NC results` };
+  return normalizeAdminStatValue(field, value);
 }
 
 function toFighterProfileColumn(field) {
@@ -1185,7 +1145,7 @@ async function resolveTapologyFighterUrlForStatRow(row, overrideUrl = '') {
 function buildFightCardPatchFromTapologyProfile(row, profile) {
   const patch = {};
 
-  for (const field of [...ADMIN_FIGHTER_STAT_FIELDS, ...FIGHTER_COMPARISON_STAT_FIELDS]) {
+  for (const field of ADMIN_FIGHTER_STAT_FIELDS) {
     const normalized = normalizeFightCardStatValue(field, profile?.[field]);
     if (!normalized.ok || normalized.value === null) {
       continue;
