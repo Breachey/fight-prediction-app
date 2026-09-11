@@ -1,1 +1,0 @@
-ALTER TABLE public.prop_bet_results ENABLE ROW LEVEL SECURITY;
