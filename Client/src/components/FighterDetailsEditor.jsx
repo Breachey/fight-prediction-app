@@ -4,6 +4,7 @@ import {
   FIGHT_CARD_EDITOR_FIELDS, buildManualPreviewUpdates, getEditorValue,
   getVisibleEditorFields, groupEditorRows, hasInvalidEditorValues,
   isEditorFieldDirty, isValidStatEditorValue, normalizeStatEditorValue,
+  PERFORMANCE_EDITOR_FIELDS, getEditorValidationMessage,
 } from '../utils/fightCardEditor';
 import './FighterDetailsEditor.css';
 
@@ -50,6 +51,7 @@ export default function FighterDetailsEditor({
             {fighters.map((row) => {
               const name = [row.firstName, row.lastName].filter(Boolean).join(' ') || 'Unknown fighter';
               const fields = getVisibleEditorFields(row, edits, filter);
+              const firstPerformanceField = fields.find(([field]) => PERFORMANCE_EDITOR_FIELDS.some(([key]) => key === field))?.[0];
               const rowDirty = FIGHT_CARD_EDITOR_FIELDS.some(([field]) => isEditorFieldDirty(row, edits, field));
               const rowInvalid = hasInvalidEditorValues([row], edits);
               return (
@@ -63,15 +65,18 @@ export default function FighterDetailsEditor({
                         const valid = isValidStatEditorValue(type, normalizeStatEditorValue(value).trim());
                         const changed = isEditorFieldDirty(row, edits, field);
                         return (
-                          <label key={field} className={changed ? 'is-changed' : ''}>
+                          <React.Fragment key={field}>
+                          {field === firstPerformanceField && <h5 className="fighter-details-editor__group-title">Performance stats</h5>}
+                          <label className={changed ? 'is-changed' : ''}>
                             <span>{label}</span>
-                            <input type={type === 'url' ? 'url' : 'text'}
-                              inputMode={type === 'number' ? 'numeric' : 'text'}
-                              value={value ?? ''} placeholder="Missing" disabled={busy}
+                            <input type={type === 'url' ? 'url' : type === 'date' ? 'date' : 'text'}
+                              inputMode={['number', 'seconds'].includes(type) ? 'numeric' : ['decimal', 'percentage'].includes(type) ? 'decimal' : 'text'}
+                              value={value ?? ''} placeholder={type === 'form' ? 'W,L,NC,W,W' : 'Missing'} disabled={busy}
                               aria-label={`${name}: ${label}`} aria-invalid={!valid}
                               onChange={(event) => onChange(row.rowKey, field, event.target.value)} />
-                            {!valid && <small className="fighter-details-editor__error">{type === 'url' ? 'Enter a Tapology fighter URL.' : 'Enter a valid whole number.'}</small>}
+                            {!valid && <small className="fighter-details-editor__error">{getEditorValidationMessage(type)}</small>}
                           </label>
+                          </React.Fragment>
                         );
                       })}
                     </div>

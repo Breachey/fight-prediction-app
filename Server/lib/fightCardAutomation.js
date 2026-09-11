@@ -86,6 +86,7 @@ function summarizeUfcEventDiscovery(result) {
     status: 'complete',
     startedAt: result?.startedAt || null,
     finishedAt: result?.finishedAt || null,
+    minimumDate: result?.minimumDate || null,
     startId: optionalNumber(result?.startId),
     endId: optionalNumber(result?.endId),
     scanned: Number(result?.scanned) || 0,

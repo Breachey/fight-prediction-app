@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.1 - 2026-09-11
+
+### Fixed
+
+- Limited event discovery to the current week and future dates, skipping known historical events without requests and excluding older or undated events from imports and eligible totals.
+- Started scans at the first current-week event and removed the historical fallback scan.
+
+## 0.33.0 - 2026-09-10
+
+### Added
+
+- Added editable performance stats to the full fight-card and individual-fight editors, including striking, takedowns, submissions, knockdowns, average fight time, recent form, and last fight date.
+- Included performance stats in missing/changed filters, with validation for decimals, percentages, dates, and recent form; values can also be cleared.
+
 ## 0.32.3 - 2026-09-10
 
 ### Changed

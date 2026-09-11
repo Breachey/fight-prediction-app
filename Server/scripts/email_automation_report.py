@@ -146,6 +146,8 @@ def event_discovery_lines(report: Dict) -> List[str]:
         lines.append(f"Error: {discovery['error']}")
 
     if status == "complete":
+        if discovery.get("minimumDate"):
+            lines.append(f"Earliest eligible event date: {discovery['minimumDate']}")
         lines.extend([
             f"UFC IDs scanned: {discovery.get('scanned', 0)}",
             f"API events found: {discovery.get('apiEventsFound', 0)}",

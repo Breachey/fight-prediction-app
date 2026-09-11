@@ -6,6 +6,21 @@ const MANUAL_METHOD_STAT_FIELDS = [
   ['Decision_Wins', 'Dec W'],
   ['Decision_Losses', 'Dec L'],
 ];
+export const PERFORMANCE_EDITOR_FIELDS = [
+  ['SigStrLandedPerMin', 'Sig. strikes landed / min', 'decimal'],
+  ['SigStrAbsorbedPerMin', 'Sig. strikes absorbed / min', 'decimal'],
+  ['SigStrikeAccuracyPct', 'Strike accuracy (%)', 'percentage'],
+  ['SigStrikeDefensePct', 'Strike defense (%)', 'percentage'],
+  ['TakedownAvgPer15', 'Takedowns / 15 min', 'decimal'],
+  ['TakedownAccuracyPct', 'Takedown accuracy (%)', 'percentage'],
+  ['TakedownDefensePct', 'Takedown defense (%)', 'percentage'],
+  ['SubmissionAvgPer15', 'Submissions / 15 min', 'decimal'],
+  ['KnockdownAvgPer15', 'Knockdowns / 15 min', 'decimal'],
+  ['AverageFightTimeSeconds', 'Avg. fight time (seconds)', 'seconds'],
+  ['RecentForm', 'Recent form (newest first)', 'form'],
+  ['LastFightDate', 'Last fight date', 'date'],
+];
+
 export const FIGHT_CARD_EDITOR_FIELDS = [
   ['odds', 'Odds', 'odds'],
   ['TapologyFighterURL', 'Tapology URL', 'url'],
@@ -13,6 +28,7 @@ export const FIGHT_CARD_EDITOR_FIELDS = [
   ['style', 'Style', 'text'],
   ['Streak', 'Streak', 'signed-number'],
   ...MANUAL_METHOD_STAT_FIELDS.map(([field, label]) => [field, label, 'number']),
+  ...PERFORMANCE_EDITOR_FIELDS,
 ];
 
 export const normalizeStatEditorValue = (value) => (
@@ -21,12 +37,32 @@ export const normalizeStatEditorValue = (value) => (
 
 export const isValidStatEditorValue = (type, value) => {
   if (!value) return true;
+  if (type === 'decimal' || type === 'percentage') return /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)
+    && Number.isFinite(Number(value)) && (type !== 'percentage' || Number(value) <= 100);
+  if (type === 'seconds') return /^\d+$/.test(value) && Number(value) <= 2147483647;
+  if (type === 'date') {
+    const date = new Date(`${value}T00:00:00Z`);
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0, 4)) > 0
+      && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
+  if (type === 'form') return /^(?:W|L|D|NC)(?:,(?:W|L|D|NC)){0,4}$/.test(
+    value.toUpperCase().split(',').map((part) => part.trim()).join(','),
+  );
   if (type === 'number') return /^\d+$/.test(value);
   if (type === 'signed-number') return /^-?\d+$/.test(value);
   if (type === 'odds') return /^[+-]?\d+$/.test(value);
   if (type === 'url') return /^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//i.test(value);
   return true;
 };
+
+export const getEditorValidationMessage = (type) => ({
+  url: 'Enter a Tapology fighter URL.',
+  decimal: 'Enter a non-negative decimal number.',
+  percentage: 'Enter a percentage from 0 to 100.',
+  seconds: 'Enter whole seconds from 0 to 2147483647.',
+  date: 'Enter a valid date (YYYY-MM-DD).',
+  form: 'Use up to five results: W, L, D, or NC, separated by commas, newest first.',
+}[type] || 'Enter a valid whole number.');
 
 export const buildManualPreviewUpdates = (editableRows, edits) => {
   const updates = {};

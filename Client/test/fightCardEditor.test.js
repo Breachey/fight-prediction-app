@@ -8,7 +8,8 @@ import {
 function completeRow(overrides = {}) {
   return { rowKey: '10', fightId: 1, corner: 'Red',
     ...Object.fromEntries(FIGHT_CARD_EDITOR_FIELDS.map(([key, , type]) => [key, type === 'url'
-      ? 'https://www.tapology.com/fightcenter/fighters/10-test' : type === 'text' ? 'Wrestling' : '0'])),
+      ? 'https://www.tapology.com/fightcenter/fighters/10-test' : type === 'text' ? 'Wrestling'
+      : type === 'date' ? '2026-09-01' : type === 'form' ? 'W,L,NC' : '0'])),
     ...overrides };
 }
 
@@ -55,4 +56,14 @@ test('editor groups bouts and orders red before blue regardless of response orde
   const groups = groupEditorRows([completeRow({ corner: 'Blue' }), completeRow(), completeRow({ fightId: 2 })]);
   assert.equal(groups.length, 2);
   assert.deepEqual(groups[0].fighters.map((row) => row.corner), ['Red', 'Blue']);
+});
+
+test('performance filters and patches preserve decimal values and include cleared metrics', () => {
+  const row = completeRow({ SigStrLandedPerMin: null });
+  assert.deepEqual(getVisibleEditorFields(row, {}, 'missing').map(([field]) => field), ['SigStrLandedPerMin']);
+  const edits = { 10: { SigStrLandedPerMin: '4.37', TakedownAccuracyPct: '52.5', RecentForm: '' } };
+  assert.equal(hasInvalidEditorValues([row], edits), false);
+  assert.deepEqual(buildManualPreviewUpdates([row], edits), { 10: { SigStrLandedPerMin: '4.37', TakedownAccuracyPct: '52.5', RecentForm: null } });
+  assert.equal(hasInvalidEditorValues([row], { 10: { TakedownAccuracyPct: '101' } }), true);
+  assert.equal(hasInvalidEditorValues([row], { 10: { LastFightDate: '2026-02-30' } }), true);
 });
