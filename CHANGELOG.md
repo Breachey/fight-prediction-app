@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.4 - 2026-09-15
+
+### Fixed
+
+- Automatically remove canceled or withdrawn fights and their predictions together when refreshing an upcoming card, preserving picks on unchanged matchups.
+- Exclude explicitly canceled bouts from imports while retaining validation, started-event protection, and review for opponent changes with existing picks.
+- Report removed prediction counts; requires the new fight-card reconciliation database migration before deploying automation.
+
 ## 0.33.3 - 2026-09-11
 
 ### Removed

@@ -240,14 +240,22 @@ function assessLineupChange({ existingRows, nextRows, predictions }) {
     0
   );
 
+  const removedFightIds = new Set(lineupChanges.removedFights.map((fight) => fight.fightId));
+  const removedPredictionCount = existingPredictions.filter(
+    (prediction) => removedFightIds.has(Number(prediction?.fight_id))
+  ).length;
+  const changedPredictionCount = affectedPredictionCount - removedPredictionCount;
+
   return {
     lineupChanges,
     predictionImpact: {
       totalPredictionCount: existingPredictions.length,
       affectedPredictionCount,
+      removedPredictionCount,
+      changedPredictionCount,
       preservedPredictionCount: existingPredictions.length - affectedPredictionCount,
     },
-    canAutoApply: lineupChanges.changed && affectedPredictionCount === 0,
+    canAutoApply: lineupChanges.changed && changedPredictionCount === 0,
   };
 }
 

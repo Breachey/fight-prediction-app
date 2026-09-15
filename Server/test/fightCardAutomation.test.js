@@ -314,7 +314,7 @@ test('assessLineupChange allows added and removed fights when affected fights ha
   assert.equal(assessment.predictionImpact.affectedPredictionCount, 0);
 });
 
-test('assessLineupChange blocks removal or opponent changes with affected picks', () => {
+test('assessLineupChange blocks opponent changes with affected picks even alongside removals', () => {
   const existingRows = [
     ...fightRows(20, 200, 'Original', 201, 'Opponent'),
     ...fightRows(21, 202, 'Removed', 203, 'Fight'),
@@ -336,4 +336,24 @@ test('assessLineupChange blocks removal or opponent changes with affected picks'
   assert.equal(assessment.lineupChanges.removedFights.length, 1);
   assert.equal(assessment.predictionImpact.affectedPredictionCount, 2);
   assert.equal(assessment.predictionImpact.preservedPredictionCount, 0);
+});
+
+test('assessLineupChange allows canceled fights with picks while preserving unchanged picks', () => {
+  const existingRows = [
+    ...fightRows(10, 100, 'Kept', 101, 'Fight'),
+    ...fightRows(11, 102, 'Moicano', 103, 'Ortega'),
+  ];
+  const assessment = assessLineupChange({
+    existingRows,
+    nextRows: fightRows(10, 100, 'Kept', 101, 'Fight'),
+    predictions: [
+      { fight_id: '11', fighter_id: 102 },
+      { fight_id: 11, fighter_id: 103 },
+      { fight_id: 10, fighter_id: 100 },
+    ],
+  });
+  assert.equal(assessment.canAutoApply, true);
+  assert.equal(assessment.predictionImpact.removedPredictionCount, 2);
+  assert.equal(assessment.predictionImpact.changedPredictionCount, 0);
+  assert.equal(assessment.predictionImpact.preservedPredictionCount, 1);
 });
