@@ -169,7 +169,7 @@ async function loadEventContext(supabase, event) {
 }
 
 async function importPreview(supabase, event, preview) {
-  const { data, error } = await supabase.rpc('replace_ufc_full_fight_card_event', {
+  const { data, error } = await supabase.rpc('reconcile_upcoming_fight_card_event', {
     p_event_id: event.id,
     p_event_name: preview.previewEvent.name,
     p_event_date: preview.previewEvent.date,
@@ -272,10 +272,10 @@ async function processEvent({ supabase, event, options, now }) {
       });
 
       if (!lineupAssessment.canAutoApply) {
-        const affectedCount = lineupAssessment.predictionImpact.affectedPredictionCount;
+        const affectedCount = lineupAssessment.predictionImpact.changedPredictionCount;
         warn(
           `Event ${event.id} lineup change needs review because ${affectedCount} prediction(s) `
-          + 'belong to removed or changed fights.'
+          + 'belong to fights with changed opponents.'
         );
         return {
           ...eventDetails,

@@ -452,3 +452,30 @@ test('syncFighterStyleFromFightCardRows leaves existing dynamic fighter stats un
   assert.equal(result.updatedFighters, 0);
   assert.deepEqual(upserts, []);
 });
+
+for (const status of ['Canceled', ' cancelled ']) {
+  test(`buildFightCardPreview removes both corners of a ${status} bout`, async () => {
+    const rows = [10, 11].flatMap((fightId) => ['Red', 'Blue'].map((corner, index) => ({
+      Event: 'UFC Test', EventId: '1313', FightId: String(fightId),
+      FighterId: String(fightId * 10 + index), Corner: corner,
+      FirstName: 'Test', LastName: corner,
+      FightStatus: fightId === 11 && index === 0 ? status : 'Scheduled',
+    })));
+    const preview = await buildFightCardPreview({
+      eventId: 1313, csvPath: '/tmp/test.csv', headers: [], rows, headerErrors: [],
+      eventRecord: { id: 1313, name: 'UFC Test' },
+      existingFightCardRows: rows, existingFightResults: [],
+    });
+    assert.deepEqual(preview.blockers, []);
+    assert.deepEqual(preview.rows.map((row) => Number(row.FightId)), [10, 10]);
+    assert.equal(preview.changedFightCard, true);
+
+    const emptyPreview = await buildFightCardPreview({
+      eventId: 1313, csvPath: '/tmp/test.csv', headers: [],
+      rows: rows.filter((row) => row.FightId === '11'), headerErrors: [],
+      eventRecord: { id: 1313, name: 'UFC Test' },
+      existingFightCardRows: rows, existingFightResults: [],
+    });
+    assert(emptyPreview.blockers.includes('The scraper returned zero fight-card rows.'));
+  });
+}

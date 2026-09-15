@@ -1115,7 +1115,14 @@ async function buildFightCardPreview({
 }) {
   const blockers = [...headerErrors];
   const warnings = [];
-  const rawRows = rows || [];
+  // Some feeds retain canceled bouts. Drop both corners if either row marks the fight canceled.
+  const cancelledFightIds = new Set((rows || [])
+    .filter((row) => /^cancel(?:l)?ed$/i.test(String(row.FightStatus || '').trim()))
+    .map((row) => String(row.FightId).trim()));
+  const rawRows = (rows || []).filter((row) => !cancelledFightIds.has(String(row.FightId).trim()));
+  if (cancelledFightIds.size > 0) {
+    warnings.push(`Excluded ${cancelledFightIds.size} canceled fight(s) from the scraped card.`);
+  }
   const scrapedRows = rawRows.map(sanitizeRowForDatabase);
   const existingRows = existingFightCardRows || [];
   const sanitizedRows = mergeScrapedRowsWithStoredValues(scrapedRows, existingRows);
