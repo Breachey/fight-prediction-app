@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.5 - 2026-09-15
+
+### Fixed
+
+- Fix canceled-fight reconciliation against production text prediction/result IDs, resolving the `text = integer` import error.
+- Match database regression fixtures to production column types and verify cleanup, preserved picks, and rollback.
+
 ## 0.33.4 - 2026-09-15
 
 ### Fixed

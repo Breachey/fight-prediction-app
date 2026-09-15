@@ -15,12 +15,12 @@ test('canceled-fight reconciliation is atomic and preserves unaffected predictio
   try {
     await db.exec(`
       CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-      CREATE TABLE public.events (id bigint PRIMARY KEY, is_completed boolean DEFAULT false);
+      CREATE TABLE public.events (id integer PRIMARY KEY, is_completed boolean DEFAULT false);
       CREATE TABLE public.ufc_full_fight_card (
-        "EventId" bigint, "FightId" bigint, "FighterId" bigint, "StartTime" text
+        "EventId" integer, "FightId" integer, "FighterId" integer, "StartTime" text
       );
-      CREATE TABLE public.predictions (fight_id bigint, fighter_id bigint);
-      CREATE TABLE public.fight_results (fight_id bigint);
+      CREATE TABLE public.predictions (fight_id text, fighter_id text);
+      CREATE TABLE public.fight_results (fight_id text);
       -- Stand-in for the existing importer; failures must roll back the wrapper's deletions.
       CREATE FUNCTION public.replace_ufc_full_fight_card_event(
         p_event_id bigint, p_event_name text, p_event_date date, p_venue text,
@@ -37,6 +37,8 @@ test('canceled-fight reconciliation is atomic and preserves unaffected predictio
     `);
     await db.exec(await fs.readFile(path.join(__dirname,
       '../../supabase/migrations/20260915143443_reconcile_cancelled_fights.sql'), 'utf8'));
+    await db.exec(await fs.readFile(path.join(__dirname,
+      '../../supabase/migrations/20260915150204_fix_reconciliation_prediction_id_types.sql'), 'utf8'));
     const rows = (fightId, blueId = fightId * 10 + 1) => [
       { EventId: 1, FightId: fightId, FighterId: fightId * 10, Corner: 'Red' },
       { EventId: 1, FightId: fightId, FighterId: blueId, Corner: 'Blue' },
@@ -58,7 +60,7 @@ test('canceled-fight reconciliation is atomic and preserves unaffected predictio
     const originalPicks = [
       { fight_id: 10, fighter_id: 100 }, { fight_id: 11, fighter_id: 110 },
       { fight_id: 11, fighter_id: 111 }, { fight_id: 20, fighter_id: 200 },
-    ];
+    ].map((pick) => ({ fight_id: String(pick.fight_id), fighter_id: String(pick.fighter_id) }));
 
     await reset();
     const result = await reconcile([...rows(10), ...rows(12)]);
