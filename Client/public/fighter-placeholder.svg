@@ -1,6 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-labelledby="title">
-  <title id="title">Fighter silhouette</title>
-  <rect width="480" height="480" fill="#050000"/>
-  <path fill="#FCFBFD" fill-opacity=".72" d="M240 54c-44 0-70 31-70 74v30c-9-3-15 5-13 17l8 25c2 7 7 10 13 10 6 24 17 41 32 51v27l-51 27c-14 7-46 10-68 25-32 21-43 67-49 140h396c-6-73-17-119-49-140-22-15-54-18-68-25l-51-27v-27c15-10 26-27 32-51 6 0 11-3 13-10l8-25c2-12-4-20-13-17v-30c0-43-26-74-70-74Z"/>
-  <path fill="none" stroke="#050000" stroke-opacity=".35" stroke-width="10" stroke-linecap="round" d="m164 330 52 22m100-22-52 22m-24 4v71"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 0 100 100" role="img" aria-labelledby="title">
+  <title id="title">Squid head silhouette</title>
+  <path fill="#000000" d="M60 13 C42.55 13 33 21.57 33 57 C33 63 33 63 33 64 C33 73.49 35.92 83.86 38.4 83.86 C40.88 83.86 43.8 73.49 43.8 64 C43.8 74.52 46.72 86.16 49.2 86.16 C51.68 86.16 54.6 74.52 54.6 64 C54.6 76.18 57.52 89.84 60 89.84 C62.48 89.84 65.4 76.18 65.4 64 C65.4 74.52 68.32 86.16 70.8 86.16 C73.28 86.16 76.2 74.52 76.2 64 C76.2 73.49 79.12 83.86 81.6 83.86 C84.08 83.86 87 73.49 87 64 C87 63 87 63 87 57 C87 21.57 77.45 13 60 13Z"/>
 </svg>

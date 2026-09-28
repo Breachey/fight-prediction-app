@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.8 - 2026-09-27
+
+### Changed
+
+- Use a solid black squid-head silhouette with a transparent background for missing or broken fighter photos.
+
 ## 0.33.7 - 2026-09-27
 
 ### Fixed
