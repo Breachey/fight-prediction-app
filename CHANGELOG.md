@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.7 - 2026-09-27
+
+### Fixed
+
+- Import identity-matched fighter photos independently of record validation, retaining strict checks for statistics.
+- Reuse real photos from earlier cards before falling back to official silhouettes.
+- Show an original local fighter silhouette when a portrait is missing or fails to load.
+
 ## 0.33.6 - 2026-09-27
 
 ### Fixed
