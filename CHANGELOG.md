@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.9 - 2026-09-27
+
+### Fixed
+
+- Backfilled missing fighter image URLs for Andrey Pulyaev, Lucas Armand, and Roberto Soldic on event 1338, using the real photo or available official silhouette.
+
 ## 0.33.8 - 2026-09-27
 
 ### Changed
