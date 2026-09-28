@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.11 - 2026-09-27
+
+### Fixed
+
+- Recognize the UFC feed's `Main` segment consistently in event summaries, start-time responses, and subscribed calendars.
+- Keep main-card times separate from the earliest event start and leave unknown segment times unset.
+
 ## 0.33.10 - 2026-09-27
 
 ### Fixed

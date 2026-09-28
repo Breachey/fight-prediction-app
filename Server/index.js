@@ -2,6 +2,7 @@ const { PERFORMANCE_STAT_FIELDS, normalizePerformanceStatValue } = require('./li
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const { createCalendarFeedHandler } = require('./lib/calendarFeed');
+const { buildEventStartTimes } = require('./lib/eventStartTimes');
 const { spawn } = require('child_process');
 require('dotenv').config();
 const {
@@ -4075,42 +4076,20 @@ app.get('/events', async (req, res) => {
 
     // Create a set of EventIds that have fight data
     const eventIdsWithFights = new Set();
-    const eventStartTimes = new Map();
-    const eventCardStartTimes = new Map();
+    const eventTimingRows = new Map();
     if (fightCardData) {
       fightCardData.forEach(fight => {
         eventIdsWithFights.add(fight.EventId);
 
-        const startTime = typeof fight.StartTime === 'string' ? fight.StartTime.trim() : '';
-        if (!startTime) {
-          return;
-        }
-
-        const existingStartTime = eventStartTimes.get(fight.EventId);
-        if (!existingStartTime || Date.parse(startTime) < Date.parse(existingStartTime)) {
-          eventStartTimes.set(fight.EventId, startTime);
-        }
-
-        const cardSegment = String(fight.CardSegment || '').trim().toLowerCase();
-        const segmentKey = cardSegment === 'maincard' || cardSegment === 'main card'
-          ? 'main_card'
-          : cardSegment === 'prelims1' || cardSegment === 'prelims'
-          ? 'prelims'
-          : cardSegment === 'prelims2' || cardSegment === 'early prelims'
-          ? 'early_prelims'
-          : null;
-        const segmentStart = typeof fight.CardSegmentStartTime === 'string'
-          ? fight.CardSegmentStartTime.trim()
-          : '';
-        if (segmentKey && segmentStart) {
-          const cardTimes = eventCardStartTimes.get(fight.EventId) || {};
-          if (!cardTimes[segmentKey] || Date.parse(segmentStart) < Date.parse(cardTimes[segmentKey])) {
-            cardTimes[segmentKey] = segmentStart;
-            eventCardStartTimes.set(fight.EventId, cardTimes);
-          }
-        }
+        const key = String(fight.EventId);
+        const rows = eventTimingRows.get(key) || [];
+        rows.push(fight);
+        eventTimingRows.set(key, rows);
       });
     }
+    const eventTimings = new Map(
+      [...eventTimingRows].map(([key, rows]) => [key, buildEventStartTimes(rows)])
+    );
 
     debugLog(`Successfully fetched ${eventsData.length} events from events table`);
     debugLog(`Found ${eventIdsWithFights.size} events with fight data`);
@@ -4126,12 +4105,7 @@ app.get('/events', async (req, res) => {
       location_city: event.location_city || null,
       location_state: event.location_state || null,
       location_country: event.location_country || null,
-      start_time: eventStartTimes.get(event.id) || null,
-      card_start_times: {
-        early_prelims: eventCardStartTimes.get(event.id)?.early_prelims || null,
-        prelims: eventCardStartTimes.get(event.id)?.prelims || null,
-        main_card: eventCardStartTimes.get(event.id)?.main_card || eventStartTimes.get(event.id) || null,
-      },
+      ...(eventTimings.get(String(event.id)) || buildEventStartTimes()),
       image_url: event.image_url,
       has_fight_data: eventIdsWithFights.has(event.id) // Add flag to indicate if fights are available
     }));
@@ -4225,53 +4199,7 @@ app.get('/events/:id/start-time', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch event start time' });
     }
 
-    const earliestStartTime = (data || []).reduce((earliest, row) => {
-      const candidate = typeof row?.StartTime === 'string' ? row.StartTime.trim() : '';
-      if (!candidate) return earliest;
-      if (!earliest || Date.parse(candidate) < Date.parse(earliest)) {
-        return candidate;
-      }
-      return earliest;
-    }, null);
-
-    const cardStartTimes = {
-      early_prelims: null,
-      prelims: null,
-      main_card: null,
-    };
-
-    (data || []).forEach((row) => {
-      const segment = typeof row?.CardSegment === 'string' ? row.CardSegment.trim() : '';
-      const segmentStartTime = typeof row?.CardSegmentStartTime === 'string'
-        ? row.CardSegmentStartTime.trim()
-        : '';
-
-      if (!segment || !segmentStartTime) {
-        return;
-      }
-
-      let key = null;
-      if (segment === 'Prelims2') {
-        key = 'early_prelims';
-      } else if (segment === 'Prelims1') {
-        key = 'prelims';
-      } else if (segment === 'Main') {
-        key = 'main_card';
-      }
-
-      if (!key) {
-        return;
-      }
-
-      if (!cardStartTimes[key] || Date.parse(segmentStartTime) < Date.parse(cardStartTimes[key])) {
-        cardStartTimes[key] = segmentStartTime;
-      }
-    });
-
-    return res.json({
-      start_time: earliestStartTime,
-      card_start_times: cardStartTimes,
-    });
+    return res.json(buildEventStartTimes(data || []));
   } catch (error) {
     console.error('Unexpected error in GET /events/:id/start-time:', error);
     return res.status(500).json({ error: 'Internal server error', details: error.message });
