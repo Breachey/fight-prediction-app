@@ -11,6 +11,11 @@ const {
 const {
   syncFighterStyleFromFightCardRows,
 } = require('../lib/fighterStyleSync');
+const {
+  assessLineupChange,
+  countUpdatedFightCardOdds,
+  summarizeFilledFightCardData,
+} = require('../lib/fightCardAutomation');
 
 test('applyManualFightCardPreviewUpdates edits complete or missing preview values', () => {
   const preview = {
@@ -350,6 +355,53 @@ test('buildFightCardPreview preserves existing profile data while refreshing odd
   assert.equal(preview.rows[1].odds, '-140');
   assert.equal(preview.rows[1].Streak, '-1');
   assert.equal(preview.rows[1].style, 'Boxing');
+});
+
+test('corner-only refreshes preserve fighter data and pass automation review', async () => {
+  const existingRows = [
+    { FightId: 9001, FighterId: 101, Corner: 'Red', odds: '+120', style: 'Wrestling', Streak: 5 },
+    { FightId: 9001, FighterId: 102, Corner: 'Blue', odds: '-140', style: 'Boxing', Streak: -1 },
+  ];
+  const preview = await buildFightCardPreview({
+    eventId: 1313,
+    csvPath: '/tmp/corner-only-refresh.csv',
+    headers: [],
+    rows: existingRows.map((row, index) => ({
+      __rowNumber: index + 2,
+      Event: 'UFC Test',
+      EventId: '1313',
+      FightId: String(row.FightId),
+      FighterId: String(row.FighterId),
+      Corner: row.Corner === 'Red' ? 'Blue' : 'Red',
+      FirstName: 'Test',
+      LastName: String(row.FighterId),
+      odds: index === 0 ? '-125' : '',
+      style: '',
+      Streak: '',
+    })),
+    headerErrors: [],
+    eventRecord: { id: 1313, name: 'UFC Test' },
+    existingFightCardRows: existingRows,
+    existingFightResults: [],
+    scraperOutput: {},
+  });
+
+  assert.deepEqual(preview.blockers, []);
+  assert.equal(preview.changedFightCard, true);
+  const assessment = assessLineupChange({
+    existingRows,
+    nextRows: preview.rows,
+    predictions: [{ fight_id: '9001', fighter_id: '101' }],
+  });
+  assert.equal(assessment.canAutoApply, true);
+  assert.equal(assessment.lineupChanges.changed, false);
+  assert.equal(assessment.predictionImpact.preservedPredictionCount, 1);
+  assert.deepEqual(preview.rows.map((row) => row.Corner), ['Blue', 'Red']);
+  assert.deepEqual(preview.rows.map((row) => row.style), ['Wrestling', 'Boxing']);
+  assert.deepEqual(preview.rows.map((row) => String(row.Streak)), ['5', '-1']);
+  assert.deepEqual(preview.rows.map((row) => row.odds), ['-125', '-140']);
+  assert.equal(countUpdatedFightCardOdds(existingRows, preview.rows), 1);
+  assert.equal(summarizeFilledFightCardData(existingRows, preview.rows).newRowCount, 0);
 });
 
 test('syncFighterStyleFromFightCardRows does not recycle fight-card stats into fighters', async () => {

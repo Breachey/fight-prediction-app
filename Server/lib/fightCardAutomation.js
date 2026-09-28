@@ -153,7 +153,8 @@ function selectDueEvents({
 }
 
 function fightCardRowKey(row) {
-  return [row?.FightId, row?.FighterId, row?.Corner].join('|');
+  // A corner reassignment does not change the fighter's identity or stored data.
+  return [row?.FightId, row?.FighterId].join('|');
 }
 
 function fightSummary(row) {
@@ -255,7 +256,7 @@ function assessLineupChange({ existingRows, nextRows, predictions }) {
       changedPredictionCount,
       preservedPredictionCount: existingPredictions.length - affectedPredictionCount,
     },
-    canAutoApply: lineupChanges.changed && changedPredictionCount === 0,
+    canAutoApply: changedPredictionCount === 0,
   };
 }
 
