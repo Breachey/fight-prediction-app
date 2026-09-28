@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.10 - 2026-09-27
+
+### Fixed
+
+- Preserve explicitly confirmed 0% UFC accuracy when the landed count is omitted and attempts are positive, while keeping unavailable accuracy blank.
+- Backfilled 13 verified zero takedown accuracies on event 1338 without overwriting existing statistics.
+
 ## 0.33.9 - 2026-09-27
 
 ### Fixed

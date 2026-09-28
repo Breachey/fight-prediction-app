@@ -78,6 +78,59 @@ class FighterProfileSourceTests(unittest.TestCase):
         self.assertEqual(profile["KnockdownAvgPer15"], 0.53)
         self.assertEqual(profile["AverageFightTimeSeconds"], 811)
 
+    def test_ufc_accuracy_keeps_confirmed_zero_separate_from_unavailable(self):
+        cases = [
+            ("0", "6", None, 0),
+            ("", "6", "0%", 0),
+            ("", "6", "0.0%", 0),
+            ("", "6", None, None),
+            ("", "6", "20%", None),
+            ("", "", "0%", None),
+            ("", "0", "0%", None),
+            ("0", "0", "0%", None),
+            ("0", "", "0%", None),
+            ("2", "10", "0%", 20),
+        ]
+        for landed, attempted, chart, expected in cases:
+            with self.subTest(landed=landed, attempted=attempted, chart=chart):
+                chart_html = (
+                    f'<svg class="e-chart-circle"><title>Takedown Accuracy {chart}</title></svg>'
+                    if chart is not None else ""
+                )
+                html = f'''
+                <h1 class="hero-profile__name">Test Fighter</h1>
+                {chart_html}
+                <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Landed</dt>
+                  <dd class="c-overlap__stats-value">{landed}</dd></dl>
+                <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Attempted</dt>
+                  <dd class="c-overlap__stats-value">{attempted}</dd></dl>
+                '''
+                profile = parse_ufc_profile(html)
+                if expected is None:
+                    self.assertNotIn("TakedownAccuracyPct", profile)
+                else:
+                    self.assertEqual(profile["TakedownAccuracyPct"], expected)
+                    merged, sources = merge_profiles([("ufc.com", profile)], 10, 2)
+                    self.assertEqual(merged["TakedownAccuracyPct"], str(expected))
+                    self.assertEqual(sources["TakedownAccuracyPct"], "ufc.com")
+
+    def test_ufc_zero_accuracy_chart_is_matched_to_the_correct_statistic(self):
+        html = '''
+        <h1 class="hero-profile__name">Test Fighter</h1>
+        <svg class="e-chart-circle"><title>Striking accuracy 0%</title></svg>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Sig. Strikes Landed</dt>
+          <dd class="c-overlap__stats-value"></dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Sig. Strikes Attempted</dt>
+          <dd class="c-overlap__stats-value">10</dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Landed</dt>
+          <dd class="c-overlap__stats-value"></dd></dl>
+        <dl class="c-overlap__stats"><dt class="c-overlap__stats-text">Takedowns Attempted</dt>
+          <dd class="c-overlap__stats-value">6</dd></dl>
+        '''
+        profile = parse_ufc_profile(html)
+        self.assertEqual(profile["SigStrikeAccuracyPct"], 0)
+        self.assertNotIn("TakedownAccuracyPct", profile)
+
     def test_wikipedia_parser_stays_inside_mma_record(self):
         html = """
         <table class="infobox">
