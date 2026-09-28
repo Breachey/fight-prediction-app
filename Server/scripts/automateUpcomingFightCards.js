@@ -321,7 +321,7 @@ async function processEvent({ supabase, event, options, now }) {
     const persisted = await importPreview(supabase, event, preview);
     return {
       ...eventDetails,
-      status: lineupAssessment
+      status: lineupAssessment?.lineupChanges.changed
         ? 'lineup-updated'
         : (context.existingRows.length > 0 ? 'refreshed-existing-card' : 'imported-new-card'),
       profileLimit,

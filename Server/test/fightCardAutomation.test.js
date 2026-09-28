@@ -314,6 +314,24 @@ test('assessLineupChange allows added and removed fights when affected fights ha
   assert.equal(assessment.predictionImpact.affectedPredictionCount, 0);
 });
 
+test('assessLineupChange allows corner swaps without invalidating picks', () => {
+  const existingRows = fightRows(10, 100, 'Kept', 101, 'Matchup');
+  const nextRows = existingRows.map((row) => ({
+    ...row,
+    Corner: row.Corner === 'Red' ? 'Blue' : 'Red',
+  }));
+
+  for (const predictions of [[], [{ fight_id: '10', fighter_id: '100' }]]) {
+    const assessment = assessLineupChange({ existingRows, nextRows, predictions });
+
+    assert.equal(assessment.canAutoApply, true);
+    assert.equal(assessment.lineupChanges.changed, false);
+    assert.equal(assessment.lineupChanges.unchangedFightCount, 1);
+    assert.equal(assessment.predictionImpact.changedPredictionCount, 0);
+    assert.equal(assessment.predictionImpact.preservedPredictionCount, predictions.length);
+  }
+});
+
 test('assessLineupChange blocks opponent changes with affected picks even alongside removals', () => {
   const existingRows = [
     ...fightRows(20, 200, 'Original', 201, 'Opponent'),

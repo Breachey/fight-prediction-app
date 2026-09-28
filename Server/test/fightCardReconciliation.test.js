@@ -63,6 +63,15 @@ test('canceled-fight reconciliation is atomic and preserves unaffected predictio
     ].map((pick) => ({ fight_id: String(pick.fight_id), fighter_id: String(pick.fighter_id) }));
 
     await reset();
+    const cornerRefresh = await reconcile([...rows(10), ...rows(11)].map((row) => ({
+      ...row,
+      Corner: row.Corner === 'Red' ? 'Blue' : 'Red',
+    })));
+    assert.deepEqual(cornerRefresh.rows[0].result.removedFightIds, []);
+    assert.equal(cornerRefresh.rows[0].result.removedPredictionCount, 0);
+    assert.deepEqual(await picks(), originalPicks);
+
+    await reset();
     const result = await reconcile([...rows(10), ...rows(12)]);
     assert.deepEqual(result.rows[0].result.removedFightIds, [11]);
     assert.equal(result.rows[0].result.removedPredictionCount, 2);

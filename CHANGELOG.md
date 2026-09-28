@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.33.6 - 2026-09-27
+
+### Fixed
+
+- Allow corner-only fight-card refreshes without a false lineup-review failure, while retaining review for opponent changes with existing picks.
+- Preserve stored fighter data across corner changes and report these updates as existing-card refreshes.
+
 ## 0.33.5 - 2026-09-15
 
 ### Fixed
