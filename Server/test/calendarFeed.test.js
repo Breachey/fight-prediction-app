@@ -57,6 +57,23 @@ test('public handler caches, refreshes changed times under the same UID, and inc
   assert.match(updated.body, /REFRESH-INTERVAL;VALUE=DURATION:PT1H/);
   assert.doesNotMatch(updated.body, /Download again/);
 });
+test('calendar feed labels the Main segment with its own time and starts at early prelims', async () => {
+  const start = '2026-09-12T20:00:00Z';
+  const fights = [
+    { id: 1, EventId: 1, StartTime: start, CardSegment: 'Main', CardSegmentStartTime: '2026-09-13T00:00:00Z' },
+    { id: 2, EventId: 1, StartTime: start, CardSegment: 'Prelims1', CardSegmentStartTime: '2026-09-12T22:00:00Z' },
+    { id: 3, EventId: 1, StartTime: start, CardSegment: 'Prelims2', CardSegmentStartTime: start },
+  ];
+  const db = database([future], fights);
+  const [event] = await loadCalendarEvents(db, now);
+  assert.equal(event.card_start_times.main_card, '2026-09-13T00:00:00Z');
+  const handler = createCalendarFeedHandler({ supabase: db, now: () => now });
+  const res = response(); await handler({}, res);
+  const body = res.body.replace(/\r\n /g, '').replace(/\\,/g, ',');
+  assert.match(body, /DTSTART;TZID=America\/Phoenix:20260912T130000/);
+  assert.match(body, /Main Card: Sep 12, 2026, 5:00 PM MST/);
+  assert.match(body, /Prelims: Sep 12, 2026, 3:00 PM MST/);
+});
 test('empty schedule remains a valid feed, while database failures return 503, never an empty calendar', async () => {
   const db = database();
   const handler = createCalendarFeedHandler({ supabase: db, now: () => now });

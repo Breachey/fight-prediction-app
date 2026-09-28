@@ -1,5 +1,6 @@
 const PAGE_SIZE = 500;
 const CACHE_MS = 5 * 60 * 1000;
+const { buildEventStartTimes } = require('./eventStartTimes');
 
 async function readPages(query) {
   const rows = [];
@@ -18,24 +19,23 @@ async function loadCalendarEvents(supabase, now = new Date()) {
     .select('id,name,date,is_completed,venue,location_city,location_state,location_country')
     .gte('date', cutoff).order('id', { ascending: true })))
     .filter(event => /\bUFC\b/i.test(event.name || ''));
-  const byId = new Map(events.map(event => [String(event.id), { ...event, card_start_times: {} }]));
+  const byId = new Map(events.map(event => [String(event.id), { ...event, ...buildEventStartTimes() }]));
   // Bound the IN filter and paginate fight rows independently of the events query.
   for (let offset = 0; offset < events.length; offset += 100) {
     const ids = events.slice(offset, offset + 100).map(event => event.id);
     const fights = await readPages(() => supabase.from('ufc_full_fight_card')
       .select('id,EventId,StartTime,CardSegment,CardSegmentStartTime')
       .in('EventId', ids).order('id', { ascending: true }));
-    const setEarliest = (target, key, value) => {
-      if (typeof value !== 'string' || !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) || !Number.isFinite(Date.parse(value))) return;
-      if (!target[key] || Date.parse(value) < Date.parse(target[key])) target[key] = value;
-    };
+    const timingRows = new Map();
     for (const fight of fights) {
       const event = byId.get(String(fight.EventId));
       if (!event) continue;
-      setEarliest(event, 'start_time', fight.StartTime);
-      const segment = String(fight.CardSegment || '').toLowerCase().replace(/\s/g, '');
-      const key = { maincard: 'main_card', prelims1: 'prelims', prelims: 'prelims', prelims2: 'early_prelims', earlyprelims: 'early_prelims' }[segment];
-      if (key) setEarliest(event.card_start_times, key, fight.CardSegmentStartTime);
+      const rows = timingRows.get(String(fight.EventId)) || [];
+      rows.push(fight);
+      timingRows.set(String(fight.EventId), rows);
+    }
+    for (const [id, rows] of timingRows) {
+      Object.assign(byId.get(id), buildEventStartTimes(rows));
     }
   }
   return [...byId.values()];

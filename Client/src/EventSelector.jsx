@@ -269,11 +269,6 @@ function EventSelector({
   const [adminAccessFeedback, setAdminAccessFeedback] = useState(null);
   const [adminToolsOpen, setAdminToolsOpen] = useState(false);
   const [adminConfirmation, setAdminConfirmation] = useState(null);
-  const [selectedEventCardStartTimes, setSelectedEventCardStartTimes] = useState({
-    early_prelims: null,
-    prelims: null,
-    main_card: null,
-  });
   const canManageAdminActions = userType === 'admin' && hasActiveAdminSession();
 
   const centerCardAtIndex = useCallback((index, behavior = 'smooth') => {
@@ -514,7 +509,7 @@ function EventSelector({
 
   const selectedEvent = events[currentIndex] || null;
   const selectedEventDateStr = formatEventDate(selectedEvent?.date);
-  const selectedEventStartTimeLines = buildUtahCardStartTimeLines(selectedEventCardStartTimes);
+  const selectedEventStartTimeLines = buildUtahCardStartTimeLines(selectedEvent?.card_start_times);
   const selectedEventLocationStr = selectedEvent
     ? [selectedEvent.venue, selectedEvent.location_city, selectedEvent.location_state].filter(Boolean).join(', ')
     : '';
@@ -599,15 +594,6 @@ function EventSelector({
     if (typeof onSelectedEventChange !== 'function') return;
     onSelectedEventChange(selectedEvent || null);
   }, [selectedEvent, onSelectedEventChange]);
-
-  useEffect(() => {
-    const cardStartTimes = selectedEvent?.card_start_times || {};
-    setSelectedEventCardStartTimes({
-      early_prelims: cardStartTimes.early_prelims || null,
-      prelims: cardStartTimes.prelims || null,
-      main_card: cardStartTimes.main_card || selectedEvent?.start_time || null,
-    });
-  }, [selectedEvent?.id, selectedEvent?.card_start_times, selectedEvent?.start_time]);
 
   const isPrevSeasonEnabled = Boolean(previousSeasonYear) && isAtStart;
   const isNextSeasonEnabled = Boolean(nextSeasonYear) && isAtEnd;
