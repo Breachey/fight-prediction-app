@@ -24,6 +24,7 @@ import './Fights.css';
 import PlayerCard from './components/PlayerCard';
 import VoteCard from './components/VoteCard';
 import ConfirmDialog from './components/ConfirmDialog';
+import FighterImage from './components/FighterImage';
 const FightDetailsPanel = lazy(() => import('./components/FightDetailsPanel'));
 
 const REMINDER_TYPE_BROKEN_HEART = 'broken_heart';
@@ -948,7 +949,7 @@ function Fights({
             fightingOutOfCountry={fight[`${fighterKey}_country`]}
           />
           <div className="fighter-image-container">
-            <img
+            <FighterImage
               src={fight[`${fighterKey}_image`]}
               alt={fighterName}
               className="fighter-image"

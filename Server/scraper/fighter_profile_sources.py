@@ -6,7 +6,7 @@ import re
 import time
 import unicodedata
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -272,6 +272,42 @@ def fetch_sherdog_profile(
     return {}, {"status": "not_found", "candidates_tested": tested}
 
 
+def normalize_fighter_image_url(value: object, base_url: str = "", allow_placeholder: bool = True) -> str:
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return ""
+    try:
+        image_url = urljoin(base_url, raw_value)
+        parsed = urlparse(image_url)
+    except ValueError:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    if not allow_placeholder and re.search(
+        r"silhouette|shadow[_-]fighter|placeholder|default[_-](?:athlete|fighter)",
+        unquote(parsed.path), re.IGNORECASE,
+    ):
+        return ""
+    return image_url
+
+
+def extract_ufc_fighter_image(html: str, url: str = "") -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    candidates = [
+        tag.get("content")
+        for selector in ('meta[property="og:image"]', 'meta[name="twitter:image"]')
+        for tag in soup.select(selector)
+    ]
+    # This selector excludes opponent and past-result photos elsewhere in the hero.
+    candidates.extend(tag.get("src") for tag in soup.select('img.hero-profile__image'))
+    for allow_placeholder in (False, True):
+        for candidate in candidates:
+            image_url = normalize_fighter_image_url(candidate, url, allow_placeholder)
+            if image_url:
+                return image_url
+    return ""
+
+
 def parse_ufc_profile(html: str, url: str = "") -> Dict[str, object]:
     soup = BeautifulSoup(html, "html.parser")
     name_node = soup.select_one(".hero-profile__name")
@@ -341,8 +377,7 @@ def parse_ufc_profile(html: str, url: str = "") -> Dict[str, object]:
         attempted = totals.get(attempted_key)
         if landed is not None and attempted:
             profile[field_name] = round(100 * landed / attempted)
-    image = soup.find("meta", attrs={"property": "og:image"})
-    profile["ImageURL"] = image.get("content", "") if image else ""
+    profile["ImageURL"] = extract_ufc_fighter_image(html, url)
     tags = [node.get_text(" ", strip=True) for node in soup.select(".hero-profile__tag")]
     profile["Rank"] = "0" if any(normalize_name(tag) == "title holder" for tag in tags) else ""
     if not profile["Rank"]:
@@ -366,6 +401,7 @@ def fetch_ufc_profile(
     session = session or build_session()
     limiter = limiter or RateLimiter()
     tested = []
+    image_only_profile = {}
     for url in candidate_urls:
         try:
             response = limiter.get(session, url, timeout)
@@ -373,14 +409,32 @@ def fetch_ufc_profile(
             tested.append({"url": url, "error": str(error)})
             continue
         profile = parse_ufc_profile(response.text, response.url) if response.status_code == 200 else {}
-        identity_ok = name_score(fighter_name, str(profile.get("name", ""))) >= 82
+        identity_score = name_score(fighter_name, str(profile.get("name", "")))
+        identity_ok = identity_score >= 82
+        image_identity_ok = identity_score >= 96
         record_ok = (
             expected_wins is None or expected_losses is None
             or (profile.get("Record_Wins") == int(expected_wins) and profile.get("Record_Losses") == int(expected_losses))
         )
-        tested.append({"url": url, "http_status": response.status_code, "identity_ok": identity_ok, "record_ok": record_ok})
-        if profile and "/search?" not in response.url and identity_ok and record_ok:
+        is_profile_page = "/search?" not in response.url
+        image_url = profile.get("ImageURL", "") if is_profile_page and image_identity_ok else ""
+        if profile:
+            profile["ImageURL"] = image_url
+        tested.append({"url": url, "http_status": response.status_code, "identity_ok": identity_ok,
+                       "record_ok": record_ok, "image_identity_ok": image_identity_ok,
+                       "image_found": bool(image_url)})
+        if image_url and (not image_only_profile or (
+            not normalize_fighter_image_url(image_only_profile["ImageURL"], allow_placeholder=False)
+            and normalize_fighter_image_url(image_url, allow_placeholder=False)
+        )):
+            image_only_profile = {"name": profile["name"], "ufc_profile_url": response.url,
+                                  "ImageURL": image_url}
+        if profile and is_profile_page and identity_ok and record_ok:
+            if not normalize_fighter_image_url(profile.get("ImageURL"), allow_placeholder=False) and image_only_profile:
+                profile["ImageURL"] = image_only_profile["ImageURL"]
             return profile, {"status": "success", "candidates_tested": tested}
+    if image_only_profile:
+        return image_only_profile, {"status": "image-only", "candidates_tested": tested}
     return {}, {"status": "not_found", "candidates_tested": tested}
 
 

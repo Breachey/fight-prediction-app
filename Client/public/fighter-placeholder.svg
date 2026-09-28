@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-labelledby="title">
+  <title id="title">Fighter silhouette</title>
+  <rect width="480" height="480" fill="#050000"/>
+  <path fill="#FCFBFD" fill-opacity=".72" d="M240 54c-44 0-70 31-70 74v30c-9-3-15 5-13 17l8 25c2 7 7 10 13 10 6 24 17 41 32 51v27l-51 27c-14 7-46 10-68 25-32 21-43 67-49 140h396c-6-73-17-119-49-140-22-15-54-18-68-25l-51-27v-27c15-10 26-27 32-51 6 0 11-3 13-10l8-25c2-12-4-20-13-17v-30c0-43-26-74-70-74Z"/>
+  <path fill="none" stroke="#050000" stroke-opacity=".35" stroke-width="10" stroke-linecap="round" d="m164 330 52 22m100-22-52 22m-24 4v71"/>
+</svg>

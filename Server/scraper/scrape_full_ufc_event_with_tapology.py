@@ -22,6 +22,9 @@ from fighter_profile_sources import (
     PROFILE_FIELDS as VALIDATED_PROFILE_FIELDS,
     RateLimiter as ProfileSourceRateLimiter,
     build_session as build_profile_source_session,
+    extract_ufc_fighter_image,
+    fetch_ufc_profile,
+    normalize_fighter_image_url,
     scrape_fighter_sources,
 )
 
@@ -1011,6 +1014,39 @@ def upsert_tapology_fighter_cache(
         print(f"fighters profile upsert skipped: {err}")
 
 
+def fetch_fighter_image_lookup(event: Dict, timeout: float) -> Dict[str, str]:
+    fighter_ids = sorted({
+        fighter_id
+        for fight in event.get("FightCard", [])
+        for fighter in fight.get("Fighters", [])
+        if (fighter_id := parse_optional_int(fighter.get("FighterId"))) is not None
+        and fighter_id > 0
+    })
+    if not fighter_ids:
+        return {}
+    try:
+        rows = fetch_supabase_rows(
+            "ufc_full_fight_card", "FighterId,ImageURL", timeout,
+            params={
+                "FighterId": f"in.({','.join(str(value) for value in fighter_ids)})",
+                "ImageURL": "not.is.null",
+                "order": "EventId.desc,id.desc",
+            },
+        )
+    except (requests.RequestException, ValueError) as error:
+        print(f"Historical fighter image lookup skipped: {error}")
+        return {}
+    lookup = {}
+    placeholders = {}
+    for row in rows:
+        fighter_id = parse_optional_int(row.get("FighterId"))
+        image_url = normalize_fighter_image_url(row.get("ImageURL"))
+        if fighter_id in fighter_ids and image_url:
+            destination = lookup if normalize_fighter_image_url(image_url, allow_placeholder=False) else placeholders
+            destination.setdefault(str(fighter_id), image_url)
+    return {**placeholders, **lookup}
+
+
 def fetch_fighter_style_lookup(timeout: float) -> Dict[str, Dict[str, str]]:
     empty_lookup = {
         "by_fighter_id": {},
@@ -1256,16 +1292,7 @@ def build_ufc_profile_candidates(profile_url: Optional[str], fighter: Dict) -> L
 
 
 def extract_ufc_profile_image(html: str) -> Optional[str]:
-    soup = BeautifulSoup(html, "html.parser")
-    for attrs in (
-        {"property": "og:image"},
-        {"name": "twitter:image"},
-    ):
-        tag = soup.find("meta", attrs=attrs)
-        content = tag.get("content") if tag else None
-        if content:
-            return content
-    return None
+    return extract_ufc_fighter_image(html) or None
 
 
 def extract_ufc_official_rank(html: str) -> str:
@@ -1289,28 +1316,18 @@ def fetch_ufc_profile_details(
     fighter: Dict,
     timeout: float,
 ) -> Dict[str, str]:
-    profile_url = fighter.get("UFCLink")
-
-    for candidate_url in build_ufc_profile_candidates(profile_url, fighter):
-        try:
-            response = session.get(candidate_url, timeout=timeout)
-            raise_for_status_with_context(response, candidate_url)
-        except requests.RequestException:
-            continue
-
-        if "/search?" in response.url:
-            continue
-
-        image_url = extract_ufc_profile_image(response.text) or ""
-        rank = extract_ufc_official_rank(response.text)
-        return {
-            "ImageURL": image_url,
-            "UFCRank": rank,
-        }
-
+    record = fighter.get("Record") or {}
+    profile, _ = fetch_ufc_profile(
+        fighter_full_name(fighter),
+        build_ufc_profile_candidates(fighter.get("UFCLink"), fighter),
+        parse_optional_int(record.get("Wins")),
+        parse_optional_int(record.get("Losses")),
+        timeout,
+        session=session,
+    )
     return {
-        "ImageURL": "",
-        "UFCRank": "",
+        "ImageURL": profile.get("ImageURL", ""),
+        "UFCRank": profile.get("Rank", ""),
     }
 
 
@@ -3410,6 +3427,7 @@ def export_event(
     timeout: float,
     image_delay_seconds: float,
     ufc_profiles: Optional[Dict[str, Dict[str, str]]] = None,
+    fighter_image_lookup: Optional[Dict[str, str]] = None,
 ) -> None:
     event_constants = build_event_constants(event)
 
@@ -3424,6 +3442,15 @@ def export_event(
                 ufc_profile = (ufc_profiles or {}).get(fighter_name_key)
                 if ufc_profile is None:
                     ufc_profile = fetch_ufc_profile_details(ufc_session, fighter, timeout)
+                live_image = ufc_profile.get("ImageURL")
+                stored_image = (fighter_image_lookup or {}).get(cache_value_to_csv(fighter.get("FighterId")))
+                ufc_profile = {
+                    **ufc_profile,
+                    "ImageURL": normalize_fighter_image_url(live_image, allow_placeholder=False)
+                    or normalize_fighter_image_url(stored_image, allow_placeholder=False)
+                    or normalize_fighter_image_url(live_image)
+                    or normalize_fighter_image_url(stored_image),
+                }
                 row = build_row(
                     event_constants=event_constants,
                     fight=fight,
@@ -3528,6 +3555,7 @@ def main() -> None:
             percent=14,
         )
         fighter_style_lookup = fetch_fighter_style_lookup(timeout=args.timeout)
+        fighter_image_lookup = fetch_fighter_image_lookup(event, timeout=args.timeout)
         tapology_cache_lookup = fetch_tapology_cache_lookup(timeout=args.timeout)
         fighter_source_diagnostics: Dict[str, object] = {}
         primary_fighters, ufc_profiles = fetch_validated_fighter_source_enrichment(
@@ -3584,6 +3612,7 @@ def main() -> None:
             timeout=args.timeout,
             image_delay_seconds=args.image_delay_seconds,
             ufc_profiles=ufc_profiles,
+            fighter_image_lookup=fighter_image_lookup,
         )
 
         with open(metadata_filename(output_path), "w", encoding="utf-8") as metadata_file:
