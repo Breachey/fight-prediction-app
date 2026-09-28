@@ -372,11 +372,28 @@ def parse_ufc_profile(html: str, url: str = "") -> Dict[str, object]:
         ("sig strikes landed", "sig strikes attempted", "SigStrikeAccuracyPct"),
         ("takedowns landed", "takedowns attempted", "TakedownAccuracyPct"),
     )
+    zero_accuracy_fields = set()
+    accuracy_title_map = {
+        "striking accuracy": "SigStrikeAccuracyPct",
+        "takedown accuracy": "TakedownAccuracyPct",
+    }
+    for title in soup.select(".e-chart-circle title"):
+        match = re.fullmatch(
+            r"\s*(Striking accuracy|Takedown accuracy)\s+0(?:\.0+)?\s*%\s*",
+            title.get_text(" ", strip=True), re.IGNORECASE,
+        )
+        if match:
+            zero_accuracy_fields.add(accuracy_title_map[normalize_name(match.group(1))])
     for landed_key, attempted_key, field_name in accuracy_pairs:
         landed = totals.get(landed_key)
         attempted = totals.get(attempted_key)
-        if landed is not None and attempted:
-            profile[field_name] = round(100 * landed / attempted)
+        if attempted is not None and attempted > 0:
+            # UFC can omit the zero landed count while its chart explicitly shows 0%.
+            # A positive attempt count distinguishes this from unavailable accuracy.
+            if landed is None and field_name in zero_accuracy_fields:
+                landed = 0
+            if landed is not None:
+                profile[field_name] = round(100 * landed / attempted)
     profile["ImageURL"] = extract_ufc_fighter_image(html, url)
     tags = [node.get_text(" ", strip=True) for node in soup.select(".hero-profile__tag")]
     profile["Rank"] = "0" if any(normalize_name(tag) == "title holder" for tag in tags) else ""

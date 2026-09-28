@@ -156,6 +156,18 @@ test('buildFightResponse keeps fight metadata and title round fields', () => {
   assert.equal(response.title_fight_name, 'Interim Belt');
 });
 
+test('buildFightResponse keeps zero takedown accuracy distinct from unavailable accuracy', () => {
+  const response = buildFightResponse({
+    fightId: 123,
+    eventId: 99,
+    redFighter: { ...redFighter, TakedownAccuracyPct: 0 },
+    blueFighter: { ...blueFighter, TakedownAccuracyPct: null },
+  });
+
+  assert.equal(response.fighter1_takedown_accuracy_pct, 0);
+  assert.equal(response.fighter2_takedown_accuracy_pct, null);
+});
+
 test('buildFightResponse omits an unassigned referee and falls back to birth country', () => {
   const fighterWithoutAssignment = {
     ...redFighter,

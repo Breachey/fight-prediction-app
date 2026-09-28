@@ -6,7 +6,8 @@ const { applyManualFightCardPreviewUpdates, buildImportedFightCardEditorPreview 
 test('performance values accept decimals, zero, percentages, dates and normalized recent form', () => {
   for (const [field, value, expected] of [
     ['SigStrLandedPerMin', '4.37', 4.37], ['TakedownAvgPer15', '.25', .25],
-    ['SigStrikeAccuracyPct', '100', 100], ['SubmissionAvgPer15', '0', 0],
+    ['SigStrikeAccuracyPct', '100', 100], ['TakedownAccuracyPct', '0', 0],
+    ['SubmissionAvgPer15', '0', 0],
     ['AverageFightTimeSeconds', '811', 811], ['LastFightDate', '2024-02-29', '2024-02-29'],
     ['RecentForm', ' w, l, nc ', 'W,L,NC'],
   ]) assert.deepEqual(normalizePerformanceStatValue(field, value), { ok: true, value: expected });
