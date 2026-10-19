@@ -78,13 +78,14 @@ PORT=3001
 ALLOWED_ORIGINS=http://localhost:5173
 IMAGE_PROXY_ALLOWED_HOSTS=images.tapology.com
 DEBUG_SERVER_LOGS=false
+LEADERBOARD_CACHE_TTL_MS=20000
 ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=false
 ```
 
 Create a `Client/.env.local` file:
 
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=/api
 ```
 
 Notes:
@@ -95,6 +96,7 @@ Notes:
 - `USER_SESSION_TTL_HOURS` and `ADMIN_SESSION_TTL_HOURS` default to 720 hours (30 days).
 - `ALLOWED_ORIGINS` accepts a comma-separated list of additional allowed origins.
 - `IMAGE_PROXY_ALLOWED_HOSTS` accepts a comma-separated list of approved external image hosts.
+- `LEADERBOARD_CACHE_TTL_MS` controls how long leaderboard data is reused on each server instance (default 20000). Admin result changes clear it immediately on the instance that handled them.
 - `DEBUG_SERVER_LOGS=true` enables verbose request/debug logging for local troubleshooting.
 - `ENABLE_LEGACY_ADMIN_MIGRATION_ROUTES=true` temporarily exposes legacy admin migration endpoints.
 - At least one user must already be marked as `admin` in Supabase to bootstrap admin access.
@@ -119,7 +121,7 @@ In a second terminal, start the frontend:
 npm run dev:client
 ```
 
-The client runs through Vite and defaults to `http://localhost:5173`. The API defaults to `http://localhost:3001`.
+The client runs through Vite and defaults to `http://localhost:5173`. The API defaults to `http://localhost:3001`. In development, Vite forwards `/api` requests to the local API, so the browser only needs to reach the client origin. Both processes must be running for login to work.
 
 ## Available Scripts
 

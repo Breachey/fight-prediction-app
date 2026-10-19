@@ -324,6 +324,98 @@ function buildEventRecap({
     }
   }
 
+  if (completedFights.length >= 2) {
+    const perfectCardUserIds = humanLeaderboard
+      .map((entry) => normalizeId(entry.user_id))
+      .filter((userId) => completedFights.every((fight) => (
+        resultByUserFight.get(`${userId}:${fight.fight_id}`)?.predicted_correctly === true
+      )));
+    if (perfectCardUserIds.length > 0) {
+      const perfectRecipients = recipientsFor(perfectCardUserIds);
+      addAward({
+        id: 'perfect_card',
+        title: 'Clean Sweep',
+        headline: `${joinNames(perfectRecipients)} picked every winner`,
+        value: `${completedFights.length}/${completedFights.length}`,
+        detail: 'Every completed fight on the card called correctly.',
+        recipients: perfectRecipients,
+      });
+    }
+  }
+
+  const underdogWinsByUserId = new Map();
+  humanPredictions
+    .filter((prediction) => prediction.is_correct && prediction.betting_odds > 0)
+    .forEach((prediction) => {
+      underdogWinsByUserId.set(
+        prediction.user_id,
+        (underdogWinsByUserId.get(prediction.user_id) || 0) + 1
+      );
+    });
+  const mostUnderdogs = Math.max(0, ...underdogWinsByUserId.values());
+  if (mostUnderdogs >= 2) {
+    const underdogRecipients = recipientsFor(
+      [...underdogWinsByUserId.entries()]
+        .filter(([, count]) => count === mostUnderdogs)
+        .map(([userId]) => userId)
+    );
+    addAward({
+      id: 'underdog_hunter',
+      title: 'Underdog Hunter',
+      headline: `${joinNames(underdogRecipients)} found the live dogs`,
+      value: `${mostUnderdogs} hits`,
+      detail: 'The most correct picks on fighters with positive odds.',
+      recipients: underdogRecipients,
+    });
+  }
+
+  if (completedFights.length >= 3) {
+    const lateFightIds = completedFights.slice(Math.floor(completedFights.length / 2))
+      .map((fight) => fight.fight_id);
+    const latePointsByUserId = humanLeaderboard.map((entry) => {
+      const userId = normalizeId(entry.user_id);
+      return {
+        userId,
+        points: lateFightIds.reduce((total, fightId) => (
+          total + (resultByUserFight.get(`${userId}:${fightId}`)?.points || 0)
+        ), 0),
+      };
+    });
+    const topLatePoints = Math.max(0, ...latePointsByUserId.map((entry) => entry.points));
+    if (topLatePoints > 0) {
+      const surgeRecipients = recipientsFor(
+        latePointsByUserId
+          .filter((entry) => entry.points === topLatePoints)
+          .map((entry) => entry.userId)
+      );
+      addAward({
+        id: 'second_half_surge',
+        title: 'Strong Finish',
+        headline: `${joinNames(surgeRecipients)} owned the second half`,
+        value: `${topLatePoints} pts`,
+        detail: `Most fight points across the final ${lateFightIds.length} bouts.`,
+        recipients: surgeRecipients,
+      });
+    }
+  }
+
+  if (humanLeaderboard.length >= 2) {
+    const margin = normalizeNumber(humanLeaderboard[0].total_points)
+      - normalizeNumber(humanLeaderboard[1].total_points);
+    addAward({
+      id: 'winning_margin',
+      title: margin === 0 ? 'Dead Heat' : 'Winning Margin',
+      headline: margin === 0
+        ? `${joinNames(winners)} finished level`
+        : `${joinNames(winners)} topped the field`,
+      value: margin === 0 ? 'Tied' : `${margin} ${margin === 1 ? 'pt' : 'pts'}`,
+      detail: margin === 0
+        ? 'The event ended with a tie for first place.'
+        : 'The gap between first and second on the final leaderboard.',
+      recipients: winners,
+    });
+  }
+
   const latestFightId = completedFights[completedFights.length - 1]?.fight_id || null;
   if (latestFightId && humanLeaderboard.length > 1) {
     const baselineByUserId = new Map(

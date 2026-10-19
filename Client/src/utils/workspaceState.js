@@ -1,4 +1,4 @@
-export const VALID_WORKSPACE_VIEWS = new Set(['picks', 'props', 'leaderboard']);
+export const VALID_WORKSPACE_VIEWS = new Set(['picks', 'props', 'leaderboard', 'highlights']);
 
 export function resolveWorkspaceState(search = '', storedEventId = null) {
   const params = new URLSearchParams(search);

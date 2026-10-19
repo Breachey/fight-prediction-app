@@ -67,6 +67,13 @@ export default defineConfig({
   // Optimize dev server
   server: {
     // Enable compression during dev
-    compress: true
+    compress: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/api/, '')
+      }
+    }
   }
 })

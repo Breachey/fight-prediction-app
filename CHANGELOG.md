@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.34.2 - 2026-10-19
+
+### Changed
+
+- Build every leaderboard (overall, season, 2025, monthly, and event) from one shared snapshot of prediction results, events, and event winners instead of re-reading the whole results table on each request.
+- Load that snapshot with parallel page reads and reuse it for up to 20 seconds (`LEADERBOARD_CACHE_TTL_MS`), clearing it immediately when results are scored, fights are cancelled, cards are imported, or events are finalized.
+- Reuse computed leaderboards between requests so live-event polling no longer recalculates standings for every viewer.
+
+## 0.34.1 - 2026-10-04
+
+### Fixed
+
+- Route local development API requests through the Vite origin so login works in browsers that block direct access to the API port.
+- Clarify that the local API must run alongside the client for login.
+
+## 0.34.0 - 2026-10-04
+
+### Added
+
+- Add a completed-event Highlights workspace tab with the event recap and four additional result-based highlights: clean sweep, underdog hunter, strong finish, and winning margin.
+
+### Changed
+
+- Keep the event leaderboard focused on standings and friend comparisons.
+
 ## 0.33.11 - 2026-09-27
 
 ### Fixed
