@@ -5,7 +5,7 @@ import { Link, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import UserAuth from './UserAuth'; // User login/signup component
 import SplashScreen from './components/SplashScreen'; // Splash/loading screen
 import NotificationCenter from './components/NotificationCenter';
-import logo from './assets/fytpix_500x500.png';
+import logo from './assets/fytpix_400x400.webp';
 import { API_URL } from './config';
 import { APP_VERSION_LABEL } from './buildInfo';
 import { clearAdminSession, getAdminSessionExpiry, getAdminSessionToken, storeAdminSession } from './utils/adminSession';
@@ -22,9 +22,9 @@ const EventHighlights = lazy(() => import('./EventHighlights'));
 const PropPix = lazy(() => import('./components/PropPix'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const HighlightsPage = lazy(() => import('./HighlightsPage'));
-const LOGIN_BACKGROUND_1X = '/izzy_alex_640.jpg';
-const LOGIN_BACKGROUND_2X = '/izzy_alex_1280.jpg';
-const LOGIN_BACKGROUND_3X = '/izzy_alex_1920.jpg';
+const LOGIN_BACKGROUND_1X = '/izzy_alex_640.webp';
+const LOGIN_BACKGROUND_2X = '/izzy_alex_1280.webp';
+const LOGIN_BACKGROUND_3X = '/izzy_alex_1920.webp';
 const LAST_EVENT_STORAGE_KEY = 'fight-picker:last-event';
 const SHOW_AI_USERS_STORAGE_KEY = 'fight-picker:show-ai-users';
 
@@ -279,7 +279,7 @@ function App() {
         <div className="auth-shell">
           <header className="header header--auth">
             <Link to="/">
-              <img src={logo} alt="Fight Picks Logo" className="logo" width="501" height="501" />
+              <img src={logo} alt="Fight Picks Logo" className="logo" width="400" height="400" />
             </Link>
           </header>
           <UserAuth onAuthenticate={handleAuthentication} />
@@ -297,7 +297,7 @@ function App() {
     <div className="app app--authenticated">
       <aside className="desktop-rail" aria-label="Primary navigation">
         <Link to={`/?event=${selectedEventId || ''}&view=picks`} className="desktop-rail__brand" aria-label="Fight Picks home">
-          <img src={logo} alt="" width="501" height="501" />
+          <img src={logo} alt="" width="400" height="400" />
         </Link>
         <nav className="desktop-rail__nav">
           <Link className={isMainPage && activeWorkspaceView === 'picks' ? 'is-active' : ''} to={`/?event=${selectedEventId || ''}&view=picks`}><span>P</span>Picks</Link>
@@ -311,7 +311,7 @@ function App() {
       </aside>
       <header className="header app-header">
         <Link to={`/?event=${selectedEventId || ''}&view=picks`} className="mobile-brand">
-          <img src={logo} alt="Fight Picks" className="logo" width="501" height="501" />
+          <img src={logo} alt="Fight Picks" className="logo" width="400" height="400" />
         </Link>
         <div className="app-header__context">
           <span>{isMainPage ? selectedEvent?.name || 'Fight Picks' : 'Fight Picks'}</span>
