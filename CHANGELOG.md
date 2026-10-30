@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.34.3 - 2026-10-23
+
+### Fixed
+
+- Fill 20 missing UFC 333 fighter-detail values from verified online sources: 13 Tapology profile links, Temirov's and Rowston's streaks/recent form/last-fight dates, and Vagaev's wrestling background.
+- Sync the saved fighter profiles and enrichment cache, with verified streak anchors for Temirov and Rowston. Record sources and the 19 ranking or performance fields that remain unavailable in the backfill report.
+
 ## 0.34.2 - 2026-10-19
 
 ### Changed
