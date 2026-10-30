@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.34.5 - 2026-10-30
+
+### Security
+
+- Patch the four `npm audit` findings in the server's Express stack (`proxy-addr` IP spoofing, plus denial-of-service issues in `body-parser`, `compression`, and `qs`) by updating Express to 4.22.3 and the affected packages to their patched versions.
+
 ## 0.34.4 - 2026-10-30
 
 ### Removed
