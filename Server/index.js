@@ -3487,21 +3487,6 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache, snaps
 }
 
 /**
- * Returns a map of user_id -> number of event wins.
- * @param {Array|undefined} userIds - Optional array of user IDs to filter by
- * @param {number|undefined} year - Optional year to filter event wins by
- */
-async function fetchEventWinCounts(userIds, year) {
-  try {
-    const snapshot = await leaderboardDataStore.getSnapshot();
-    return countEventWins(snapshot, userIds, year);
-  } catch (error) {
-    console.error('Error fetching event win counts:', error);
-    return {};
-  }
-}
-
-/**
  * Applies prepared crown counts to leaderboard entries.
  */
 function addEventWinCounts(entries, countsMap, fieldName = 'event_win_count') {

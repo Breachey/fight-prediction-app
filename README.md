@@ -24,7 +24,7 @@ For questions, contact [breachey@gmail.com](mailto:breachey@gmail.com).
 - Frontend: React 18, React Router, Vite
 - Backend: Node.js, Express
 - Data layer: Supabase
-- Deployment: Vercel configs for both client and server
+- Deployment: Vercel (client), Render (API server)
 - Styling: Custom CSS with dynamic event-based accent theming
 
 ## Project Structure
@@ -158,12 +158,8 @@ npm run smoke:fight-card-import -- 1302 --preview-only
 
 ## Deployment
 
-This repository includes Vercel configuration for both app layers:
-
-- [`Client/vercel.json`](./Client/vercel.json) handles client-side route rewrites for profile pages.
-- [`Server/vercel.json`](./Server/vercel.json) routes all API traffic through the Node server entry point.
-
-For Node hosts like Render, make sure the server install step runs from `Server/` or otherwise executes `npm --prefix Server install` so the `postinstall` hook installs the scraper's Python dependencies from `Server/scraper/requirements.txt`.
+- **Client** deploys to Vercel. [`Client/vercel.json`](./Client/vercel.json) handles client-side route rewrites for profile pages, and `VITE_API_URL` points the build at the API (`https://api.fytpix.com` in production).
+- **API server** deploys to Render as a Node service running `node index.js` from `Server/`. Make sure the install step runs from `Server/` (or executes `npm --prefix Server install`) so the `postinstall` hook installs the scraper's Python dependencies from `Server/scraper/requirements.txt`.
 
 ### Scheduled fight-card scraping
 

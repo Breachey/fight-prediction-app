@@ -1,5 +1,5 @@
 import React from 'react';
-import logo from '../assets/fytpix_500x500.png';
+import logo from '../assets/fytpix_400x400.webp';
 import './SplashScreen.css';
 
 function SplashScreen() {

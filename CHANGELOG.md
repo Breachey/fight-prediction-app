@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.34.6 - 2026-10-30
+
+### Changed
+
+- Serve the login background photos as WebP instead of JPEG (1.2 MB → 584 KB across the three sizes) and the logo as a 400px WebP instead of a 500px PNG (98 KB → 54 KB); the logo never displays above 132px.
+- Losslessly optimize `favicon.svg` (89 KB → 74 KB).
+- Apply in-range dependency updates across the client, server, and root packages, including `react-router-dom` 7.18.5, `@supabase/supabase-js` 2.118, and the `supabase` CLI 2.122.
+- Document the actual deployment targets in the README: the client on Vercel and the API on Render.
+
+### Removed
+
+- Delete the unused `fetchEventWinCounts` server helper.
+- Delete `Server/vercel.json`; the API deploys to Render.
+
+### Security
+
+- Resolve the client's `npm audit` findings (Vite 7.3.7 plus patched `brace-expansion`, `js-yaml`, `nanoid`, `source-map-js`, and `zod` in the build tooling). All three packages now audit clean.
+
 ## 0.34.5 - 2026-10-30
 
 ### Security
