@@ -74,8 +74,31 @@ test('builds a human-only completed-event podium and social awards', () => {
   assert.equal(recap.awards.find((award) => award.id === 'group_bad_beat').value, '2 burned');
   assert.equal(recap.awards.find((award) => award.id === 'hot_hand').value, '3 straight');
   assert.equal(recap.awards.find((award) => award.id === 'perfect_main_card').headline, 'Avery swept the main card');
+  assert.equal(recap.awards.find((award) => award.id === 'perfect_card').value, '3/3');
+  assert.equal(recap.awards.find((award) => award.id === 'underdog_hunter').value, '2 hits');
+  assert.equal(recap.awards.find((award) => award.id === 'second_half_surge').value, '7 pts');
+  assert.equal(recap.awards.find((award) => award.id === 'winning_margin').value, '10 pts');
   assert.match(recap.share_text, /Winner: Avery — 12 pts/);
   assert.doesNotMatch(recap.share_text, /Robot/);
+});
+
+test('skips unsupported awards when picks or results are missing', () => {
+  const recap = buildEventRecap({
+    event: { id: 101, name: 'Sparse Card', is_completed: true },
+    users,
+    fightRows,
+    fightResults,
+    predictions: predictions.filter((prediction) => prediction.fight_id === 10),
+    predictionResults: predictionResults.filter((result) => result.fight_id === 10),
+    leaderboard: [
+      { user_id: 1, username: 'Avery', total_points: 5 },
+      { user_id: 2, username: 'Blake', total_points: 0 },
+    ],
+  });
+
+  assert.equal(recap.awards.some((award) => award.id === 'perfect_card'), false);
+  assert.equal(recap.awards.some((award) => award.id === 'underdog_hunter'), false);
+  assert.equal(recap.awards.find((award) => award.id === 'winning_margin').value, '5 pts');
 });
 
 test('keeps pending and empty events stable', () => {

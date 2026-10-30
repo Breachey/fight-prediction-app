@@ -18,6 +18,7 @@ import './App.css';
 const EventSelector = lazy(() => import('./EventSelector'));
 const Fights = lazy(() => import('./Fights'));
 const Leaderboard = lazy(() => import('./Leaderboard'));
+const EventHighlights = lazy(() => import('./EventHighlights'));
 const PropPix = lazy(() => import('./components/PropPix'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const HighlightsPage = lazy(() => import('./HighlightsPage'));
@@ -302,6 +303,7 @@ function App() {
           <Link className={isMainPage && activeWorkspaceView === 'picks' ? 'is-active' : ''} to={`/?event=${selectedEventId || ''}&view=picks`}><span>P</span>Picks</Link>
           <Link className={isMainPage && activeWorkspaceView === 'props' ? 'is-active' : ''} to={`/?event=${selectedEventId || ''}&view=props`}><span>B</span>Prop Pix</Link>
           <Link className={isMainPage && activeWorkspaceView === 'leaderboard' ? 'is-active' : ''} to={`/?event=${selectedEventId || ''}&view=leaderboard`}><span>L</span>Leaderboard</Link>
+          <Link className={isMainPage && activeWorkspaceView === 'highlights' ? 'is-active' : ''} to={`/?event=${selectedEventId || ''}&view=highlights`}><span>H</span>Highlights</Link>
           <Link className={location.pathname.startsWith('/stats') || location.pathname.startsWith('/highlights') ? 'is-active' : ''} to="/stats"><span>S</span>Stats</Link>
           <Link className={location.pathname.startsWith('/profile') ? 'is-active' : ''} to={`/profile/${user.user_id}`}><span>U</span>Profile</Link>
         </nav>
@@ -360,6 +362,7 @@ function App() {
             ['picks', 'Picks'],
             ['props', 'Prop Pix'],
             ['leaderboard', 'Leaderboard'],
+            ['highlights', 'Highlights'],
           ].map(([view, label]) => (
             <button
               key={view}
@@ -411,6 +414,14 @@ function App() {
                   refreshToken={leaderboardRefreshToken}
                   isEventComplete={Boolean(selectedEvent?.is_completed)}
                   showAIUsers={showAIUsers}
+                />
+              </div>}
+              {activeWorkspaceView === 'highlights' && <div className="section highlights-section workspace-view">
+                <EventHighlights
+                  eventId={selectedEventId}
+                  isEventComplete={Boolean(
+                    selectedEvent?.is_completed && String(selectedEvent.id) === String(selectedEventId)
+                  )}
                 />
               </div>}
             </>

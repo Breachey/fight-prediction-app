@@ -37,9 +37,12 @@
 .hamburger-menu-item { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--color-white); text-align: left; }
 .hamburger-menu-item:hover { background: rgba(252, 251, 253, 0.07); }
 .hamburger-menu-logout { margin-top: 4px; border-top: 1px solid rgba(252, 251, 253, 0.1); color: var(--color-pink); }
-.workspace-tabs { position: fixed; right: 0; bottom: 0; left: 0; z-index: 90; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; padding: 6px 8px max(6px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(252, 251, 253, 0.14); background: rgba(5, 0, 0, 0.98); box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.28); }
+.workspace-tabs { position: fixed; right: 0; bottom: 0; left: 0; z-index: 90; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; padding: 6px 8px max(6px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(252, 251, 253, 0.14); background: rgba(5, 0, 0, 0.98); box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.28); }
 .workspace-tabs button { min-width: 0; min-height: 38px; overflow: hidden; padding: 7px 4px; border: 0; background: transparent; color: rgba(252, 251, 253, 0.58); font-size: 0.82rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tabs button.is-active { background: #1b191c; color: var(--color-white); }
+@media (max-width: 370px) {
+  .workspace-tabs button { font-size: 0.7rem; }
+}
 .desktop-rail { display: none; }
 .section { min-width: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .workspace-view { margin-top: 18px; }

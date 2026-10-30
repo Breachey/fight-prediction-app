@@ -2,7 +2,7 @@
 
 This document is mandatory for agents making visual, styling, layout, or user-interface changes in Fight Picker. Existing component patterns and these rules take precedence over generic framework defaults. When a requested change conflicts with this guide, call out the conflict before implementing it.
 
-Last updated: August 13, 2026.
+Last updated: October 4, 2026.
 
 ## Design Source Hierarchy
 
@@ -85,11 +85,11 @@ Do not add decorative accent rails, vertical edge strips, left or right border b
 
 ### Application shell
 
-- Design mobile first. The authenticated mobile shell uses a compact sticky header and a persistent bottom workspace bar for Picks, Prop Pix, and Leaderboard.
+- Design mobile first. The authenticated mobile shell uses a compact sticky header and a persistent bottom workspace bar for Picks, Prop Pix, Leaderboard, and Highlights.
 - Keep bottom navigation above the safe-area inset and reserve enough page-bottom spacing that it never covers the last action or footer control.
 - Desktop uses a slim persistent left rail for workspace views, Stats, and Profile. Do not duplicate the mobile bottom bar on desktop.
 - Notifications, account controls, logout, version, and admin access remain available, but they must not compete with the active event workflow.
-- Preserve the active event and workspace view in the URL as `/?event=<id>&view=picks|props|leaderboard`.
+- Preserve the active event and workspace view in the URL as `/?event=<id>&view=picks|props|leaderboard|highlights`.
 - Constrain every authenticated route to the viewport. A component must not restore a body minimum width or create page-level horizontal scrolling.
 
 ### Event workspace and poster strip
@@ -182,7 +182,7 @@ Use semantic heading levels for document structure and shared classes for visual
 - Limit interface motion to purposeful opacity, color, and small positional transitions, normally `120–180ms`.
 - Do not use hover scaling, cascading card entrances, count-up animations for routine data, continuous glows/pulses, or broad `transition: all` rules.
 - Continuous avatar motion is the narrow exception described above and must be inexpensive, selectively enabled, and reduced-motion safe.
-- Mount and fetch only the active workspace view. Prop Pix and Leaderboard must not request their view data before the user opens them.
+- Mount and fetch only the active workspace view. Prop Pix, Leaderboard, and Highlights must not request their view data before the user opens them.
 - Preserve cached view content during revalidation instead of replacing it with a blank state. Use stable skeletons only for true first loads.
 - Pause notification and leaderboard polling while the document is hidden. Poll an unfinished event leaderboard only while its view is visible.
 - Public responses may use session-backed stale-while-revalidate caching. Personalized responses remain memory-only and clear on logout.

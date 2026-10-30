@@ -56,6 +56,16 @@ const {
 } = require('./lib/propPix');
 const { createNotifications } = require('./lib/notifications');
 const { createAsyncTtlCache } = require('./lib/asyncTtlCache');
+const {
+  buildLeaderboardSnapshot,
+  countEventWins,
+  countHumanEventWins,
+  createLeaderboardDataStore,
+  fetchAllRowsInParallel,
+  getEventResultsForUsers,
+  getEventsInYear,
+  getScopedResults,
+} = require('./lib/leaderboardData');
 const { buildPicksContextPayload } = require('./lib/picksContext');
 const { buildEventLiveState } = require('./lib/eventLiveState');
 const { buildEventRecap } = require('./lib/eventRecap');
@@ -127,6 +137,12 @@ const WEIGHTCLASS_CACHE_TTL_MS = 10 * 60 * 1000;
 const USER_PLAYERCARD_CACHE_TTL_MS = 2 * 60 * 1000;
 const weightclassCache = createAsyncTtlCache({ ttlMs: WEIGHTCLASS_CACHE_TTL_MS });
 const userPlayercardCache = createAsyncTtlCache({ ttlMs: USER_PLAYERCARD_CACHE_TTL_MS });
+// Every leaderboard reads from one shared snapshot. Writes on this instance
+// clear it immediately; the TTL bounds staleness on other serverless instances.
+const leaderboardDataStore = createLeaderboardDataStore({
+  loadSnapshot: () => loadLeaderboardSnapshot(),
+  ttlMs: parsePositiveIntegerEnv(process.env.LEADERBOARD_CACHE_TTL_MS, 20 * 1000),
+});
 
 // Enable gzip compression
 app.use(compression());
@@ -1485,6 +1501,14 @@ function compareFightSequence(a, b) {
 }
 
 async function recalculatePredictionResultsForEvent(eventId) {
+  try {
+    return await rebuildPredictionResultsForEvent(eventId);
+  } finally {
+    invalidateLeaderboardCaches();
+  }
+}
+
+async function rebuildPredictionResultsForEvent(eventId) {
   const normalizedEventId = Number(eventId);
   if (!Number.isFinite(normalizedEventId)) {
     throw new Error('eventId is required to recalculate prediction results');
@@ -1896,6 +1920,8 @@ async function clearEventWinnersForEvent(eventId) {
     .from('event_winners')
     .delete()
     .eq('event_id', eventId);
+
+  invalidateLeaderboardCaches();
 
   if (error) {
     throw error;
@@ -2877,6 +2903,7 @@ app.post('/ufc_full_fight_card/:id/cancel', requireAdminSession, async (req, res
       console.error('Error clearing prediction results:', deletePredictionResultsError);
       // Don't fail the request if this fails, just log it
     }
+    invalidateLeaderboardCaches();
 
     // Get the updated fight data to return
     const { data: fightData, error: getFightError } = await supabase
@@ -3384,7 +3411,7 @@ function determineEventWinners(sortedEntries) {
 /**
  * Builds the per-event leaderboard and identifies winners.
  */
-async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}) {
+async function buildEventLeaderboard(eventId, { allTimeResults, userCache, snapshot } = {}) {
   if (!eventId) {
     throw new Error('eventId is required to build leaderboard');
   }
@@ -3397,16 +3424,22 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
     return { leaderboard: [], winners: [] };
   }
 
-  const eventResultsPromise = fetchAllFromSupabase(
-    supabase
-      .from('prediction_results')
-      .select('fight_id, event_id, user_id, predicted_correctly, points')
-      .eq('event_id', eventIdFilter)
-      .in('user_id', userIds)
-  );
+  // With a snapshot, results come from the shared leaderboard cache; without
+  // one (finalize/backfill/recap) they are read fresh from the database.
+  const eventResultsPromise = snapshot
+    ? Promise.resolve(getEventResultsForUsers(snapshot, eventIdFilter, userIds))
+    : fetchAllFromSupabase(
+      supabase
+        .from('prediction_results')
+        .select('fight_id, event_id, user_id, predicted_correctly, points')
+        .eq('event_id', eventIdFilter)
+        .in('user_id', userIds)
+    );
   const allTimeResultsPromise = allTimeResults
     ? Promise.resolve(allTimeResults)
-    : fetchAllFromSupabase(
+    : snapshot
+      ? Promise.resolve(getScopedResults(snapshot, effectiveUserCache))
+      : fetchAllFromSupabase(
         supabase
           .from('prediction_results')
           .select('user_id, event_id, predicted_correctly, points, created_at')
@@ -3460,52 +3493,8 @@ async function buildEventLeaderboard(eventId, { allTimeResults, userCache } = {}
  */
 async function fetchEventWinCounts(userIds, year) {
   try {
-    let query = supabase
-      .from('event_winners')
-      .select('user_id, event_id');
-
-    if (Array.isArray(userIds)) {
-      if (userIds.length === 0) {
-        return {};
-      }
-      const uniqueIds = Array.from(new Set(userIds.map(id => String(id))));
-      query = query.in('user_id', uniqueIds);
-    }
-
-    // If year is specified, we need to filter by event date
-    // We'll fetch all winners first, then filter by year via events table
-    const winners = await fetchAllFromSupabase(query);
-    
-    // If year is specified, filter winners by events from that year
-    if (year !== undefined && winners && winners.length > 0) {
-      const eventIds = [...new Set(winners.map(w => Number(w.event_id)))];
-      const eventsQuery = supabase
-        .from('events')
-        .select('id')
-        .in('id', eventIds)
-        .gte('date', `${year}-01-01`)
-        .lt('date', `${year + 1}-01-01`);
-      const eventsForYear = await fetchAllFromSupabase(eventsQuery);
-      const eventIdsForYear = new Set((eventsForYear || []).map(e => Number(e.id)));
-      
-      // Filter winners to only those from events in the specified year
-      const filteredWinners = winners.filter(w => eventIdsForYear.has(Number(w.event_id)));
-      
-      const counts = {};
-      filteredWinners.forEach(row => {
-        const key = String(row.user_id);
-        counts[key] = (counts[key] || 0) + 1;
-      });
-      return counts;
-    }
-    
-    // No year filter - count all wins
-    const counts = {};
-    (winners || []).forEach(row => {
-      const key = String(row.user_id);
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return counts;
+    const snapshot = await leaderboardDataStore.getSnapshot();
+    return countEventWins(snapshot, userIds, year);
   } catch (error) {
     console.error('Error fetching event win counts:', error);
     return {};
@@ -3533,199 +3522,204 @@ function addEventWinCounts(entries, countsMap, fieldName = 'event_win_count') {
  */
 async function fetchHumanEventWinCounts(userIds, year, userCache = null) {
   try {
-    if (!Array.isArray(userIds) || userIds.length === 0) {
-      return {};
-    }
-
-    const uniqueIds = Array.from(new Set(userIds.map(id => String(id))));
-    if (uniqueIds.length === 0) {
-      return {};
-    }
-
-    let eventsQuery = supabase
-      .from('events')
-      .select('id, date, is_completed')
-      .eq('is_completed', true);
-
-    if (year !== undefined) {
-      eventsQuery = eventsQuery
-        .gte('date', `${year}-01-01`)
-        .lt('date', `${year + 1}-01-01`);
-    }
-
-    const usersPromise = userCache?.userIdToIsBot
-      ? Promise.resolve(null)
-      : fetchAllFromSupabase(
-          supabase
-            .from('users')
-            .select('user_id, is_bot')
-            .in('user_id', uniqueIds)
-        );
-    const [users, events] = await Promise.all([
-      usersPromise,
-      fetchAllFromSupabase(eventsQuery),
+    const [snapshot, effectiveUserCache] = await Promise.all([
+      leaderboardDataStore.getSnapshot(),
+      userCache?.userIdToIsBot ? Promise.resolve(userCache) : fetchUsersWithPlayercards(),
     ]);
-    const humanUserIds = userCache?.userIdToIsBot
-      ? uniqueIds.filter(userId => !userCache.userIdToIsBot.get(String(userId)))
-      : (users || [])
-          .filter(user => !user.is_bot)
-          .map(user => String(user.user_id));
-
-    if (humanUserIds.length === 0) {
-      return {};
-    }
-
-    const eventIds = (events || [])
-      .map(event => String(event.id))
-      .filter(Boolean);
-
-    if (eventIds.length === 0) {
-      return {};
-    }
-
-    const resultsQuery = supabase
-      .from('prediction_results')
-      .select('event_id, user_id, points')
-      .in('user_id', humanUserIds)
-      .in('event_id', eventIds);
-    const results = await fetchAllFromSupabase(resultsQuery);
-
-    if (!results || results.length === 0) {
-      return {};
-    }
-
-    const eventUserPoints = new Map();
-    results.forEach(result => {
-      const eventIdStr = String(result.event_id);
-      const userIdStr = String(result.user_id);
-      if (!eventUserPoints.has(eventIdStr)) {
-        eventUserPoints.set(eventIdStr, new Map());
-      }
-      const userPoints = eventUserPoints.get(eventIdStr);
-      const current = userPoints.get(userIdStr) || 0;
-      userPoints.set(userIdStr, current + (Number(result.points) || 0));
-    });
-
-    const counts = {};
-    for (const userPoints of eventUserPoints.values()) {
-      let topPoints = null;
-      for (const points of userPoints.values()) {
-        if (topPoints === null || points > topPoints) {
-          topPoints = points;
-        }
-      }
-      if (topPoints === null) {
-        continue;
-      }
-      for (const [userIdStr, points] of userPoints.entries()) {
-        if (points === topPoints) {
-          counts[userIdStr] = (counts[userIdStr] || 0) + 1;
-        }
-      }
-    }
-
-    return counts;
+    return countHumanEventWins(snapshot, userIds, year, effectiveUserCache.userIdToIsBot);
   } catch (error) {
     console.error('Error fetching human event win counts:', error);
     return {};
   }
 }
 
+const LEADERBOARD_RESULT_SELECT = 'user_id, username, event_id, fight_id, predicted_correctly, points, created_at';
+
+/**
+ * Loads everything the leaderboards need in one pass: every prediction
+ * result (paged in parallel), events, and stored event winners.
+ */
+async function loadLeaderboardSnapshot() {
+  const [results, events, eventWinners] = await Promise.all([
+    // No ORDER BY, matching the previous sequential reads: streak tie-breaks
+    // between results with identical created_at follow table order.
+    fetchAllRowsInParallel((selectOptions) => supabase
+      .from('prediction_results')
+      .select(LEADERBOARD_RESULT_SELECT, selectOptions)),
+    fetchAllFromSupabase(supabase.from('events').select('id, date, is_completed')),
+    fetchAllFromSupabase(supabase.from('event_winners').select('user_id, event_id')),
+  ]);
+  return buildLeaderboardSnapshot({ results, events, eventWinners });
+}
+
+function invalidateLeaderboardCaches() {
+  leaderboardDataStore.invalidate();
+}
+
+async function getLeaderboardContext() {
+  const [snapshot, userCache] = await Promise.all([
+    leaderboardDataStore.getSnapshot(),
+    fetchUsersWithPlayercards(),
+  ]);
+  return {
+    snapshot,
+    userCache,
+    scopedResults: getScopedResults(snapshot, userCache),
+  };
+}
+
+function groupResultsByUser(results) {
+  const resultsByUser = {};
+  (results || []).forEach(result => {
+    const userIdStr = String(result.user_id);
+    if (!resultsByUser[userIdStr]) {
+      resultsByUser[userIdStr] = [];
+    }
+    resultsByUser[userIdStr].push(result);
+  });
+  return resultsByUser;
+}
+
+function addCrownCounts(leaderboard, snapshot, userCache, year) {
+  const userIds = leaderboard.map(user => user.user_id);
+  let withCrowns = addEventWinCounts(leaderboard, countEventWins(snapshot, userIds, year));
+  withCrowns = addEventWinCounts(
+    withCrowns,
+    countHumanEventWins(snapshot, userIds, year, userCache.userIdToIsBot),
+    'event_win_count_human'
+  );
+  return withCrowns;
+}
+
+// Builds a points leaderboard from results; streaks always use all-time results.
+function buildStreakLeaderboard(results, allTimeResults, userCache, { trackEvents = true } = {}) {
+  const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
+  const allTimeUserResultsMap = groupResultsByUser(allTimeResults);
+  const userStats = {};
+
+  results.forEach(result => {
+    const userIdStr = String(result.user_id);
+    if (!userStats[userIdStr]) {
+      userStats[userIdStr] = {
+        user_id: userIdStr,
+        username: userIdToUsername.get(userIdStr) || 'Unknown',
+        is_bot: userIdToIsBot.get(userIdStr) || false,
+        playercard: userIdToPlayercard.get(userIdStr) || null,
+        avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
+        total_predictions: 0,
+        correct_predictions: 0,
+        total_points: 0,
+        ...(trackEvents ? { event_ids: new Set() } : {})
+      };
+    }
+    userStats[userIdStr].total_predictions++;
+    if (trackEvents) {
+      userStats[userIdStr].event_ids.add(String(result.event_id));
+    }
+    if (result.predicted_correctly) {
+      userStats[userIdStr].correct_predictions++;
+    }
+    userStats[userIdStr].total_points += (result.points || 0);
+  });
+
+  Object.keys(userStats).forEach(userIdStr => {
+    userStats[userIdStr].streak = calculateUserStreak(allTimeUserResultsMap[userIdStr] || []);
+  });
+
+  return Object.values(userStats)
+    .map(user => {
+      const { event_ids, ...entry } = user;
+      return {
+        ...entry,
+        ...(trackEvents ? { events_played: event_ids?.size || 0 } : {}),
+        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
+        total_points: user.total_points,
+      };
+    })
+    .sort((a, b) =>
+      b.total_points - a.total_points ||
+      b.correct_predictions - a.correct_predictions ||
+      parseFloat(b.accuracy) - parseFloat(a.accuracy)
+    );
+}
+
+function computeOverallLeaderboard({ snapshot, userCache, scopedResults }) {
+  if (buildUserIdList(userCache.users).length === 0) {
+    return [];
+  }
+  const leaderboard = buildStreakLeaderboard(scopedResults, scopedResults, userCache);
+  return addCrownCounts(leaderboard, snapshot, userCache, undefined);
+}
+
+function computeSeason2025Leaderboard({ snapshot, userCache, scopedResults }) {
+  if (buildUserIdList(userCache.users).length === 0) {
+    return [];
+  }
+  const eventIds2025 = new Set(getEventsInYear(snapshot, 2025).map(e => Number(e.id)));
+  const results = scopedResults.filter(result => eventIds2025.has(Number(result.event_id)));
+  const leaderboard = addCrownCounts(
+    buildStreakLeaderboard(results, scopedResults, userCache),
+    snapshot,
+    userCache,
+    2025
+  );
+
+  // Mark season winner (user with highest points from 2025)
+  if (leaderboard.length > 0) {
+    const topPoints = leaderboard[0].total_points;
+    leaderboard.forEach(entry => {
+      entry.season_2025_winner = entry.total_points === topPoints && topPoints > 0;
+    });
+  }
+  return leaderboard;
+}
+
+function computeSeasonLeaderboard({ snapshot, userCache, scopedResults }, { currentYear, requestedReferenceEventId }) {
+  if (buildUserIdList(userCache.users).length === 0) {
+    return [];
+  }
+  const seasonEvents = getEventsInYear(snapshot, currentYear);
+  const seasonEventIds = new Set(seasonEvents.map(e => String(e.id)));
+  const results = scopedResults.filter(result => seasonEventIds.has(String(result.event_id)));
+  const allTimeUserResultsMap = groupResultsByUser(scopedResults);
+  const referenceEventId = determineReferenceEventId(seasonEvents, results, requestedReferenceEventId);
+
+  let leaderboard = buildLeaderboardFromResults(results, userCache)
+    .map(entry => ({
+      ...entry,
+      streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
+    }));
+  const baselineLeaderboard = referenceEventId
+    ? buildLeaderboardFromResults(
+      results.filter(result => String(result.event_id) !== String(referenceEventId)),
+      userCache
+    )
+    : [];
+  leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, results, referenceEventId);
+  return addCrownCounts(leaderboard, snapshot, userCache, currentYear);
+}
+
+function computeMonthlyLeaderboard({ snapshot, userCache, scopedResults }, { monthStartMs, nextMonthStartMs }) {
+  if (buildUserIdList(userCache.users).length === 0) {
+    return [];
+  }
+  const results = scopedResults.filter(result => {
+    const createdAtMs = Date.parse(result.created_at);
+    return createdAtMs >= monthStartMs && createdAtMs < nextMonthStartMs;
+  });
+  const leaderboard = buildStreakLeaderboard(results, scopedResults, userCache, { trackEvents: false });
+  return addCrownCounts(leaderboard, snapshot, userCache, undefined);
+}
+
 // Get overall leaderboard
 app.get('/leaderboard', async (req, res) => {
   try {
-    const userCache = await fetchUsersWithPlayercards();
-    const userIds = buildUserIdList(userCache.users);
-
-    if (userIds.length === 0) {
-      return res.json([]);
-    }
-
-    // Get all prediction results using the pagination helper
-    const resultsQuery = supabase
-      .from('prediction_results')
-      .select('user_id, event_id, predicted_correctly, points, created_at')
-      .in('user_id', userIds);
-    const results = await fetchAllFromSupabase(resultsQuery);
-
-    // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
-
-    // Group results by user for streak calculation
-    const userResultsMap = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userResultsMap[userIdStr]) {
-        userResultsMap[userIdStr] = [];
-      }
-      userResultsMap[userIdStr].push(result);
-    });
-
-    // Process the results to create the leaderboard
-    const userStats = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: userIdToUsername.get(userIdStr) || 'Unknown',
-          is_bot: userIdToIsBot.get(userIdStr) || false,
-          playercard: userIdToPlayercard.get(userIdStr) || null,
-          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0,
-          event_ids: new Set()
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      userStats[userIdStr].event_ids.add(String(result.event_id));
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      // Directly sum the points from the table
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Calculate streak for each user
-    Object.keys(userStats).forEach(userIdStr => {
-      const userResults = userResultsMap[userIdStr];
-      const username = userIdToUsername.get(userIdStr);
-      const streak = calculateUserStreak(userResults);
-      userStats[userIdStr].streak = streak;
-      
-      // Debug logging
-      if (username && (username.toLowerCase().includes('breachey') || username.toLowerCase().includes('breach'))) {
-        debugLog('LEADERBOARD DEBUG - Overall:', {
-          username,
-          user_id: userIdStr,
-          streak,
-          totalResults: userResults?.length,
-          results: userResults
-        });
-      }
-    });
-
-    // Convert to array and sort to get rankings
-    let leaderboard = Object.values(userStats)
-      .map(user => {
-        const { event_ids, ...entry } = user;
-        return {
-          ...entry,
-          events_played: event_ids?.size || 0,
-          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-          total_points: user.total_points,
-        };
-      })
-      .sort((a, b) =>
-        b.total_points - a.total_points ||
-        b.correct_predictions - a.correct_predictions ||
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      );
-    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id));
-    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id));
-    leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
-    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
+    const context = await getLeaderboardContext();
+    const leaderboard = await leaderboardDataStore.memoize(
+      'overall',
+      [context.snapshot, context.userCache],
+      () => computeOverallLeaderboard(context)
+    );
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing leaderboard:', error);
@@ -3736,118 +3730,12 @@ app.get('/leaderboard', async (req, res) => {
 // Get 2025 season leaderboard
 app.get('/leaderboard/2025', async (req, res) => {
   try {
-    const userCache = await fetchUsersWithPlayercards();
-    const userIds = buildUserIdList(userCache.users);
-
-    if (userIds.length === 0) {
-      return res.json([]);
-    }
-
-    // Get all events from 2025
-    const events2025Query = supabase
-      .from('events')
-      .select('id')
-      .gte('date', '2025-01-01')
-      .lt('date', '2026-01-01');
-    const events2025 = await fetchAllFromSupabase(events2025Query);
-    const eventIds2025 = new Set((events2025 || []).map(e => Number(e.id)));
-
-    // Get all prediction results for 2025 events
-    const allResultsQuery = supabase
-      .from('prediction_results')
-      .select('user_id, event_id, predicted_correctly, points')
-      .in('user_id', userIds);
-    const allResults = await fetchAllFromSupabase(allResultsQuery);
-    
-    // Filter results to only 2025 events
-    const results = (allResults || []).filter(result => {
-      const eventId = Number(result.event_id);
-      return eventIds2025.has(eventId);
-    });
-
-    // Get all-time prediction results for streak calculation (streaks continue from past)
-    const allTimeResults = await fetchAllFromSupabase(
-      supabase
-        .from('prediction_results')
-        .select('user_id, predicted_correctly, created_at')
-        .in('user_id', userIds)
+    const context = await getLeaderboardContext();
+    const leaderboard = await leaderboardDataStore.memoize(
+      'season:2025-final',
+      [context.snapshot, context.userCache],
+      () => computeSeason2025Leaderboard(context)
     );
-
-    // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
-
-    // Group all-time results by user for streak calculation
-    const allTimeUserResultsMap = {};
-    (allTimeResults || []).forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!allTimeUserResultsMap[userIdStr]) {
-        allTimeUserResultsMap[userIdStr] = [];
-      }
-      allTimeUserResultsMap[userIdStr].push(result);
-    });
-
-    // Process the results to create the leaderboard
-    const userStats = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: userIdToUsername.get(userIdStr) || 'Unknown',
-          is_bot: userIdToIsBot.get(userIdStr) || false,
-          playercard: userIdToPlayercard.get(userIdStr) || null,
-          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0,
-          event_ids: new Set()
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      userStats[userIdStr].event_ids.add(String(result.event_id));
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Calculate all-time streak for each user
-    Object.keys(userStats).forEach(userIdStr => {
-      const allTimeUserResults = allTimeUserResultsMap[userIdStr] || [];
-      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
-    });
-
-    // Convert to array and calculate accuracy
-    let leaderboard = Object.values(userStats)
-      .map(user => {
-        const { event_ids, ...entry } = user;
-        return {
-          ...entry,
-          events_played: event_ids?.size || 0,
-          accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-          total_points: user.total_points,
-        };
-      })
-      .sort((a, b) =>
-        b.total_points - a.total_points ||
-        b.correct_predictions - a.correct_predictions ||
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      );
-
-    // Get event win counts for 2025 events only
-    const eventWinCounts2025 = await fetchEventWinCounts(leaderboard.map(user => user.user_id), 2025);
-    const humanEventWinCounts2025 = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), 2025);
-    leaderboard = addEventWinCounts(leaderboard, eventWinCounts2025);
-    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts2025, 'event_win_count_human');
-
-    // Mark season winner (user with highest points from 2025)
-    if (leaderboard.length > 0) {
-      const topPoints = leaderboard[0].total_points;
-      leaderboard.forEach(entry => {
-        entry.season_2025_winner = entry.total_points === topPoints && topPoints > 0;
-      });
-    }
-
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing 2025 leaderboard:', error);
@@ -3858,80 +3746,16 @@ app.get('/leaderboard/2025', async (req, res) => {
 // Get current season (current year) leaderboard
 app.get('/leaderboard/season', async (req, res) => {
   try {
-    const userCache = await fetchUsersWithPlayercards();
-    const userIds = buildUserIdList(userCache.users);
-
-    if (userIds.length === 0) {
-      return res.json([]);
-    }
-
+    const context = await getLeaderboardContext();
     const currentYear = new Date().getFullYear();
-    const seasonStart = `${currentYear}-01-01`;
-    const nextSeasonStart = `${currentYear + 1}-01-01`;
-
-    // Get all events from current year
-    const seasonEventsQuery = supabase
-      .from('events')
-      .select('id, date')
-      .gte('date', seasonStart)
-      .lt('date', nextSeasonStart);
-    const seasonEvents = await fetchAllFromSupabase(seasonEventsQuery);
-    const seasonEventIds = new Set((seasonEvents || []).map(e => String(e.id)));
-
-    // Get all prediction results for current year events
-    const allResultsQuery = supabase
-      .from('prediction_results')
-      .select('user_id, event_id, predicted_correctly, points')
-      .in('user_id', userIds);
-    const allResults = await fetchAllFromSupabase(allResultsQuery);
-    
-    // Filter results to only current year events
-    const results = (allResults || []).filter(result => {
-      return seasonEventIds.has(String(result.event_id));
-    });
-
-    // Get all-time prediction results for streak calculation (streaks continue from past)
-    const allTimeResults = await fetchAllFromSupabase(
-      supabase
-        .from('prediction_results')
-        .select('user_id, predicted_correctly, created_at')
-        .in('user_id', userIds)
-    );
-
-    // Group all-time results by user for streak calculation
-    const allTimeUserResultsMap = {};
-    (allTimeResults || []).forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!allTimeUserResultsMap[userIdStr]) {
-        allTimeUserResultsMap[userIdStr] = [];
-      }
-      allTimeUserResultsMap[userIdStr].push(result);
-    });
-
     const requestedReferenceEventId = req.query.reference_event_id
       ? normalizeEventIdValue(req.query.reference_event_id)
       : null;
-    const referenceEventId = determineReferenceEventId(seasonEvents, results, requestedReferenceEventId);
-
-    // Convert to array and calculate accuracy
-    let leaderboard = buildLeaderboardFromResults(results, userCache)
-      .map(entry => ({
-        ...entry,
-        streak: calculateUserStreak(allTimeUserResultsMap[String(entry.user_id)] || [])
-      }));
-    const baselineLeaderboard = referenceEventId
-      ? buildLeaderboardFromResults(
-        results.filter(result => String(result.event_id) !== String(referenceEventId)),
-        userCache
-      )
-      : [];
-    leaderboard = addLeaderboardDeltas(leaderboard, baselineLeaderboard, results, referenceEventId);
-
-    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
-    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id), currentYear);
-    leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
-    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
-
+    const leaderboard = await leaderboardDataStore.memoize(
+      `season:${currentYear}:${requestedReferenceEventId ?? ''}`,
+      [context.snapshot, context.userCache],
+      () => computeSeasonLeaderboard(context, { currentYear, requestedReferenceEventId })
+    );
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing season leaderboard:', error);
@@ -3943,95 +3767,15 @@ app.get('/leaderboard/season', async (req, res) => {
 app.get('/leaderboard/monthly', async (req, res) => {
   try {
     res.set('Deprecation', 'true');
-    const userCache = await fetchUsersWithPlayercards();
-    const userIds = buildUserIdList(userCache.users);
-
-    if (userIds.length === 0) {
-      return res.json([]);
-    }
-
-    // Get the first and last day of the current month in ISO format
+    const context = await getLeaderboardContext();
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const firstDayISO = firstDay.toISOString();
-    const nextMonthISO = nextMonth.toISOString();
-
-    // Get all prediction results for the current month using the pagination helper
-    const resultsQuery = supabase
-      .from('prediction_results')
-      .select('user_id, predicted_correctly, points, created_at')
-      .gte('created_at', firstDayISO)
-      .lt('created_at', nextMonthISO)
-      .in('user_id', userIds);
-    const results = await fetchAllFromSupabase(resultsQuery);
-
-    // Get all-time prediction results for streak calculation
-    const allTimeResultsQuery = supabase
-      .from('prediction_results')
-      .select('user_id, predicted_correctly, created_at')
-      .in('user_id', userIds);
-    const allTimeResults = await fetchAllFromSupabase(allTimeResultsQuery);
-
-    // Map user_id to username, is_bot, and playercard info
-    const { userIdToUsername, userIdToIsBot, userIdToPlayercard, userIdToAvatarConfig } = userCache;
-
-    // Group all-time results by user for streak calculation
-    const allTimeUserResultsMap = {};
-    allTimeResults.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!allTimeUserResultsMap[userIdStr]) {
-        allTimeUserResultsMap[userIdStr] = [];
-      }
-      allTimeUserResultsMap[userIdStr].push(result);
-    });
-
-    // Process the results to create the leaderboard
-    const userStats = {};
-    results.forEach(result => {
-      const userIdStr = String(result.user_id);
-      if (!userStats[userIdStr]) {
-        userStats[userIdStr] = {
-          user_id: userIdStr,
-          username: userIdToUsername.get(userIdStr) || 'Unknown',
-          is_bot: userIdToIsBot.get(userIdStr) || false,
-          playercard: userIdToPlayercard.get(userIdStr) || null,
-          avatar_config: userIdToAvatarConfig.get(userIdStr) || null,
-          total_predictions: 0,
-          correct_predictions: 0,
-          total_points: 0
-        };
-      }
-      userStats[userIdStr].total_predictions++;
-      if (result.predicted_correctly) {
-        userStats[userIdStr].correct_predictions++;
-      }
-      // Directly sum the points from the table
-      userStats[userIdStr].total_points += (result.points || 0);
-    });
-
-    // Calculate all-time streak for each user
-    Object.keys(userStats).forEach(userIdStr => {
-      const allTimeUserResults = allTimeUserResultsMap[userIdStr];
-      userStats[userIdStr].streak = calculateUserStreak(allTimeUserResults);
-    });
-
-    // Convert to array and calculate accuracy
-    let leaderboard = Object.values(userStats)
-      .map(user => ({
-        ...user,
-        accuracy: ((user.correct_predictions / user.total_predictions) * 100).toFixed(2),
-        total_points: user.total_points,
-      }))
-      .sort((a, b) =>
-        b.total_points - a.total_points ||
-        b.correct_predictions - a.correct_predictions ||
-        parseFloat(b.accuracy) - parseFloat(a.accuracy)
-      );
-    const eventWinCounts = await fetchEventWinCounts(leaderboard.map(user => user.user_id));
-    const humanEventWinCounts = await fetchHumanEventWinCounts(leaderboard.map(user => user.user_id));
-    leaderboard = addEventWinCounts(leaderboard, eventWinCounts);
-    leaderboard = addEventWinCounts(leaderboard, humanEventWinCounts, 'event_win_count_human');
+    const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const nextMonthStartMs = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const leaderboard = await leaderboardDataStore.memoize(
+      `monthly:${monthStartMs}`,
+      [context.snapshot, context.userCache],
+      () => computeMonthlyLeaderboard(context, { monthStartMs, nextMonthStartMs })
+    );
     res.json(leaderboard);
   } catch (error) {
     console.error('Error processing monthly leaderboard:', error);
@@ -5369,6 +5113,8 @@ app.post('/admin/events/:id/fight-card/import', requireAdminSession, async (req,
       });
     }
 
+    invalidateLeaderboardCaches();
+
     const eventImageUpdate = await backfillEventImageIfMissing({
       supabase,
       eventId,
@@ -6549,16 +6295,19 @@ app.post('/user/:user_id/notifications/read-all', requireUserSession, requireOwn
 app.get('/events/:id/leaderboard', async (req, res) => {
   try {
     const { id } = req.params;
-    const userCache = await fetchUsersWithPlayercards();
-    const { leaderboard } = await buildEventLeaderboard(id, { userCache });
+    const context = await getLeaderboardContext();
     const currentYear = new Date().getFullYear();
-    const leaderboardUserIds = leaderboard.map(entry => entry.user_id);
-    const [eventWinCounts, humanEventWinCounts] = await Promise.all([
-      fetchEventWinCounts(leaderboardUserIds, currentYear),
-      fetchHumanEventWinCounts(leaderboardUserIds, currentYear, userCache),
-    ]);
-    let leaderboardWithCrowns = addEventWinCounts(leaderboard, eventWinCounts);
-    leaderboardWithCrowns = addEventWinCounts(leaderboardWithCrowns, humanEventWinCounts, 'event_win_count_human');
+    const leaderboardWithCrowns = await leaderboardDataStore.memoize(
+      `event:${String(normalizeEventIdValue(id))}:${currentYear}`,
+      [context.snapshot, context.userCache],
+      async () => {
+        const { leaderboard } = await buildEventLeaderboard(id, {
+          userCache: context.userCache,
+          snapshot: context.snapshot,
+        });
+        return addCrownCounts(leaderboard, context.snapshot, context.userCache, currentYear);
+      }
+    );
     res.json(leaderboardWithCrowns);
   } catch (error) {
     console.error('Error processing event leaderboard:', error);
@@ -6755,6 +6504,7 @@ app.post('/events/:id/finalize', requireAdminSession, async (req, res) => {
       console.error('Error updating event record:', updateEventError);
       return res.status(500).json({ error: 'Failed to update event status' });
     }
+    invalidateLeaderboardCaches();
 
     // Update EventStatus on the fight card rows
     const { error: updateCardError } = await supabase
@@ -6802,6 +6552,8 @@ app.post('/events/:id/finalize', requireAdminSession, async (req, res) => {
         }
       }
     }
+
+    invalidateLeaderboardCaches();
 
     await logAdminAction(req, {
       action: 'event.finalize',
@@ -6956,6 +6708,8 @@ app.post('/events/backfill-winners', requireAdminSession, async (req, res) => {
         skipped.push({ event_id: eventId, reason: eventError.message });
       }
     }
+
+    invalidateLeaderboardCaches();
 
     await logAdminAction(req, {
       action: 'event.backfill_winners',

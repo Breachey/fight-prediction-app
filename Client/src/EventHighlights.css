@@ -1,0 +1,19 @@
+.event-highlights {
+  width: 100%;
+  min-width: 0;
+}
+
+.event-highlights__heading {
+  margin: 0 auto 20px;
+  max-width: 620px;
+}
+
+.event-highlights__state {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid rgba(252, 251, 253, 0.14);
+  border-radius: var(--radius-sm);
+  color: rgba(252, 251, 253, 0.7);
+  text-align: center;
+}

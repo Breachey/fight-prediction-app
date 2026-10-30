@@ -1,0 +1,416 @@
+{
+  "event_id": 1336,
+  "event_name": "UFC 333: Volkanovski vs. Evloev",
+  "event_date": "2026-10-24",
+  "researched_on": "2026-10-23",
+  "app_version": "0.34.3",
+  "scope": "Missing fields exposed by the Fighter Details editor across all 28 fighter rows. Existing populated fight-card values were preserved.",
+  "status": "Applied to the fight-picker Supabase project and read back for verification.",
+  "summary": {
+    "fight_count": 14,
+    "fighter_rows": 28,
+    "updated_fighter_rows": 14,
+    "filled_values": 20,
+    "filled_profile_urls": 13,
+    "filled_streaks": 2,
+    "filled_recent_forms": 2,
+    "filled_last_fight_dates": 2,
+    "filled_styles": 1,
+    "missing_editor_values_before": 39,
+    "missing_editor_values_after": 19
+  },
+  "updates": [
+    {
+      "row_id": 9906,
+      "fight_id": 13063,
+      "fighter_id": 3266,
+      "name": "Movsar Evloev",
+      "record_wins": 20,
+      "record_losses": 0,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/85897-movsar-evloev"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/85897-movsar-evloev"
+      ]
+    },
+    {
+      "row_id": 9905,
+      "fight_id": 13063,
+      "fighter_id": 2824,
+      "name": "Alexander Volkanovski",
+      "record_wins": 28,
+      "record_losses": 4,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/41705-alex-volkanski"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/41705-alex-volkanski"
+      ]
+    },
+    {
+      "row_id": 9908,
+      "fight_id": 13064,
+      "fighter_id": 3020,
+      "name": "Merab Dvalishvili",
+      "record_wins": 21,
+      "record_losses": 5,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/47934-merab-dvalishvili"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/47934-merab-dvalishvili"
+      ]
+    },
+    {
+      "row_id": 9907,
+      "fight_id": 13064,
+      "fighter_id": 3068,
+      "name": "Petr Yan",
+      "record_wins": 20,
+      "record_losses": 5,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/90075-petr-yan"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/90075-petr-yan"
+      ]
+    },
+    {
+      "row_id": 9910,
+      "fight_id": 13066,
+      "fighter_id": 4282,
+      "name": "Ramazan Temirov",
+      "record_wins": 20,
+      "record_losses": 3,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/173956-razonbek-temirov",
+        "Streak": 12,
+        "RecentForm": "W,W,W,W,W",
+        "LastFightDate": "2026-07-25"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/173956-razonbek-temirov",
+        "https://www.ufc.com/athlete/ramazan-temirov",
+        "https://www.sherdog.com/fighter/Ramazonbek-Temirov-215649"
+      ]
+    },
+    {
+      "row_id": 9912,
+      "fight_id": 13125,
+      "fighter_id": 3667,
+      "name": "Rizvan Kuniev",
+      "record_wins": 14,
+      "record_losses": 3,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/71638-rizvan-kuniev"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/71638-rizvan-kuniev"
+      ]
+    },
+    {
+      "row_id": 9914,
+      "fight_id": 13215,
+      "fighter_id": 4472,
+      "name": "Losene Keita",
+      "record_wins": 17,
+      "record_losses": 2,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/158525-losene-keita"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/158525-losene-keita"
+      ]
+    },
+    {
+      "row_id": 9920,
+      "fight_id": 13082,
+      "fighter_id": 4035,
+      "name": "Cam Rowston",
+      "record_wins": 15,
+      "record_losses": 3,
+      "changes": {
+        "Streak": 7,
+        "RecentForm": "W,W,W,W,W",
+        "LastFightDate": "2026-05-02"
+      },
+      "sources": [
+        "https://www.ufc.com/athlete/cam-rowston",
+        "https://www.sherdog.com/fighter/Cameron-Rowston-239381"
+      ]
+    },
+    {
+      "row_id": 9919,
+      "fight_id": 13082,
+      "fighter_id": 3741,
+      "name": "Abus Magomedov",
+      "record_wins": 29,
+      "record_losses": 7,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/30204-abusupiyan-magomedov-abus"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/30204-abusupiyan-magomedov-abus"
+      ]
+    },
+    {
+      "row_id": 9922,
+      "fight_id": 13067,
+      "fighter_id": 3941,
+      "name": "Nurullo Aliev",
+      "record_wins": 12,
+      "record_losses": 0,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/178801-nurullo-aliev"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/178801-nurullo-aliev"
+      ]
+    },
+    {
+      "row_id": 9924,
+      "fight_id": 13221,
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "record_wins": 11,
+      "record_losses": 0,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/198455-asef-chopurov"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/198455-asef-chopurov"
+      ]
+    },
+    {
+      "row_id": 9925,
+      "fight_id": 13220,
+      "fighter_id": 4534,
+      "name": "Abubakar Vagaev",
+      "record_wins": 25,
+      "record_losses": 4,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/72240-abubakar-babaev",
+        "style": "Wrestling"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/72240-abubakar-babaev",
+        "https://www.ufc.com/athlete/abubakar-vagaev"
+      ],
+      "note": "Style is categorized from the fighter's self-reported wrestling background in his official UFC Q&A; UFC does not publish a separate fighting-style field for him."
+    },
+    {
+      "row_id": 9927,
+      "fight_id": 13224,
+      "fighter_id": 4062,
+      "name": "Bolaji Oki",
+      "record_wins": 10,
+      "record_losses": 4,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/158527-bolaji-oki"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/158527-bolaji-oki"
+      ]
+    },
+    {
+      "row_id": 9931,
+      "fight_id": 13226,
+      "fighter_id": 3919,
+      "name": "Iasmin Lucindo",
+      "record_wins": 18,
+      "record_losses": 6,
+      "changes": {
+        "TapologyFighterURL": "https://www.tapology.com/fightcenter/fighters/166360-iasmin-lucindo"
+      },
+      "sources": [
+        "https://www.tapology.com/fightcenter/fighters/166360-iasmin-lucindo"
+      ]
+    }
+  ],
+  "unfilled": [
+    {
+      "fighter_id": 4351,
+      "name": "Aaron Pico",
+      "field": "TakedownDefensePct",
+      "reason": "Official UFC profile omits takedown defense; available fight totals show no takedowns attempted against him (0/0).",
+      "sources": [
+        "https://www.ufc.com/athlete/aaron-pico",
+        "https://www.mmaindex.com/fighters/aaron-pico-5537efc6"
+      ]
+    },
+    {
+      "fighter_id": 4472,
+      "name": "Losene Keita",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Losene-Keita"
+      ]
+    },
+    {
+      "fighter_id": 4472,
+      "name": "Losene Keita",
+      "field": "TakedownAccuracyPct",
+      "reason": "No recorded takedown attempts; accuracy is undefined (0/0).",
+      "sources": [
+        "https://www.ufc.com/athlete/losene-keita",
+        "https://fightingdata.com/fighters/losene-keita/"
+      ]
+    },
+    {
+      "fighter_id": 3941,
+      "name": "Nurullo Aliev",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Nurullo-Aliev"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Asaf-Chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "SigStrLandedPerMin",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "SigStrAbsorbedPerMin",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "SigStrikeAccuracyPct",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "SigStrikeDefensePct",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "TakedownAvgPer15",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "TakedownAccuracyPct",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "TakedownDefensePct",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "SubmissionAvgPer15",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4670,
+      "name": "Asaf Chopurov",
+      "field": "KnockdownAvgPer15",
+      "reason": "UFC debut scheduled for 2026-10-24; official UFC profile publishes no career rate for this field.",
+      "sources": [
+        "https://www.ufc.com/athlete/asaf-chopurov"
+      ]
+    },
+    {
+      "fighter_id": 4534,
+      "name": "Abubakar Vagaev",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Abubakar-Vagaev"
+      ]
+    },
+    {
+      "fighter_id": 4062,
+      "name": "Bolaji Oki",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Bolaji-Oki"
+      ]
+    },
+    {
+      "fighter_id": 4559,
+      "name": "Noah Gugnon",
+      "field": "Rank",
+      "reason": "No verified numeric rank found; null retained. Zero is reserved for a champion.",
+      "sources": [
+        "https://www.ufc.com/athlete/Noah-Gugnon"
+      ]
+    },
+    {
+      "fighter_id": 4559,
+      "name": "Noah Gugnon",
+      "field": "TakedownAccuracyPct",
+      "reason": "Official UFC profile omits this percentage; available fight totals show no relevant takedown attempts (0/0).",
+      "sources": [
+        "https://us.ufcespanol.com/athlete/noah-gugnon",
+        "https://fightiq.net/fighter/noah-gugnon"
+      ]
+    },
+    {
+      "fighter_id": 4559,
+      "name": "Noah Gugnon",
+      "field": "TakedownDefensePct",
+      "reason": "Official UFC profile omits this percentage; available fight totals show no relevant takedown attempts (0/0).",
+      "sources": [
+        "https://us.ufcespanol.com/athlete/noah-gugnon",
+        "https://fightiq.net/fighter/noah-gugnon"
+      ]
+    }
+  ],
+  "verification": {
+    "all_20_values_match": true,
+    "all_other_fight_card_fields_unchanged": true,
+    "fighters_and_tapology_cache_match": true,
+    "streaks_have_manual_verified_anchors": true,
+    "streak_anchor_through_date": "2026-10-23",
+    "note": "Rowston's stale unverified profile/cache streak of 6 was replaced with the verified current streak of 7. No historical event rows were changed."
+  }
+}

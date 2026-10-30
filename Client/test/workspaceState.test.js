@@ -21,3 +21,8 @@ test('workspace state falls back to the stored event and picks view', () => {
 test('workspace search normalizes invalid views', () => {
   assert.equal(buildWorkspaceSearch(1324, 'unknown'), '?event=1324&view=picks');
 });
+
+test('highlights is a URL-backed workspace view', () => {
+  assert.equal(buildWorkspaceSearch(1324, 'highlights'), '?event=1324&view=highlights');
+  assert.equal(resolveWorkspaceState('?event=1324&view=highlights').view, 'highlights');
+});

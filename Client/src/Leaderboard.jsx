@@ -7,7 +7,6 @@ import { cachedFetchJson } from './utils/apiCache';
 import { getEventLiveStateChanges, shouldPollEventLeaderboard } from './utils/pollingPolicy';
 import { fetchWithUserSession } from './utils/userSession';
 import SquidAvatar from './components/SquidAvatar';
-import EventRecap from './components/EventRecap';
 import EventFriendComparison from './components/EventFriendComparison';
 import './Leaderboard.css';
 
@@ -28,9 +27,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [eventRecap, setEventRecap] = useState(null);
-  const [isRecapLoading, setIsRecapLoading] = useState(false);
-  const [recapError, setRecapError] = useState('');
   const [eventComparison, setEventComparison] = useState(null);
   const [selectedFriendId, setSelectedFriendId] = useState('');
   const [isComparisonLoading, setIsComparisonLoading] = useState(false);
@@ -42,7 +38,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
   const [rivalryMarkers, setRivalryMarkers] = useState({ pickTwinUserId: null, nemesisUserId: null });
   const lastAppliedRefreshTokenRef = useRef(refreshToken);
   const lastFocusRefreshRef = useRef(0);
-  const activeRecapEventIdRef = useRef(eventId);
   const activeComparisonEventIdRef = useRef(eventId);
   const activeComparisonFriendIdRef = useRef('');
   const comparisonRequestIdRef = useRef(0);
@@ -136,34 +131,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
     }
   }, [getEndpoint, setLeaderboardData]);
 
-  const fetchEventRecap = useCallback(async ({ force = false } = {}) => {
-    if (!eventId || !isEventComplete) return;
-    const requestedEventId = eventId;
-    setIsRecapLoading(true);
-    setRecapError('');
-    try {
-      const recap = await cachedFetchJson(`${API_URL}/events/${requestedEventId}/recap`, {
-        cacheKey: `event-recap:${requestedEventId}`,
-        ttlMs: 60000,
-        force,
-        allowStaleOnError: true,
-        staleWhileRevalidate: !force,
-        fetchOptions: { cache: 'no-store' },
-      });
-      if (String(activeRecapEventIdRef.current) !== String(requestedEventId)) return;
-      setEventRecap(recap || null);
-    } catch (recapFetchError) {
-      console.error('Error fetching event recap:', recapFetchError);
-      if (String(activeRecapEventIdRef.current) === String(requestedEventId)) {
-        setRecapError('The event recap could not be loaded.');
-      }
-    } finally {
-      if (String(activeRecapEventIdRef.current) === String(requestedEventId)) {
-        setIsRecapLoading(false);
-      }
-    }
-  }, [eventId, isEventComplete]);
-
   const fetchEventComparison = useCallback(async ({ friendUserId = '', force = false } = {}) => {
     if (!eventId || !currentUserId) return;
     const requestedEventId = eventId;
@@ -254,25 +221,17 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
 
   // Reset selected leaderboard if eventId changes
   useEffect(() => {
-    activeRecapEventIdRef.current = eventId;
     activeComparisonEventIdRef.current = eventId;
     activeComparisonFriendIdRef.current = '';
     eventLiveStateRef.current = null;
     comparisonRequestIdRef.current += 1;
     setSelectedLeaderboard(eventId ? 'event' : 'overall');
     setEventLeaderboard([]);
-    setEventRecap(null);
-    setRecapError('');
     setEventComparison(null);
     setSelectedFriendId('');
     setComparisonError('');
     loadedRef.current.event = false;
   }, [eventId]);
-
-  useEffect(() => {
-    if (selectedLeaderboard !== 'event' || !eventId || !isEventComplete) return;
-    fetchEventRecap();
-  }, [eventId, fetchEventRecap, isEventComplete, selectedLeaderboard]);
 
   useEffect(() => {
     if (selectedLeaderboard !== 'event' || !eventId || !currentUserId) return;
@@ -293,9 +252,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
         friendUserId: activeComparisonFriendIdRef.current,
         force: true,
       });
-    }
-    if (selectedLeaderboard === 'event' && isEventComplete) {
-      fetchEventRecap({ force: true });
     }
   };
 
@@ -1050,14 +1006,6 @@ function Leaderboard({ eventId, currentUser, currentUserId, refreshToken = 0, is
       {/* Show only the selected leaderboard */}
       {selectedLeaderboard === 'event' && eventId && (
         <>
-          {isEventComplete && (
-            <EventRecap
-              recap={eventRecap}
-              isLoading={isRecapLoading}
-              error={recapError}
-              onRetry={() => { void fetchEventRecap({ force: true }); }}
-            />
-          )}
           <LeaderboardCardsList
             data={eventLeaderboard}
             title="Event Leaderboard"
