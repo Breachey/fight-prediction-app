@@ -35,7 +35,6 @@ For questions, contact [breachey@gmail.com](mailto:breachey@gmail.com).
 ├── Server/                  # Express API, importer, and scraper tooling
 │   └── scraper/             # Python scraper, Tapology map, and archived fight-card exports
 ├── supabase/migrations/     # Database schema and policy migrations
-├── architecture.md          # High-level architecture diagram
 └── README.md
 ```
 
@@ -185,8 +184,6 @@ Every workflow run emails `breachey@gmail.com`, including no-op and failed runs.
 GitHub-hosted Actions are free for public repositories. Private repositories consume the account's included Actions minutes, so configure an Actions budget with paid usage disabled if the account has a payment method and strict zero spend is required.
 
 ## Architecture
-
-A high-level system diagram is available in [`architecture.md`](./architecture.md).
 
 At a glance:
 
