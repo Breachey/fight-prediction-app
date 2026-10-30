@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.34.4 - 2026-10-30
+
+### Removed
+
+- Delete unused and stale files: the unreferenced `posterAccentTheme.js` util, the stock Vite `Client/README.md`, an outdated Cursor rule inside `Client/src/`, Builder.io's `builder.config.json`, and `architecture.md` (the README's architecture summary remains).
+- Drop the direct `esbuild` client dependency; Vite supplies its own for minification.
+- Remove the duplicate `sync:fighters` server script (use `sync:fighter-style`) and the root `postinstall` hook, which re-ran the scraper's pip install that `npm install --prefix Server` already performs.
+
+### Security
+
+- Stop tracking gitignored local files: `.cursor/mcp.json` (holds a Supabase access token), `supabase/dev.db`, and `supabase/.branches/`. The files remain on disk.
+
 ## 0.34.3 - 2026-10-23
 
 ### Fixed
